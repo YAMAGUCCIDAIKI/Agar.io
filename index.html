@@ -448,7 +448,10 @@
       const VIRUS_CORE_SPLIT_MASS = 700;
       const VIRUS_FRAGMENT_LIFE = 2.8;
       const MAX_CELL_SPREAD = 2400;
-      const WORLD_SYNC_CHUNK = 110;
+      const WORLD_SYNC_CHUNK = 500;
+      const MAX_SYNC_FOODS = 5000;
+      const MAX_FOOD_SPAWNS_PER_FRAME = 450;
+      const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
 
       const foodPalette = [
@@ -514,6 +517,7 @@
           channel: null,
           peer: null,
           peerConn: null,
+          connectTimer: 0,
           socket: null,
           connected: false,
           status: "OFFLINE",
@@ -524,6 +528,7 @@
           lastSnapshotSend: -100,
           lastWorldSend: -100
         },
+        foodGridDirty: true,
         flashUntil: 0,
         hudTimer: 0
       };
@@ -560,6 +565,21 @@
           const maxX = Math.floor((x + range) / this.cellSize);
           const minY = Math.floor((y - range) / this.cellSize);
           const maxY = Math.floor((y + range) / this.cellSize);
+          for (let cy = minY; cy <= maxY; cy += 1) {
+            for (let cx = minX; cx <= maxX; cx += 1) {
+              const bucket = this.map.get(this.key(cx, cy));
+              if (bucket) out.push(...bucket);
+            }
+          }
+          return out;
+        }
+
+        queryRect(left, top, right, bottom, out = []) {
+          out.length = 0;
+          const minX = Math.floor(left / this.cellSize);
+          const maxX = Math.floor(right / this.cellSize);
+          const minY = Math.floor(top / this.cellSize);
+          const maxY = Math.floor(bottom / this.cellSize);
           for (let cy = minY; cy <= maxY; cy += 1) {
             for (let cx = minX; cx <= maxX; cx += 1) {
               const bucket = this.map.get(this.key(cx, cy));
@@ -1036,13 +1056,20 @@
       function createFood() {
         const mass = rand(1.2, 3.4);
         const radius = radiusFromMass(mass);
-        const pos = findOpenSpawnPosition(radius, 20, 10, {
-          avoidViruses: true,
-          avoidFoods: true,
-          virusPadding: 24,
-          foodPadding: 4,
-          cellPadding: 60
-        });
+        const crowded = state.foods.length > FOOD_AVOID_LIMIT;
+        const pos = crowded
+          ? findOpenSpawnPosition(radius, 20, 4, {
+              avoidViruses: true,
+              virusPadding: 18,
+              cellPadding: 50
+            })
+          : findOpenSpawnPosition(radius, 20, 10, {
+              avoidViruses: true,
+              avoidFoods: true,
+              virusPadding: 24,
+              foodPadding: 4,
+              cellPadding: 60
+            });
         return {
           id: nextId(),
           type: "food",
@@ -1053,6 +1080,13 @@
           color: foodPalette[Math.floor(Math.random() * foodPalette.length)],
           dead: false
         };
+      }
+
+      function addFood() {
+        const food = createFood();
+        state.foods.push(food);
+        if (!state.foodGridDirty) foodGrid.insert(food);
+        return food;
       }
 
       function createVirus(x = null, y = null) {
@@ -1116,11 +1150,14 @@
       }
 
       function rebuildSpatialHashes() {
-        foodGrid.clear();
         feedGrid.clear();
         virusGrid.clear();
         cellGrid.clear();
-        for (const food of state.foods) if (!food.dead) foodGrid.insert(food);
+        if (state.foodGridDirty) {
+          foodGrid.clear();
+          for (const food of state.foods) if (!food.dead) foodGrid.insert(food);
+          state.foodGridDirty = false;
+        }
         for (const feed of state.feeds) if (!feed.dead) feedGrid.insert(feed);
         for (const virus of state.viruses) if (!virus.dead) virusGrid.insert(virus);
         for (const actor of state.actors) {
@@ -2009,11 +2046,16 @@
           }
         }
 
+        const foodsBeforeCleanup = state.foods.length;
         state.foods = state.foods.filter((food) => !food.dead);
         state.feeds = state.feeds.filter((feed) => !feed.dead);
         const foodTarget = state.settings.foodTarget;
         const virusTarget = state.settings.virusTarget;
-        if (state.foods.length > foodTarget) state.foods.length = foodTarget;
+        if (state.foods.length !== foodsBeforeCleanup) state.foodGridDirty = true;
+        if (state.foods.length > foodTarget) {
+          state.foods.length = foodTarget;
+          state.foodGridDirty = true;
+        }
         const liveVirusesBeforeCleanup = state.viruses.length;
         state.viruses = state.viruses.filter((virus) => !virus.dead);
         if (state.viruses.length > virusTarget) state.viruses.length = virusTarget;
@@ -2036,7 +2078,8 @@
           return true;
         });
 
-        while (state.foods.length < foodTarget) state.foods.push(createFood());
+        const foodSpawnBudget = Math.min(MAX_FOOD_SPAWNS_PER_FRAME, foodTarget - state.foods.length);
+        for (let i = 0; i < foodSpawnBudget; i += 1) addFood();
         while (state.viruses.length + state.virusRespawnQueue.length < virusTarget) {
           state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
         }
@@ -2298,6 +2341,10 @@
         state.net.transport = "peerjs";
         state.net.peerConn = conn;
         conn.on("open", () => {
+          if (state.net.connectTimer) {
+            clearTimeout(state.net.connectTimer);
+            state.net.connectTimer = 0;
+          }
           state.net.connected = true;
           setStatus("CONNECTED");
           if (state.net.role === "host") {
@@ -2313,13 +2360,23 @@
           state.net.connected = false;
           setStatus("CLOSED");
         });
-        conn.on("error", () => setStatus("ROOM NG"));
+        conn.on("error", () => {
+          if (state.net.role === "client" && !state.net.connected) {
+            setStatus("NO ROOM");
+            setTimeout(() => {
+              if (state.net.transport === "peerjs" && !state.net.connected) closeNetwork(false);
+            }, 900);
+            return;
+          }
+          setStatus("ROOM NG");
+        });
       }
 
       function resetFreshWorld(localId, onlineMode = false) {
         state.localActorId = localId;
         state.actors.length = 0;
         state.foods.length = 0;
+        state.foodGridDirty = true;
         state.feeds.length = 0;
         state.viruses.length = 0;
         state.virusRespawnQueue.length = 0;
@@ -2333,7 +2390,8 @@
           if (localId === "host") {
             spawnActor(host, PLAYER_START_MASS);
             spawnActor(guest, PLAYER_START_MASS);
-            while (state.foods.length < state.settings.foodTarget) state.foods.push(createFood());
+            const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
+            while (state.foods.length < initialFood) addFood();
             const center = actorCenter(host);
             seedInitialViruses(center.x, center.y);
           }
@@ -2343,7 +2401,8 @@
           state.actors.push(player);
           spawnActor(player, PLAYER_START_MASS);
           ensureBotPopulation();
-          while (state.foods.length < state.settings.foodTarget) state.foods.push(createFood());
+          const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
+          while (state.foods.length < initialFood) addFood();
           const center = actorCenter(player);
           seedInitialViruses(center.x, center.y);
         }
@@ -2357,6 +2416,10 @@
       }
 
       function closeNetwork(keepWorld = true) {
+        if (state.net.connectTimer) {
+          clearTimeout(state.net.connectTimer);
+          state.net.connectTimer = 0;
+        }
         if (state.net.socket) {
           state.net.socket.onopen = null;
           state.net.socket.onclose = null;
@@ -2390,6 +2453,7 @@
         state.net.channel = null;
         state.net.peer = null;
         state.net.peerConn = null;
+        state.net.connectTimer = 0;
         state.net.socket = null;
         state.net.connected = false;
         state.net.iceCandidates = 0;
@@ -2484,6 +2548,13 @@
             reliable: false
           });
           setupPeerJsConnection(conn);
+          state.net.connectTimer = setTimeout(() => {
+            if (state.net.transport !== "peerjs" || state.net.connected) return;
+            setStatus("NO ROOM");
+            setTimeout(() => {
+              if (state.net.transport === "peerjs" && !state.net.connected) closeNetwork(false);
+            }, 900);
+          }, 9000);
         });
         peer.on("error", () => setStatus("ROOM NG"));
         peer.on("disconnected", () => setStatus("ROOM LOST"));
@@ -2674,10 +2745,42 @@
         if (netSend(message)) state.net.lastSnapshotSend = now;
         if (sendWorld) {
           state.net.worldSeq += 1;
-          sendWorldChunks("foods", state.foods.filter((food) => !food.dead).map(serializeCircle), state.net.worldSeq);
+          sendWorldChunks("foods", foodsForNetworkSync().map(serializeCircle), state.net.worldSeq);
           sendWorldChunks("viruses", state.viruses.filter((virus) => !virus.dead).map(serializeCircle), state.net.worldSeq);
           state.net.lastWorldSend = now;
         }
+      }
+
+      function foodsForNetworkSync() {
+        const liveFoods = state.foods.filter((food) => !food.dead);
+        if (liveFoods.length <= MAX_SYNC_FOODS) return liveFoods;
+        const foods = [];
+        const seen = new Set();
+        const addVisibleForActor = (actor) => {
+          if (!actor || !actor.isHuman) return;
+          const center = actorCenter(actor);
+          const range = 1600;
+          const nearby = foodGrid.queryRect(center.x - range, center.y - range, center.x + range, center.y + range, aiEntityScratch);
+          for (const food of nearby) {
+            if (food.dead || seen.has(food.id)) continue;
+            seen.add(food.id);
+            foods.push(food);
+            if (foods.length >= MAX_SYNC_FOODS) return;
+          }
+        };
+
+        for (const actor of state.actors) {
+          addVisibleForActor(actor);
+          if (foods.length >= MAX_SYNC_FOODS) return foods;
+        }
+
+        const stride = Math.max(1, Math.ceil(liveFoods.length / MAX_SYNC_FOODS));
+        for (let i = 0; i < liveFoods.length && foods.length < MAX_SYNC_FOODS; i += stride) {
+          const food = liveFoods[i];
+          if (seen.has(food.id)) continue;
+          foods.push(food);
+        }
+        return foods;
       }
 
       function sendWorldChunks(kind, items, seq) {
@@ -2848,6 +2951,7 @@
 
         if (message.kind === "foods") {
           state.foods = merged.map((entity) => applyEntitySnapshot(entity, "food"));
+          state.foodGridDirty = true;
         } else {
           state.viruses = merged.map((entity) => applyEntitySnapshot(entity, "virus"));
         }
@@ -2992,7 +3096,9 @@
         ctx.strokeStyle = "rgba(128, 139, 154, 0.55)";
         ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 
-        for (const food of state.foods) {
+        const visibleFoods = foodGrid.queryRect(bounds.left - 20, bounds.top - 20, bounds.right + 20, bounds.bottom + 20, aiEntityScratch);
+        for (const food of visibleFoods) {
+          if (food.dead) continue;
           if (isVisible(food, bounds, 20)) drawCircleEntity(food);
         }
 
@@ -3066,7 +3172,10 @@
       }
 
       function trimDynamicEntities() {
-        if (state.foods.length > state.settings.foodTarget) state.foods.length = state.settings.foodTarget;
+        if (state.foods.length > state.settings.foodTarget) {
+          state.foods.length = state.settings.foodTarget;
+          state.foodGridDirty = true;
+        }
         if (state.viruses.length > state.settings.virusTarget) state.viruses.length = state.settings.virusTarget;
         const maxQueue = Math.max(0, state.settings.virusTarget - state.viruses.length);
         if (state.virusRespawnQueue.length > maxQueue) state.virusRespawnQueue.length = maxQueue;
