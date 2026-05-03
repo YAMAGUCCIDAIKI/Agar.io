@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Agar Canvas</title>
   <meta name="description" content="HTML5 Canvasで遊べるAgar.io風のブラウザゲーム">
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -347,8 +348,8 @@
       <span id="onlineStatus" class="online-status">OFFLINE</span>
     </div>
     <div class="online-controls">
-      <button id="hostBtn" type="button">HOST</button>
-      <button id="joinBtn" type="button">JOIN</button>
+      <button id="hostBtn" type="button">CREATE ROOM</button>
+      <button id="joinBtn" type="button">JOIN ROOM</button>
       <button id="applyAnswerBtn" type="button">ANSWER</button>
       <button id="disconnectBtn" type="button">DISCONNECT</button>
       <button id="relayHostBtn" type="button">RELAY HOST</button>
@@ -511,6 +512,8 @@
           transport: "none",
           pc: null,
           channel: null,
+          peer: null,
+          peerConn: null,
           socket: null,
           connected: false,
           status: "OFFLINE",
@@ -2133,6 +2136,17 @@
         return typeof RTCPeerConnection === "function";
       }
 
+      function peerJsSupported() {
+        return typeof Peer === "function";
+      }
+
+      function normalizeRoomId() {
+        ensureRelayDefaults();
+        const room = roomBox.value.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
+        roomBox.value = room;
+        return `agar-canvas-${room}`;
+      }
+
       function createPeerConnection() {
         state.net.iceCandidates = 0;
         const pc = new RTCPeerConnection({
@@ -2219,6 +2233,18 @@
       }
 
       function netSend(message) {
+        if (state.net.transport === "peerjs") {
+          const conn = state.net.peerConn;
+          if (!conn || !conn.open) return false;
+          try {
+            conn.send(JSON.stringify(message));
+            return true;
+          } catch (error) {
+            setStatus("ROOM SEND NG");
+            return false;
+          }
+        }
+
         if (state.net.transport === "relay") {
           const socket = state.net.socket;
           if (!socket || socket.readyState !== WebSocket.OPEN) return false;
@@ -2260,6 +2286,34 @@
         };
         channel.onerror = () => setStatus("CHANNEL NG");
         channel.onmessage = (event) => handleNetMessage(event.data);
+      }
+
+      function setupPeerJsConnection(conn) {
+        if (state.net.peerConn && state.net.peerConn !== conn) {
+          try { conn.close(); } catch (error) {}
+          setStatus("ROOM FULL");
+          return;
+        }
+
+        state.net.transport = "peerjs";
+        state.net.peerConn = conn;
+        conn.on("open", () => {
+          state.net.connected = true;
+          setStatus("CONNECTED");
+          if (state.net.role === "host") {
+            state.net.lastSnapshotSend = -100;
+            state.net.lastWorldSend = -100;
+            sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+          }
+        });
+        conn.on("data", (data) => {
+          handleNetMessage(typeof data === "string" ? data : JSON.stringify(data));
+        });
+        conn.on("close", () => {
+          state.net.connected = false;
+          setStatus("CLOSED");
+        });
+        conn.on("error", () => setStatus("ROOM NG"));
       }
 
       function resetFreshWorld(localId, onlineMode = false) {
@@ -2317,6 +2371,13 @@
           state.net.channel.onmessage = null;
           try { state.net.channel.close(); } catch (error) {}
         }
+        if (state.net.peerConn) {
+          try { state.net.peerConn.close(); } catch (error) {}
+        }
+        if (state.net.peer) {
+          state.net.peer.removeAllListeners();
+          try { state.net.peer.destroy(); } catch (error) {}
+        }
         if (state.net.pc) {
           state.net.pc.onconnectionstatechange = null;
           state.net.pc.oniceconnectionstatechange = null;
@@ -2327,6 +2388,8 @@
         state.net.transport = "none";
         state.net.pc = null;
         state.net.channel = null;
+        state.net.peer = null;
+        state.net.peerConn = null;
         state.net.socket = null;
         state.net.connected = false;
         state.net.iceCandidates = 0;
@@ -2360,6 +2423,70 @@
         offerBox.focus();
         offerBox.select();
         setStatus("OFFER OK");
+      }
+
+      function startRoomHost() {
+        if (!peerJsSupported()) {
+          setStatus("PEERJS LOAD NG");
+          return;
+        }
+
+        closeNetwork(true);
+        resetFreshWorld("host", true);
+        state.net.role = "host";
+        state.net.transport = "peerjs";
+        const peerId = normalizeRoomId();
+        const peer = new Peer(peerId, {
+          debug: 0,
+          config: {
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" }
+            ]
+          }
+        });
+        state.net.peer = peer;
+        setStatus("ROOM OPENING");
+        peer.on("open", () => setStatus(`ROOM ${roomBox.value}`));
+        peer.on("connection", setupPeerJsConnection);
+        peer.on("error", (error) => {
+          if (error && error.type === "unavailable-id") setStatus("ROOM BUSY");
+          else setStatus("ROOM NG");
+        });
+        peer.on("disconnected", () => setStatus("ROOM LOST"));
+      }
+
+      function joinRoom() {
+        if (!peerJsSupported()) {
+          setStatus("PEERJS LOAD NG");
+          return;
+        }
+
+        closeNetwork(true);
+        resetFreshWorld("guest", true);
+        state.net.role = "client";
+        state.net.transport = "peerjs";
+        const hostPeerId = normalizeRoomId();
+        const peer = new Peer(undefined, {
+          debug: 0,
+          config: {
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              { urls: "stun:stun1.l.google.com:19302" }
+            ]
+          }
+        });
+        state.net.peer = peer;
+        setStatus("ROOM JOINING");
+        peer.on("open", () => {
+          const conn = peer.connect(hostPeerId, {
+            label: "agar-state",
+            reliable: false
+          });
+          setupPeerJsConnection(conn);
+        });
+        peer.on("error", () => setStatus("ROOM NG"));
+        peer.on("disconnected", () => setStatus("ROOM LOST"));
       }
 
       async function createGuestAnswer() {
@@ -3003,10 +3130,10 @@
           state.input.splitQueued = false;
         });
         hostBtn.addEventListener("click", () => {
-          startHostOnline().catch(() => setStatus("HOST NG"));
+          startRoomHost();
         });
         joinBtn.addEventListener("click", () => {
-          createGuestAnswer().catch(() => setStatus("JOIN NG"));
+          joinRoom();
         });
         applyAnswerBtn.addEventListener("click", () => {
           applyHostAnswer().catch(() => setStatus("ANSWER NG"));

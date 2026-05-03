@@ -1,6 +1,6 @@
 # Agar Canvas
 
-HTML5 Canvas だけで動く Agar.io 風のブラウザゲームです。`index.html` を GitHub Pages に置くだけで、シングルプレイと手動シグナリングによる 2P 接続を試せます。
+HTML5 Canvas で動く Agar.io 風のブラウザゲームです。`index.html` を GitHub Pages に置くだけで、シングルプレイと部屋名を使った 2P 接続を試せます。
 
 ## ローカルで確認
 
@@ -23,11 +23,22 @@ node server.js
 
 公開URLは Actions の `Deploy to GitHub Pages` 実行結果、または `Settings` -> `Pages` に表示されます。
 
-## オンライン機能について
+## 友達と遊ぶ
+
+1. 2人とも GitHub Pages の公開URLを開きます。
+2. 同じ `room` 名を入力します。例: `daiki`
+3. 片方が `CREATE ROOM` を押します。
+4. もう片方が `JOIN ROOM` を押します。
+5. `ONLINE 2P` が `CONNECTED` になったら開始です。
+
+`CREATE ROOM` / `JOIN ROOM` は PeerJS Cloud を使って WebRTC 接続を作ります。混雑や学校・会社・携帯回線の制限でつながらない場合があります。その場合は別回線で試すか、下のリレーサーバー方式を使ってください。
+
+## リレーサーバーについて
 
 GitHub Pages は静的ホスティングなので、`server.js` の WebSocket リレーは GitHub Pages 上では動きません。
 
-- `HOST` / `JOIN` / `ANSWER`: 画面の Offer / Answer を相手と手動で受け渡して接続します。
+- `CREATE ROOM` / `JOIN ROOM`: 公開シグナリングを使って、部屋名だけで接続します。
+- `ANSWER`: 手動シグナリング用の予備ボタンです。
 - `RELAY HOST` / `RELAY JOIN`: `server.js` を別の Node.js 実行環境にデプロイし、その WebSocket URL を入力して使います。
 
 GitHub Pages だけで公開する場合も、通常のゲーム本体は `index.html` だけで動作します。
