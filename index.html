@@ -1195,7 +1195,7 @@
       }
 
       function splitImpulse(radius) {
-        return 2400;
+        return clamp(1180 + radius * 2.6, 1250, 1700);
       }
 
       function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
@@ -1230,7 +1230,7 @@
         child.vy = source.vy;
         child.boostX = dirX * splitImpulse(child.radius);
         child.boostY = dirY * splitImpulse(child.radius);
-        child.splitBoostAge = 0.48;
+        child.splitBoostAge = 0.36;
         source.vx *= 0.32;
         source.vy *= 0.32;
         source.boostX *= 0.02;
@@ -1242,7 +1242,7 @@
           child.targetY = targetY;
         }
         setMergeCooldown(child);
-        startCellBirth(child, originX, originY, 0.18, 0.04);
+        startCellBirth(child, originX, originY, 0.24, 0.12);
         actor.cells.push(child);
         return child;
       }
@@ -1634,19 +1634,19 @@
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
             const desiredX = n.x * speed * throttle;
             const desiredY = n.y * speed * throttle;
-            const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 0.8 : 4.7));
+            const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
 
             cell.vx += (desiredX - cell.vx) * steer;
             cell.vy += (desiredY - cell.vy) * steer;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? 2700 : 720);
+              : (cell.splitBoostAge > 0 ? 1750 : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
 
-            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 3.35 : 3.7);
+            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 4.15 : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
@@ -1796,7 +1796,7 @@
           const dx = cell.x - center.x;
           const dy = cell.y - center.y;
           const d = Math.hypot(dx, dy);
-          const splitAllowance = cell.splitBoostAge > 0 ? 5400 * Math.min(1, cell.splitBoostAge / 0.42) : 0;
+          const splitAllowance = cell.splitBoostAge > 0 ? 2600 * Math.min(1, cell.splitBoostAge / 0.36) : 0;
           const allowed = maxDistance + cell.radius * 0.35 + splitAllowance;
           if (d <= allowed || d < 0.001) continue;
 
