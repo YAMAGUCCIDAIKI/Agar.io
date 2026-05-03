@@ -226,6 +226,8 @@
       position: fixed;
       inset: auto 14px 14px auto;
       width: min(300px, calc(100vw - 190px));
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -431,6 +433,18 @@
       <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="shot speed max">
     </label>
     <label class="setting-control">
+      <span>RAPID</span>
+      <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="eject fire rate">
+      <strong id="ejectRateValue">11</strong>
+      <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="eject fire rate max">
+    </label>
+    <label class="setting-control">
+      <span>RECOIL</span>
+      <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="8" aria-label="split recoil size">
+      <strong id="splitRecoilValue">8</strong>
+      <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="split recoil max">
+    </label>
+    <label class="setting-control">
       <span>WORLD</span>
       <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="world size">
       <strong id="worldSizeValue">5000</strong>
@@ -478,6 +492,12 @@
       const ejectSpeedSlider = document.getElementById("ejectSpeedSlider");
       const ejectSpeedValueEl = document.getElementById("ejectSpeedValue");
       const ejectSpeedMaxBox = document.getElementById("ejectSpeedMaxBox");
+      const ejectRateSlider = document.getElementById("ejectRateSlider");
+      const ejectRateValueEl = document.getElementById("ejectRateValue");
+      const ejectRateMaxBox = document.getElementById("ejectRateMaxBox");
+      const splitRecoilSlider = document.getElementById("splitRecoilSlider");
+      const splitRecoilValueEl = document.getElementById("splitRecoilValue");
+      const splitRecoilMaxBox = document.getElementById("splitRecoilMaxBox");
       const worldSizeSlider = document.getElementById("worldSizeSlider");
       const worldSizeValueEl = document.getElementById("worldSizeValue");
       const worldSizeMaxBox = document.getElementById("worldSizeMaxBox");
@@ -496,18 +516,19 @@
       const VIRUS_EXPLODE_MASS = 133;
       const DEFAULT_EJECT_MASS = 15;
       const DEFAULT_EJECT_SPEED = 710;
+      const DEFAULT_EJECT_RATE = 11;
       const PLAYER_START_MASS = 22500;
       const PLAYER_RESPAWN_MASS = 22500;
       const DEFAULT_FOOD_TARGET = 1200;
       const DEFAULT_VIRUS_TARGET = 0;
       const DEFAULT_BOT_COUNT = 100;
+      const DEFAULT_SPLIT_RECOIL = 8;
       const BOT_SPAWN_MASS = 700;
       const CONSUME_MASS_RATIO = 1.325;
       const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_MASS_RATIO);
       const MASS_DECAY_PER_SECOND = 0.002;
       const MASS_CAP_SETTLE_FRAMES = 10;
       const MERGE_COOLDOWN_SECONDS = 10;
-      const EJECT_INTERVAL = 0.09;
       const VIRUS_FEED_LIMIT = 7;
       const VIRUS_RESPAWN_DELAY = 0.5;
       const BOT_AI_SCAN_RANGE = 1050;
@@ -570,6 +591,8 @@
           foodTarget: DEFAULT_FOOD_TARGET,
           ejectMass: DEFAULT_EJECT_MASS,
           ejectSpeed: DEFAULT_EJECT_SPEED,
+          ejectRate: DEFAULT_EJECT_RATE,
+          splitRecoil: DEFAULT_SPLIT_RECOIL,
           worldSize: WORLD_SIZE,
           max: {
             bot: 200,
@@ -577,6 +600,8 @@
             food: 100000,
             ejectMass: 80,
             ejectSpeed: 1400,
+            ejectRate: 50,
+            splitRecoil: 40,
             worldSize: 15000
           }
         },
@@ -1296,7 +1321,13 @@
       }
 
       function splitRecoilDistance(radius) {
-        return clamp(radius * 0.08, 10, 42);
+        const recoil = state.settings.splitRecoil;
+        if (recoil <= 0) return 0;
+        return clamp(radius * (recoil / 100), 0, 120);
+      }
+
+      function ejectInterval() {
+        return 1 / Math.max(1, state.settings.ejectRate);
       }
 
       function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
@@ -1374,7 +1405,7 @@
       }
 
       function ejectMass(actor, now, allCells = false) {
-        if (now - actor.lastEject < EJECT_INTERVAL) return false;
+        if (now - actor.lastEject < ejectInterval()) return false;
         const ejectMass = state.settings.ejectMass;
         const ejectCost = ejectMass + 1;
         const eligible = actor.cells.filter((candidate) => !candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS);
@@ -2317,7 +2348,7 @@
         for (const actor of state.actors) {
           if (!isPlayerControlled(actor)) continue;
           if (actor.input.ejectQueued) {
-            if (ejectMass(actor, now) || now - actor.lastEject >= EJECT_INTERVAL) {
+            if (ejectMass(actor, now) || now - actor.lastEject >= ejectInterval()) {
               actor.input.ejectQueued = false;
             }
           } else if (actor.input.keys.has("KeyE")) {
@@ -3449,6 +3480,14 @@
         ejectSpeedSlider.value = String(state.settings.ejectSpeed);
         ejectSpeedValueEl.textContent = String(state.settings.ejectSpeed);
         ejectSpeedMaxBox.value = String(state.settings.max.ejectSpeed);
+        ejectRateSlider.max = String(state.settings.max.ejectRate);
+        ejectRateSlider.value = String(state.settings.ejectRate);
+        ejectRateValueEl.textContent = String(state.settings.ejectRate);
+        ejectRateMaxBox.value = String(state.settings.max.ejectRate);
+        splitRecoilSlider.max = String(state.settings.max.splitRecoil);
+        splitRecoilSlider.value = String(state.settings.splitRecoil);
+        splitRecoilValueEl.textContent = String(state.settings.splitRecoil);
+        splitRecoilMaxBox.value = String(state.settings.max.splitRecoil);
         worldSizeSlider.max = String(state.settings.max.worldSize);
         worldSizeSlider.value = String(state.settings.worldSize);
         worldSizeValueEl.textContent = String(state.settings.worldSize);
@@ -3506,6 +3545,8 @@
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
         if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
         if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, state.settings.max.ejectSpeed);
+        if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
+        if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
           clampWorldEntities();
@@ -3535,6 +3576,14 @@
         if (kind === "ejectSpeed") {
           state.settings.max.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, 5000);
           state.settings.ejectSpeed = clamp(state.settings.ejectSpeed, 300, state.settings.max.ejectSpeed);
+        }
+        if (kind === "ejectRate") {
+          state.settings.max.ejectRate = clamp(number, 1, 200);
+          state.settings.ejectRate = clamp(state.settings.ejectRate, 1, state.settings.max.ejectRate);
+        }
+        if (kind === "splitRecoil") {
+          state.settings.max.splitRecoil = clamp(number, 1, 200);
+          state.settings.splitRecoil = clamp(state.settings.splitRecoil, 0, state.settings.max.splitRecoil);
         }
         if (kind === "worldSize") {
           state.settings.max.worldSize = clamp(Math.round(number / 100) * 100, 2000, 50000);
@@ -3647,12 +3696,16 @@
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
         ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
         ejectSpeedSlider.addEventListener("input", () => setWorldSetting("ejectSpeed", ejectSpeedSlider.value));
+        ejectRateSlider.addEventListener("input", () => setWorldSetting("ejectRate", ejectRateSlider.value));
+        splitRecoilSlider.addEventListener("input", () => setWorldSetting("splitRecoil", splitRecoilSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
         virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
         foodMaxBox.addEventListener("change", () => setSliderMax("food", foodMaxBox.value));
         ejectMassMaxBox.addEventListener("change", () => setSliderMax("ejectMass", ejectMassMaxBox.value));
         ejectSpeedMaxBox.addEventListener("change", () => setSliderMax("ejectSpeed", ejectSpeedMaxBox.value));
+        ejectRateMaxBox.addEventListener("change", () => setSliderMax("ejectRate", ejectRateMaxBox.value));
+        splitRecoilMaxBox.addEventListener("change", () => setSliderMax("splitRecoil", splitRecoilMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
       }
 
