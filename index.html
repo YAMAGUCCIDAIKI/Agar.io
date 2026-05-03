@@ -445,6 +445,12 @@
       <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="split recoil max">
     </label>
     <label class="setting-control">
+      <span>MERGE</span>
+      <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="split merge cooldown">
+      <strong id="mergeCooldownValue">10</strong>
+      <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="merge cooldown max">
+    </label>
+    <label class="setting-control">
       <span>WORLD</span>
       <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="world size">
       <strong id="worldSizeValue">5000</strong>
@@ -498,6 +504,9 @@
       const splitRecoilSlider = document.getElementById("splitRecoilSlider");
       const splitRecoilValueEl = document.getElementById("splitRecoilValue");
       const splitRecoilMaxBox = document.getElementById("splitRecoilMaxBox");
+      const mergeCooldownSlider = document.getElementById("mergeCooldownSlider");
+      const mergeCooldownValueEl = document.getElementById("mergeCooldownValue");
+      const mergeCooldownMaxBox = document.getElementById("mergeCooldownMaxBox");
       const worldSizeSlider = document.getElementById("worldSizeSlider");
       const worldSizeValueEl = document.getElementById("worldSizeValue");
       const worldSizeMaxBox = document.getElementById("worldSizeMaxBox");
@@ -523,12 +532,12 @@
       const DEFAULT_VIRUS_TARGET = 0;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 8;
+      const DEFAULT_MERGE_COOLDOWN = 10;
       const BOT_SPAWN_MASS = 700;
       const CONSUME_MASS_RATIO = 1.325;
       const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_MASS_RATIO);
       const MASS_DECAY_PER_SECOND = 0.002;
       const MASS_CAP_SETTLE_FRAMES = 10;
-      const MERGE_COOLDOWN_SECONDS = 10;
       const VIRUS_FEED_LIMIT = 7;
       const VIRUS_RESPAWN_DELAY = 0.5;
       const BOT_AI_SCAN_RANGE = 1050;
@@ -593,6 +602,7 @@
           ejectSpeed: DEFAULT_EJECT_SPEED,
           ejectRate: DEFAULT_EJECT_RATE,
           splitRecoil: DEFAULT_SPLIT_RECOIL,
+          mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
           max: {
             bot: 200,
@@ -602,6 +612,7 @@
             ejectSpeed: 1400,
             ejectRate: 50,
             splitRecoil: 40,
+            mergeCooldown: 60,
             worldSize: 15000
           }
         },
@@ -743,7 +754,7 @@
       }
 
       function mergeCooldown(mass) {
-        return MERGE_COOLDOWN_SECONDS;
+        return Math.max(0, state.settings.mergeCooldown);
       }
 
       function mergeTimeLeft(cell) {
@@ -1250,7 +1261,7 @@
       }
 
       function createFeed(x, y, dirX, dirY, color, ownerId, speed = DEFAULT_EJECT_SPEED, mass = DEFAULT_EJECT_MASS) {
-        const feedMass = clamp(Number(mass) || DEFAULT_EJECT_MASS, 5, 80);
+        const feedMass = Math.max(5, Number(mass) || DEFAULT_EJECT_MASS);
         const feed = {
           id: nextId(),
           type: "feed",
@@ -1322,7 +1333,7 @@
       function splitRecoilDistance(radius) {
         const recoil = state.settings.splitRecoil;
         if (recoil <= 0) return 0;
-        return clamp(radius * (recoil / 100), 0, 120);
+        return Math.max(0, radius * (recoil / 100));
       }
 
       function ejectInterval() {
@@ -2095,7 +2106,6 @@
             feed.y = clamp(feed.y, feed.radius, WORLD_SIZE - feed.radius);
             feed.vy *= -0.22;
           }
-          if (feed.age > 24) feed.dead = true;
         }
 
         for (const virus of state.viruses) {
@@ -3487,6 +3497,10 @@
         splitRecoilSlider.value = String(state.settings.splitRecoil);
         splitRecoilValueEl.textContent = String(state.settings.splitRecoil);
         splitRecoilMaxBox.value = String(state.settings.max.splitRecoil);
+        mergeCooldownSlider.max = String(state.settings.max.mergeCooldown);
+        mergeCooldownSlider.value = String(state.settings.mergeCooldown);
+        mergeCooldownValueEl.textContent = String(state.settings.mergeCooldown);
+        mergeCooldownMaxBox.value = String(state.settings.max.mergeCooldown);
         worldSizeSlider.max = String(state.settings.max.worldSize);
         worldSizeSlider.value = String(state.settings.worldSize);
         worldSizeValueEl.textContent = String(state.settings.worldSize);
@@ -3546,6 +3560,7 @@
         if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, state.settings.max.ejectSpeed);
         if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
         if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
+        if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
           clampWorldEntities();
@@ -3557,35 +3572,39 @@
       function setSliderMax(kind, value) {
         const number = Math.round(Number(value) || 0);
         if (kind === "bot") {
-          state.settings.max.bot = clamp(number, 1, 1000);
+          state.settings.max.bot = Math.max(1, number);
           state.settings.botTarget = clamp(state.settings.botTarget, 0, state.settings.max.bot);
         }
         if (kind === "virus") {
-          state.settings.max.virus = clamp(number, 1, 5000);
+          state.settings.max.virus = Math.max(1, number);
           state.settings.virusTarget = clamp(state.settings.virusTarget, 0, state.settings.max.virus);
         }
         if (kind === "food") {
-          state.settings.max.food = clamp(Math.round(number / 100) * 100, 100, 500000);
+          state.settings.max.food = Math.max(100, Math.round(number / 100) * 100);
           state.settings.foodTarget = clamp(state.settings.foodTarget, 0, state.settings.max.food);
         }
         if (kind === "ejectMass") {
-          state.settings.max.ejectMass = clamp(number, 5, 500);
+          state.settings.max.ejectMass = Math.max(5, number);
           state.settings.ejectMass = clamp(state.settings.ejectMass, 5, state.settings.max.ejectMass);
         }
         if (kind === "ejectSpeed") {
-          state.settings.max.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, 5000);
+          state.settings.max.ejectSpeed = Math.max(300, Math.round(number / 10) * 10);
           state.settings.ejectSpeed = clamp(state.settings.ejectSpeed, 300, state.settings.max.ejectSpeed);
         }
         if (kind === "ejectRate") {
-          state.settings.max.ejectRate = clamp(number, 1, 200);
+          state.settings.max.ejectRate = Math.max(1, number);
           state.settings.ejectRate = clamp(state.settings.ejectRate, 1, state.settings.max.ejectRate);
         }
         if (kind === "splitRecoil") {
-          state.settings.max.splitRecoil = clamp(number, 1, 200);
+          state.settings.max.splitRecoil = Math.max(1, number);
           state.settings.splitRecoil = clamp(state.settings.splitRecoil, 0, state.settings.max.splitRecoil);
         }
+        if (kind === "mergeCooldown") {
+          state.settings.max.mergeCooldown = Math.max(1, number);
+          state.settings.mergeCooldown = clamp(state.settings.mergeCooldown, 0, state.settings.max.mergeCooldown);
+        }
         if (kind === "worldSize") {
-          state.settings.max.worldSize = clamp(Math.round(number / 100) * 100, 2000, 50000);
+          state.settings.max.worldSize = Math.max(2000, Math.round(number / 100) * 100);
           state.settings.worldSize = clamp(state.settings.worldSize, 2000, state.settings.max.worldSize);
           clampWorldEntities();
         }
@@ -3697,6 +3716,7 @@
         ejectSpeedSlider.addEventListener("input", () => setWorldSetting("ejectSpeed", ejectSpeedSlider.value));
         ejectRateSlider.addEventListener("input", () => setWorldSetting("ejectRate", ejectRateSlider.value));
         splitRecoilSlider.addEventListener("input", () => setWorldSetting("splitRecoil", splitRecoilSlider.value));
+        mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
         virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
@@ -3705,6 +3725,7 @@
         ejectSpeedMaxBox.addEventListener("change", () => setSliderMax("ejectSpeed", ejectSpeedMaxBox.value));
         ejectRateMaxBox.addEventListener("change", () => setSliderMax("ejectRate", ejectRateMaxBox.value));
         splitRecoilMaxBox.addEventListener("change", () => setSliderMax("splitRecoil", splitRecoilMaxBox.value));
+        mergeCooldownMaxBox.addEventListener("change", () => setSliderMax("mergeCooldown", mergeCooldownMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
       }
 
