@@ -508,7 +508,6 @@
       const MASS_CAP_SETTLE_FRAMES = 10;
       const MERGE_COOLDOWN_SECONDS = 10;
       const EJECT_INTERVAL = 0.09;
-      const PLAYER_SPLIT_INTERVAL = 0.16;
       const VIRUS_FEED_LIMIT = 7;
       const VIRUS_RESPAWN_DELAY = 0.5;
       const BOT_AI_SCAN_RANGE = 1050;
@@ -586,6 +585,7 @@
           mouseWorldY: WORLD_SIZE * 0.5,
           keys: new Set(),
           splitQueued: false,
+          splitCount: 0,
           splitSeq: 0,
           ejectQueued: false,
           ejectSeq: 0,
@@ -772,6 +772,7 @@
             targetY: WORLD_SIZE * 0.5,
             keys: new Set(),
             splitQueued: false,
+            splitCount: 0,
             ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
@@ -840,7 +841,9 @@
         }
         if (state.input.splitQueued) {
           actor.input.splitQueued = true;
+          actor.input.splitCount += Math.max(1, state.input.splitCount || 1);
           state.input.splitQueued = false;
+          state.input.splitCount = 0;
         }
       }
 
@@ -1339,7 +1342,6 @@
 
       function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null) {
         if (liveCellCount(actor) >= MAX_CELLS) return false;
-        if (now - actor.lastSplit < interval) return false;
 
         const candidates = actor.cells
           .slice()
@@ -2272,8 +2274,12 @@
           }
           if (actor.input.splitQueued) {
             const aim = actorAimDirection(actor);
-            splitActor(actor, aim.x, aim.y, now, PLAYER_SPLIT_INTERVAL, actor.input.targetX, actor.input.targetY);
+            const splitCount = Math.max(1, Math.min(4, actor.input.splitCount || 1));
+            for (let i = 0; i < splitCount; i += 1) {
+              if (!splitActor(actor, aim.x, aim.y, now, 0, actor.input.targetX, actor.input.targetY)) break;
+            }
             actor.input.splitQueued = false;
+            actor.input.splitCount = 0;
           }
         }
         processBotManualControls(now);
@@ -2293,7 +2299,7 @@
             const aim = target
               ? normalized(target.x - actorCenter(bot).x, target.y - actorCenter(bot).y, bot.input.lastAimX, bot.input.lastAimY)
               : actorAimDirection(bot);
-            splitActor(bot, aim.x, aim.y, now, PLAYER_SPLIT_INTERVAL, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
+            splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
           }
           state.input.botSplitQueued = false;
         }
@@ -2980,6 +2986,7 @@
         });
         state.player.input.ejectQueued = false;
         state.player.input.splitQueued = false;
+        state.player.input.splitCount = 0;
         state.net.lastInputSend = now;
       }
 
@@ -3005,7 +3012,9 @@
           }
           const splitSeq = Number(message.splitSeq) || 0;
           if (splitSeq > guest.input.lastNetSplitSeq) {
+            const splitCount = Math.min(4, splitSeq - guest.input.lastNetSplitSeq);
             guest.input.splitQueued = true;
+            guest.input.splitCount += splitCount;
             guest.input.lastNetSplitSeq = splitSeq;
           }
           return;
@@ -3490,12 +3499,29 @@
         window.addEventListener("touchmove", onTouch, { passive: false });
         window.addEventListener("wheel", onWheel, { passive: false });
         window.addEventListener("keydown", (event) => {
-          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE" || event.code === "KeyZ" || event.code === "KeyX") {
+          if (
+            event.code === "Space" ||
+            event.code === "KeyG" ||
+            event.code === "KeyR" ||
+            event.code === "KeyT" ||
+            event.code === "KeyW" ||
+            event.code === "KeyE" ||
+            event.code === "KeyZ" ||
+            event.code === "KeyX"
+          ) {
             event.preventDefault();
             state.input.keys.add(event.code);
             if (event.code === "Space" && !event.repeat) {
-              state.input.splitQueued = true;
-              state.input.splitSeq += 1;
+              queuePlayerSplits(1);
+            }
+            if (event.code === "KeyG" && !event.repeat) {
+              queuePlayerSplits(2);
+            }
+            if (event.code === "KeyR" && !event.repeat) {
+              queuePlayerSplits(3);
+            }
+            if (event.code === "KeyT" && !event.repeat) {
+              queuePlayerSplits(4);
             }
             if (event.code === "KeyW" && !event.repeat) {
               state.input.ejectQueued = true;
@@ -3506,7 +3532,16 @@
           }
         });
         window.addEventListener("keyup", (event) => {
-          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE" || event.code === "KeyZ" || event.code === "KeyX") {
+          if (
+            event.code === "Space" ||
+            event.code === "KeyG" ||
+            event.code === "KeyR" ||
+            event.code === "KeyT" ||
+            event.code === "KeyW" ||
+            event.code === "KeyE" ||
+            event.code === "KeyZ" ||
+            event.code === "KeyX"
+          ) {
             event.preventDefault();
             state.input.keys.delete(event.code);
           }
@@ -3514,6 +3549,7 @@
         window.addEventListener("blur", () => {
           state.input.keys.clear();
           state.input.splitQueued = false;
+          state.input.splitCount = 0;
           state.input.ejectQueued = false;
           state.input.botSplitQueued = false;
           state.input.botEjectQueued = false;
@@ -3544,6 +3580,13 @@
         ejectMassMaxBox.addEventListener("change", () => setSliderMax("ejectMass", ejectMassMaxBox.value));
         ejectSpeedMaxBox.addEventListener("change", () => setSliderMax("ejectSpeed", ejectSpeedMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
+      }
+
+      function queuePlayerSplits(count) {
+        const splitCount = clamp(Math.round(count) || 1, 1, 4);
+        state.input.splitQueued = true;
+        state.input.splitCount += splitCount;
+        state.input.splitSeq += splitCount;
       }
 
       function seedInitialViruses(avoidX, avoidY) {
