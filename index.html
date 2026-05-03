@@ -1288,7 +1288,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(1180 + radius * 2.6, 1250, 1700);
+        return clamp(760 + radius * 1.15, 820, 1120);
       }
 
       function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
@@ -1323,7 +1323,7 @@
         child.vy = source.vy;
         child.boostX = dirX * splitImpulse(child.radius);
         child.boostY = dirY * splitImpulse(child.radius);
-        child.splitBoostAge = 0.36;
+        child.splitBoostAge = 0.26;
         source.vx *= 0.32;
         source.vy *= 0.32;
         source.boostX *= 0.02;
@@ -1352,7 +1352,12 @@
           const child = splitCell(actor, cell, dirX, dirY, targetX, targetY);
           if (child) didSplit = true;
         }
-        if (didSplit) actor.lastSplit = now;
+        if (didSplit) {
+          actor.lastSplit = now;
+          separateOwnCells(actor);
+          limitOwnCellSpread(actor);
+          separateOwnCells(actor);
+        }
         return didSplit;
       }
 
@@ -1771,7 +1776,28 @@
         return clamp(1440 / Math.pow(cell.radius, 0.46), 116, 436);
       }
 
+      function splitMotionSubsteps(dt) {
+        let maxSpeed = 0;
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (cell.dead) continue;
+            const speed = Math.hypot(cell.vx + cell.boostX, cell.vy + cell.boostY);
+            if (speed > maxSpeed) maxSpeed = speed;
+          }
+        }
+        return clamp(Math.ceil(maxSpeed * dt / 26), 1, 4);
+      }
+
       function updateCellMotion(dt) {
+        const steps = splitMotionSubsteps(dt);
+        const stepDt = dt / steps;
+        for (let step = 0; step < steps; step += 1) {
+          moveCellsStep(stepDt);
+          if (steps > 1) resolveOwnCells();
+        }
+      }
+
+      function moveCellsStep(dt) {
         for (const actor of state.actors) {
           for (const cell of actor.cells) {
             if (isPlayerControlled(actor)) {
@@ -1792,13 +1818,13 @@
             cell.vy += (desiredY - cell.vy) * steer;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? 1750 : 720);
+              : (cell.splitBoostAge > 0 ? 1180 : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
 
-            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 4.15 : 3.7);
+            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 5.6 : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
@@ -1871,7 +1897,7 @@
         const smallMergeMass = small === a ? aMergeMass : bMergeMass;
         const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
         const overlapDepth = big.radius + small.radius - centerDistance;
-        if (overlapDepth <= small.radius) return false;
+        if (overlapDepth <= Math.max(3, small.radius * 0.18)) return false;
 
         const total = bigMergeMass + smallMergeMass;
         const mergePieces = mergeContributionPieces(big) + mergeContributionPieces(small);
@@ -1897,7 +1923,7 @@
       }
 
       function separateOwnCells(actor) {
-        const iterations = 3;
+        const iterations = 6;
         for (let pass = 0; pass < iterations; pass += 1) {
           for (let i = 0; i < actor.cells.length; i += 1) {
             const a = actor.cells[i];
@@ -1910,13 +1936,12 @@
               const dy = b.y - a.y;
               const d = Math.hypot(dx, dy);
               const touch = a.radius + b.radius;
-              if (canCellMerge(a) && canCellMerge(b)) continue;
               if (d >= touch) continue;
 
               const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233 + pass * 37.719) % TAU);
               const nx = d < 0.001 ? Math.cos(fallbackAngle) : dx / d;
               const ny = d < 0.001 ? Math.sin(fallbackAngle) : dy / d;
-              const overlap = touch - d + 0.25;
+              const overlap = touch - d + 0.75;
               const total = a.mass + b.mass;
               const aShare = b.mass / total;
               const bShare = a.mass / total;
@@ -1924,6 +1949,20 @@
               a.y -= ny * overlap * aShare;
               b.x += nx * overlap * bShare;
               b.y += ny * overlap * bShare;
+
+              const aMoveX = a.vx + a.boostX;
+              const aMoveY = a.vy + a.boostY;
+              const bMoveX = b.vx + b.boostX;
+              const bMoveY = b.vy + b.boostY;
+              const relativeClosing = (bMoveX - aMoveX) * nx + (bMoveY - aMoveY) * ny;
+              if (relativeClosing < 0) {
+                const correction = -relativeClosing * (a.splitBoostAge > 0 || b.splitBoostAge > 0 ? 0.62 : 0.28);
+                a.boostX -= nx * correction * aShare;
+                a.boostY -= ny * correction * aShare;
+                b.boostX += nx * correction * bShare;
+                b.boostY += ny * correction * bShare;
+              }
+
               a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius);
               a.y = clamp(a.y, a.radius, WORLD_SIZE - a.radius);
               b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
@@ -1948,7 +1987,7 @@
           const dx = cell.x - center.x;
           const dy = cell.y - center.y;
           const d = Math.hypot(dx, dy);
-          const splitAllowance = cell.splitBoostAge > 0 ? 2600 * Math.min(1, cell.splitBoostAge / 0.36) : 0;
+          const splitAllowance = cell.splitBoostAge > 0 ? 1200 * Math.min(1, cell.splitBoostAge / 0.26) : 0;
           const allowed = maxDistance + cell.radius * 0.35 + splitAllowance;
           if (d <= allowed || d < 0.001) continue;
 
