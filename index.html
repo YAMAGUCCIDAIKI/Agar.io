@@ -516,6 +516,8 @@
       const MAX_CELL_SPREAD = 2400;
       const WORLD_SYNC_CHUNK = 500;
       const MAX_SYNC_FOODS = 5000;
+      const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
+      const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
       const FOOD_AVOID_LIMIT = 2400;
@@ -608,6 +610,8 @@
           iceCandidates: 0,
           worldSeq: 0,
           worldBuffer: null,
+          pendingSnapshot: null,
+          pendingWorldChunks: [],
           lastInputSend: -100,
           lastSnapshotSend: -100,
           lastWorldSend: -100
@@ -1288,7 +1292,11 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(760 + radius * 1.15, 820, 1120);
+        return clamp(560 + radius * 0.85, 620, 860);
+      }
+
+      function splitRecoilImpulse(radius) {
+        return clamp(120 + radius * 0.28, 150, 280);
       }
 
       function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
@@ -1321,13 +1329,15 @@
         );
         child.vx = source.vx;
         child.vy = source.vy;
-        child.boostX = dirX * splitImpulse(child.radius);
-        child.boostY = dirY * splitImpulse(child.radius);
-        child.splitBoostAge = 0.26;
-        source.vx *= 0.32;
-        source.vy *= 0.32;
-        source.boostX *= 0.02;
-        source.boostY *= 0.02;
+        const impulse = splitImpulse(child.radius);
+        const recoil = splitRecoilImpulse(source.radius);
+        child.boostX = dirX * impulse;
+        child.boostY = dirY * impulse;
+        child.splitBoostAge = 0.22;
+        source.vx = source.vx * 0.24 - dirX * recoil * 0.18;
+        source.vy = source.vy * 0.24 - dirY * recoil * 0.18;
+        source.boostX = source.boostX * 0.02 - dirX * recoil;
+        source.boostY = source.boostY * 0.02 - dirY * recoil;
         if (targetX != null && targetY != null) {
           source.targetX = targetX;
           source.targetY = targetY;
@@ -1818,13 +1828,13 @@
             cell.vy += (desiredY - cell.vy) * steer;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? 1180 : 720);
+              : (cell.splitBoostAge > 0 ? 920 : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
 
-            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 5.6 : 3.7);
+            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 6.2 : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
@@ -1987,7 +1997,7 @@
           const dx = cell.x - center.x;
           const dy = cell.y - center.y;
           const d = Math.hypot(dx, dy);
-          const splitAllowance = cell.splitBoostAge > 0 ? 1200 * Math.min(1, cell.splitBoostAge / 0.26) : 0;
+          const splitAllowance = cell.splitBoostAge > 0 ? 900 * Math.min(1, cell.splitBoostAge / 0.22) : 0;
           const allowed = maxDistance + cell.radius * 0.35 + splitAllowance;
           if (d <= allowed || d < 0.001) continue;
 
@@ -2358,6 +2368,7 @@
         updateLocalActorInput();
 
         if (state.net.role === "client") {
+          processClientNetworkUpdates();
           if (state.net.connected) sendLocalInput(now);
           updateCamera(dt);
           updateHud(dt);
@@ -2670,6 +2681,8 @@
         state.net.connected = false;
         state.net.iceCandidates = 0;
         state.net.worldBuffer = null;
+        state.net.pendingSnapshot = null;
+        state.net.pendingWorldChunks.length = 0;
         state.net.lastInputSend = -100;
         state.net.lastSnapshotSend = -100;
         state.net.lastWorldSend = -100;
@@ -3029,6 +3042,18 @@
         state.net.lastInputSend = now;
       }
 
+      function processClientNetworkUpdates() {
+        const chunks = state.net.pendingWorldChunks;
+        for (let i = 0; i < CLIENT_WORLD_CHUNKS_PER_FRAME && chunks.length; i += 1) {
+          applyWorldChunk(chunks.shift());
+        }
+        if (state.net.pendingSnapshot) {
+          const snapshot = state.net.pendingSnapshot;
+          state.net.pendingSnapshot = null;
+          applySnapshot(snapshot);
+        }
+      }
+
       function handleNetMessage(data) {
         let message = null;
         try {
@@ -3060,47 +3085,49 @@
         }
 
         if (state.net.role === "client" && message.t === "snapshot") {
-          applySnapshot(message);
+          state.net.pendingSnapshot = message;
           return;
         }
 
         if (state.net.role === "client" && message.t === "world") {
-          applyWorldChunk(message);
+          state.net.pendingWorldChunks.push(message);
+          if (state.net.pendingWorldChunks.length > CLIENT_WORLD_QUEUE_LIMIT) {
+            state.net.pendingWorldChunks.splice(0, state.net.pendingWorldChunks.length - CLIENT_WORLD_QUEUE_LIMIT);
+          }
         }
       }
 
-      function applyCellSnapshot(actor, data) {
-        const cell = {
-          id: data.id,
-          actor,
-          ownerId: actor.id,
-          x: clamp(data.x, 0, WORLD_SIZE),
-          y: clamp(data.y, 0, WORLD_SIZE),
-          mass: Math.max(MIN_CELL_MASS, data.mass),
-          radius: 1,
-          vx: data.vx || 0,
-          vy: data.vy || 0,
-          boostX: data.boostX || 0,
-          boostY: data.boostY || 0,
-          cooldown: 0,
-          mergeReadyAt: data.mergeReadyAt || 0,
-          capFramesLeft: data.capFramesLeft || 0,
-          birthAge: data.birthAge == null ? 1 : data.birthAge,
-          birthDuration: data.birthDuration || 0,
-          birthX: data.birthX == null ? data.x : data.birthX,
-          birthY: data.birthY == null ? data.y : data.birthY,
-          birthScale: data.birthScale == null ? 1 : data.birthScale,
-          fragmentAge: data.fragmentAge || 0,
-          splitBoostAge: data.splitBoostAge || 0,
-          virusCooldown: data.virusCooldown || 0,
-          mergeVirusWindow: data.mergeVirusWindow || 0,
-          mergeOverflowMass: data.mergeOverflowMass || 0,
-          mergeBurstPieces: data.mergeBurstPieces || 1,
-          mergeBurstTotal: data.mergeBurstTotal || data.mass,
-          targetX: data.targetX == null ? data.x : data.targetX,
-          targetY: data.targetY == null ? data.y : data.targetY,
-          dead: false
-        };
+      function applyCellSnapshot(actor, data, existing = null) {
+        const cell = existing || {};
+        cell.id = data.id;
+        cell.actor = actor;
+        cell.ownerId = actor.id;
+        cell.x = clamp(data.x, 0, WORLD_SIZE);
+        cell.y = clamp(data.y, 0, WORLD_SIZE);
+        cell.mass = Math.max(MIN_CELL_MASS, data.mass);
+        cell.radius = 1;
+        cell.vx = data.vx || 0;
+        cell.vy = data.vy || 0;
+        cell.boostX = data.boostX || 0;
+        cell.boostY = data.boostY || 0;
+        cell.cooldown = 0;
+        cell.mergeReadyAt = data.mergeReadyAt || 0;
+        cell.capFramesLeft = data.capFramesLeft || 0;
+        cell.birthAge = data.birthAge == null ? 1 : data.birthAge;
+        cell.birthDuration = data.birthDuration || 0;
+        cell.birthX = data.birthX == null ? data.x : data.birthX;
+        cell.birthY = data.birthY == null ? data.y : data.birthY;
+        cell.birthScale = data.birthScale == null ? 1 : data.birthScale;
+        cell.fragmentAge = data.fragmentAge || 0;
+        cell.splitBoostAge = data.splitBoostAge || 0;
+        cell.virusCooldown = data.virusCooldown || 0;
+        cell.mergeVirusWindow = data.mergeVirusWindow || 0;
+        cell.mergeOverflowMass = data.mergeOverflowMass || 0;
+        cell.mergeBurstPieces = data.mergeBurstPieces || 1;
+        cell.mergeBurstTotal = data.mergeBurstTotal || data.mass;
+        cell.targetX = data.targetX == null ? data.x : data.targetX;
+        cell.targetY = data.targetY == null ? data.y : data.targetY;
+        cell.dead = false;
         refreshCell(cell);
         return cell;
       }
@@ -3120,7 +3147,8 @@
         actor.color = data.color || actor.color;
         actor.isHuman = Boolean(data.isHuman);
         actor.control = data.id === state.localActorId ? "local" : (actor.isHuman ? "remote" : "bot");
-        actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData));
+        const cellsById = new Map(actor.cells.map((cell) => [cell.id, cell]));
+        actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData, cellsById.get(cellData.id)));
         return actor;
       }
 
@@ -3145,10 +3173,15 @@
       function applySnapshot(message) {
         if (message.worldSize) {
           const incomingWorldSize = Math.max(2000, Math.round(Number(message.worldSize) / 100) * 100);
-          state.settings.max.worldSize = Math.max(state.settings.max.worldSize, incomingWorldSize);
-          state.settings.worldSize = clamp(incomingWorldSize, 2000, state.settings.max.worldSize);
-          clampWorldEntities();
-          syncSettingsControls();
+          const previousMax = state.settings.max.worldSize;
+          state.settings.max.worldSize = Math.max(previousMax, incomingWorldSize);
+          const nextWorldSize = clamp(incomingWorldSize, 2000, state.settings.max.worldSize);
+          const worldChanged = nextWorldSize !== state.settings.worldSize || nextWorldSize !== WORLD_SIZE;
+          if (worldChanged) {
+            state.settings.worldSize = nextWorldSize;
+            clampWorldEntities();
+          }
+          if (worldChanged || state.settings.max.worldSize !== previousMax) syncSettingsControls();
         }
         const actors = (message.actors || []).map(applyActorSnapshot);
         state.actors = actors;
