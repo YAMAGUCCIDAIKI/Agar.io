@@ -452,6 +452,7 @@
       const WORLD_SYNC_CHUNK = 500;
       const MAX_SYNC_FOODS = 5000;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
+      const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
 
@@ -1094,11 +1095,9 @@
       function createVirus(x = null, y = null) {
         const radius = radiusFromMass(VIRUS_MASS);
         const pos = x == null
-          ? findOpenSpawnPosition(radius, 180, 28, {
+          ? findOpenSpawnPosition(radius, 180, 16, {
               avoidViruses: true,
-              avoidFoods: true,
               virusPadding: 28,
-              foodPadding: 8,
               cellPadding: 120
             })
           : { x, y };
@@ -1118,14 +1117,12 @@
 
       function spawnVirusSafely(avoidX = null, avoidY = null) {
         const radius = radiusFromMass(VIRUS_MASS);
-        const pos = findOpenSpawnPosition(radius, 180, 36, {
+        const pos = findOpenSpawnPosition(radius, 180, 18, {
           avoidViruses: true,
-          avoidFoods: true,
           avoidX,
           avoidY,
           avoidRadius: avoidX == null ? 0 : 560,
           virusPadding: 32,
-          foodPadding: 8,
           cellPadding: 130
         });
         return createVirus(pos.x, pos.y);
@@ -1780,35 +1777,9 @@
               b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
               b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius);
 
-              const damping = (a.splitBoostAge > 0 || b.splitBoostAge > 0) ? 0.82 : 0.9;
-              a.vx *= damping;
-              a.vy *= damping;
-              b.vx *= damping;
-              b.vy *= damping;
-              a.boostX *= damping;
-              a.boostY *= damping;
-              b.boostX *= damping;
-              b.boostY *= damping;
-              dampOwnFragmentCollision(a, b);
             }
           }
         }
-      }
-
-      function dampOwnFragmentCollision(a, b) {
-        const applyDamping = (fragment, other) => {
-          if (fragment.fragmentAge <= 0) return;
-          const sizeRatio = Math.sqrt(fragment.mass / Math.max(fragment.mass, other.mass));
-          const keepBoost = clamp(sizeRatio, 0.16, 0.82);
-          const keepVelocity = clamp(0.42 + sizeRatio * 0.34, 0.42, 0.82);
-          fragment.boostX *= keepBoost;
-          fragment.boostY *= keepBoost;
-          fragment.vx *= keepVelocity;
-          fragment.vy *= keepVelocity;
-        };
-
-        applyDamping(a, b);
-        applyDamping(b, a);
       }
 
       function limitOwnCellSpread(actor) {
@@ -2072,13 +2043,21 @@
           state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
         }
 
-        state.virusRespawnQueue = state.virusRespawnQueue.filter((spawnAt) => {
-          if (spawnAt <= state.now && state.viruses.length < virusTarget) {
+        const nextVirusRespawnQueue = [];
+        let spawnedViruses = 0;
+        for (const spawnAt of state.virusRespawnQueue) {
+          if (
+            spawnAt <= state.now &&
+            state.viruses.length < virusTarget &&
+            spawnedViruses < MAX_VIRUS_SPAWNS_PER_FRAME
+          ) {
             state.viruses.push(spawnVirusSafely());
-            return false;
+            spawnedViruses += 1;
+          } else {
+            nextVirusRespawnQueue.push(spawnAt);
           }
-          return true;
-        });
+        }
+        state.virusRespawnQueue = nextVirusRespawnQueue;
 
         const foodSpawnBudget = Math.min(MAX_FOOD_SPAWNS_PER_FRAME, foodTarget - state.foods.length);
         for (let i = 0; i < foodSpawnBudget; i += 1) addFood();
