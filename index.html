@@ -293,6 +293,18 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .mode-select {
+      grid-column: 2 / 5;
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 5px 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font: 700 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
     .view-panel input[type="range"] {
       width: 100%;
       accent-color: var(--accent);
@@ -388,6 +400,13 @@
       <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="bot max">
     </label>
     <label class="setting-control">
+      <span>BOTMODE</span>
+      <select id="botModeSelect" class="mode-select" aria-label="bot mode">
+        <option value="hunt">HUNT SMALL</option>
+        <option value="chase">CHASE PLAYER</option>
+      </select>
+    </label>
+    <label class="setting-control">
       <span>SPIKE</span>
       <input id="virusSlider" type="range" min="0" max="500" step="1" value="0" aria-label="virus count">
       <strong id="virusValue">0</strong>
@@ -446,6 +465,7 @@
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
       const botMaxBox = document.getElementById("botMaxBox");
+      const botModeSelect = document.getElementById("botModeSelect");
       const virusSlider = document.getElementById("virusSlider");
       const virusValueEl = document.getElementById("virusValue");
       const virusMaxBox = document.getElementById("virusMaxBox");
@@ -544,6 +564,7 @@
         viewScale: DEFAULT_VIEW_SCALE,
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
+          botMode: "hunt",
           virusTarget: DEFAULT_VIRUS_TARGET,
           foodTarget: DEFAULT_FOOD_TARGET,
           ejectMass: DEFAULT_EJECT_MASS,
@@ -568,6 +589,8 @@
           splitSeq: 0,
           ejectQueued: false,
           ejectSeq: 0,
+          botSplitQueued: false,
+          botEjectQueued: false,
           lastAimX: 1,
           lastAimY: 0
         },
@@ -1581,6 +1604,18 @@
         }
 
         for (const cell of bot.cells) {
+          if (state.settings.botMode === "chase") {
+            const target = nearestHumanCell(cell, bot.id);
+            if (target) {
+              cell.targetX = target.x;
+              cell.targetY = target.y;
+            } else {
+              cell.targetX = bot.wanderX;
+              cell.targetY = bot.wanderY;
+            }
+            continue;
+          }
+
           let bestPrey = null;
           let bestPreyScore = 0;
 
@@ -1636,19 +1671,7 @@
             continue;
           }
 
-          let nearestHuman = null;
-          let nearestHumanD2 = Infinity;
-          for (const actor of state.actors) {
-            if (!actor.isHuman || actor.id === bot.id) continue;
-            for (const humanCell of actor.cells) {
-              if (humanCell.dead) continue;
-              const d2 = distSq(cell.x, cell.y, humanCell.x, humanCell.y);
-              if (d2 < nearestHumanD2) {
-                nearestHumanD2 = d2;
-                nearestHuman = humanCell;
-              }
-            }
-          }
+          const nearestHuman = nearestHumanCell(cell, bot.id);
 
           if (nearestHuman) {
             const orbit = nearestHuman.radius * 0.42 + 46;
@@ -1688,6 +1711,23 @@
             cell.targetY = bot.wanderY;
           }
         }
+      }
+
+      function nearestHumanCell(cell, excludeActorId = "") {
+        let nearest = null;
+        let nearestD2 = Infinity;
+        for (const actor of state.actors) {
+          if (!actor.isHuman || actor.id === excludeActorId) continue;
+          for (const humanCell of actor.cells) {
+            if (humanCell.dead) continue;
+            const d2 = distSq(cell.x, cell.y, humanCell.x, humanCell.y);
+            if (d2 < nearestD2) {
+              nearestD2 = d2;
+              nearest = humanCell;
+            }
+          }
+        }
+        return nearest;
       }
 
       function actorHasMergeRoom(actor) {
@@ -2204,6 +2244,35 @@
             splitActor(actor, aim.x, aim.y, now, PLAYER_SPLIT_INTERVAL, actor.input.targetX, actor.input.targetY);
             actor.input.splitQueued = false;
           }
+        }
+        processBotManualControls(now);
+      }
+
+      function processBotManualControls(now) {
+        if (state.settings.botMode !== "chase") {
+          state.input.botSplitQueued = false;
+          state.input.botEjectQueued = false;
+          return;
+        }
+
+        if (state.input.botSplitQueued) {
+          for (const bot of state.actors) {
+            if (bot.isHuman) continue;
+            const target = nearestHumanCell(actorCenter(bot), bot.id);
+            const aim = target
+              ? normalized(target.x - actorCenter(bot).x, target.y - actorCenter(bot).y, bot.input.lastAimX, bot.input.lastAimY)
+              : actorAimDirection(bot);
+            splitActor(bot, aim.x, aim.y, now, PLAYER_SPLIT_INTERVAL, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
+          }
+          state.input.botSplitQueued = false;
+        }
+
+        if (state.input.botEjectQueued) {
+          for (const bot of state.actors) {
+            if (bot.isHuman) continue;
+            ejectMass(bot, now);
+          }
+          state.input.botEjectQueued = false;
         }
       }
 
@@ -3249,6 +3318,7 @@
         botSlider.value = String(state.settings.botTarget);
         botValueEl.textContent = String(state.settings.botTarget);
         botMaxBox.value = String(state.settings.max.bot);
+        botModeSelect.value = state.settings.botMode;
         virusSlider.max = String(state.settings.max.virus);
         virusSlider.value = String(state.settings.virusTarget);
         virusValueEl.textContent = String(state.settings.virusTarget);
@@ -3317,6 +3387,7 @@
       function setWorldSetting(kind, value) {
         const number = Math.round(Number(value) || 0);
         if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
+        if (kind === "botMode") state.settings.botMode = value === "chase" ? "chase" : "hunt";
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
         if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
@@ -3388,7 +3459,7 @@
         window.addEventListener("touchmove", onTouch, { passive: false });
         window.addEventListener("wheel", onWheel, { passive: false });
         window.addEventListener("keydown", (event) => {
-          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE") {
+          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE" || event.code === "KeyZ" || event.code === "KeyX") {
             event.preventDefault();
             state.input.keys.add(event.code);
             if (event.code === "Space" && !event.repeat) {
@@ -3399,10 +3470,12 @@
               state.input.ejectQueued = true;
               state.input.ejectSeq += 1;
             }
+            if (event.code === "KeyZ" && !event.repeat) state.input.botSplitQueued = true;
+            if (event.code === "KeyX" && !event.repeat) state.input.botEjectQueued = true;
           }
         });
         window.addEventListener("keyup", (event) => {
-          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE") {
+          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE" || event.code === "KeyZ" || event.code === "KeyX") {
             event.preventDefault();
             state.input.keys.delete(event.code);
           }
@@ -3411,6 +3484,8 @@
           state.input.keys.clear();
           state.input.splitQueued = false;
           state.input.ejectQueued = false;
+          state.input.botSplitQueued = false;
+          state.input.botEjectQueued = false;
         });
         hostBtn.addEventListener("click", () => {
           startRoomHost();
@@ -3426,6 +3501,7 @@
         disconnectBtn.addEventListener("click", () => closeNetwork(false));
         gameResetBtn.addEventListener("click", resetGameToStart);
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
+        botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
         ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
