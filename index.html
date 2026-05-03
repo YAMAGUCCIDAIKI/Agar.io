@@ -1295,10 +1295,6 @@
         return clamp(560 + radius * 0.85, 620, 860);
       }
 
-      function splitRecoilImpulse(radius) {
-        return clamp(120 + radius * 0.28, 150, 280);
-      }
-
       function splitRecoilDistance(radius) {
         return clamp(radius * 0.08, 10, 42);
       }
@@ -1334,18 +1330,16 @@
         child.vx = source.vx;
         child.vy = source.vy;
         const impulse = splitImpulse(child.radius);
-        const recoil = splitRecoilImpulse(source.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
         child.splitBoostAge = 0.22;
-        source.vx = source.vx * 0.24 - dirX * recoil * 0.18;
-        source.vy = source.vy * 0.24 - dirY * recoil * 0.18;
-        source.boostX = source.boostX * 0.02 - dirX * recoil;
-        source.boostY = source.boostY * 0.02 - dirY * recoil;
+        source.vx *= 0.24;
+        source.vy *= 0.24;
+        source.boostX *= 0.02;
+        source.boostY *= 0.02;
         const recoilDistance = splitRecoilDistance(source.radius);
         source.x = clamp(source.x - dirX * recoilDistance, source.radius, WORLD_SIZE - source.radius);
         source.y = clamp(source.y - dirY * recoilDistance, source.radius, WORLD_SIZE - source.radius);
-        startCellBirth(source, originX, originY, 0.1, 1);
         if (targetX != null && targetY != null) {
           source.targetX = targetX;
           source.targetY = targetY;
