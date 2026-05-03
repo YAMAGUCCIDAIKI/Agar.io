@@ -436,7 +436,8 @@
       const DEFAULT_VIRUS_TARGET = 0;
       const DEFAULT_BOT_COUNT = 100;
       const BOT_SPAWN_MASS = 700;
-      const CONSUME_RATIO = 1.33;
+      const CONSUME_MASS_RATIO = 1.325;
+      const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_MASS_RATIO);
       const MASS_DECAY_PER_SECOND = 0.002;
       const MASS_CAP_SETTLE_FRAMES = 10;
       const MERGE_COOLDOWN_SECONDS = 10;
@@ -669,8 +670,9 @@
 
       function canConsume(eater, victim) {
         if (victim.ownerId && victim.mass >= UNCONSUMABLE_CELL_MASS) return false;
-        if (eater.radius + 0.001 < victim.radius * CONSUME_RATIO) return false;
-        const threshold = eater.radius + 1;
+        if (eater.mass + 0.001 < victim.mass * CONSUME_MASS_RATIO) return false;
+        if (eater.radius + 0.001 < victim.radius * CONSUME_RADIUS_RATIO) return false;
+        const threshold = eater.radius - victim.radius * 0.22;
         if (threshold <= 0) return false;
         return distSq(eater.x, eater.y, victim.x, victim.y) <= threshold * threshold;
       }
@@ -1220,11 +1222,11 @@
         const childRadius = radiusFromMass(childMass);
         const originX = source.x;
         const originY = source.y;
-        const offset = Math.max(26, childRadius * 0.7);
+        const offset = source.radius + childRadius + 3;
         const child = createCell(
           actor,
-          originX + dirX * offset,
-          originY + dirY * offset,
+          clamp(originX + dirX * offset, childRadius, WORLD_SIZE - childRadius),
+          clamp(originY + dirY * offset, childRadius, WORLD_SIZE - childRadius),
           childMass
         );
         child.vx = source.vx;
@@ -1514,11 +1516,11 @@
             const d2 = dx * dx + dy * dy;
             const dist = Math.sqrt(d2) || 1;
 
-            if (other.radius >= cell.radius * CONSUME_RATIO && dist < 980) {
+            if (other.radius >= cell.radius * CONSUME_RADIUS_RATIO && dist < 980) {
               continue;
             }
 
-            if (cell.radius >= other.radius * CONSUME_RATIO && dist < 1050) {
+            if (cell.radius >= other.radius * CONSUME_RADIUS_RATIO && dist < 1050) {
               const score = other.mass / Math.max(120, dist);
               if (score > bestPreyScore) {
                 bestPreyScore = score;
@@ -1596,7 +1598,7 @@
           for (const feed of nearbyFeeds) {
             if (feed.dead || feed.age < 0.25) continue;
             const d2 = distSq(cell.x, cell.y, feed.x, feed.y) * 0.45;
-            if (d2 < bestFoodD2 && cell.radius >= feed.radius * CONSUME_RATIO) {
+            if (d2 < bestFoodD2 && cell.radius >= feed.radius * CONSUME_RADIUS_RATIO) {
               bestFoodD2 = d2;
               bestFood = feed;
             }
@@ -1746,50 +1748,49 @@
       }
 
       function separateOwnCells(actor) {
-        for (let i = 0; i < actor.cells.length; i += 1) {
-          const a = actor.cells[i];
-          if (a.dead) continue;
-          for (let j = i + 1; j < actor.cells.length; j += 1) {
-            const b = actor.cells[j];
-            if (b.dead) continue;
+        const iterations = 3;
+        for (let pass = 0; pass < iterations; pass += 1) {
+          for (let i = 0; i < actor.cells.length; i += 1) {
+            const a = actor.cells[i];
+            if (a.dead) continue;
+            for (let j = i + 1; j < actor.cells.length; j += 1) {
+              const b = actor.cells[j];
+              if (b.dead) continue;
 
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            const d = Math.hypot(dx, dy) || 0.001;
-            const touch = a.radius + b.radius;
-            const bothMergeReady = canCellMerge(a) && canCellMerge(b);
-            if (bothMergeReady) continue;
+              const dx = b.x - a.x;
+              const dy = b.y - a.y;
+              const d = Math.hypot(dx, dy);
+              const touch = a.radius + b.radius;
+              if (canCellMerge(a) && canCellMerge(b)) continue;
+              if (d >= touch) continue;
 
-            const minD = touch * 0.94;
-            if (d >= minD) continue;
+              const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233 + pass * 37.719) % TAU);
+              const nx = d < 0.001 ? Math.cos(fallbackAngle) : dx / d;
+              const ny = d < 0.001 ? Math.sin(fallbackAngle) : dy / d;
+              const overlap = touch - d + 0.25;
+              const total = a.mass + b.mass;
+              const aShare = b.mass / total;
+              const bShare = a.mass / total;
+              a.x -= nx * overlap * aShare;
+              a.y -= ny * overlap * aShare;
+              b.x += nx * overlap * bShare;
+              b.y += ny * overlap * bShare;
+              a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius);
+              a.y = clamp(a.y, a.radius, WORLD_SIZE - a.radius);
+              b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
+              b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius);
 
-            const rawOverlap = minD - d;
-            const overlap = Math.min(rawOverlap * 0.28, 16);
-            const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233) % TAU);
-            const nx = d < 0.01 ? Math.cos(fallbackAngle) : dx / d;
-            const ny = d < 0.01 ? Math.sin(fallbackAngle) : dy / d;
-            const total = a.mass + b.mass;
-            const aShare = b.mass / total;
-            const bShare = a.mass / total;
-            a.x -= nx * overlap * aShare;
-            a.y -= ny * overlap * aShare;
-            b.x += nx * overlap * bShare;
-            b.y += ny * overlap * bShare;
-            a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius);
-            a.y = clamp(a.y, a.radius, WORLD_SIZE - a.radius);
-            b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
-            b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius);
-
-            const damping = (a.splitBoostAge > 0 || b.splitBoostAge > 0) ? 0.995 : 0.94;
-            a.vx *= damping;
-            a.vy *= damping;
-            b.vx *= damping;
-            b.vy *= damping;
-            a.boostX *= damping;
-            a.boostY *= damping;
-            b.boostX *= damping;
-            b.boostY *= damping;
-            dampOwnFragmentCollision(a, b);
+              const damping = (a.splitBoostAge > 0 || b.splitBoostAge > 0) ? 0.82 : 0.9;
+              a.vx *= damping;
+              a.vy *= damping;
+              b.vx *= damping;
+              b.vy *= damping;
+              a.boostX *= damping;
+              a.boostY *= damping;
+              b.boostX *= damping;
+              b.boostY *= damping;
+              dampOwnFragmentCollision(a, b);
+            }
           }
         }
       }
@@ -1870,6 +1871,7 @@
           }
           separateOwnCells(actor);
           limitOwnCellSpread(actor);
+          separateOwnCells(actor);
         }
       }
 
