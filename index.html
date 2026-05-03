@@ -263,7 +263,7 @@
 
     .setting-control {
       display: grid;
-      grid-template-columns: 54px minmax(0, 1fr) 42px;
+      grid-template-columns: 54px minmax(0, 1fr) 48px;
       align-items: center;
       gap: 8px;
       min-height: 28px;
@@ -383,6 +383,16 @@
       <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="pellet count">
       <strong id="foodValue">1200</strong>
     </label>
+    <label class="setting-control">
+      <span>EJECT</span>
+      <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="15" aria-label="ejected pellet mass">
+      <strong id="ejectMassValue">15</strong>
+    </label>
+    <label class="setting-control">
+      <span>SHOT</span>
+      <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="ejected pellet speed">
+      <strong id="ejectSpeedValue">710</strong>
+    </label>
   </section>
 
   <script>
@@ -415,6 +425,10 @@
       const virusValueEl = document.getElementById("virusValue");
       const foodSlider = document.getElementById("foodSlider");
       const foodValueEl = document.getElementById("foodValue");
+      const ejectMassSlider = document.getElementById("ejectMassSlider");
+      const ejectMassValueEl = document.getElementById("ejectMassValue");
+      const ejectSpeedSlider = document.getElementById("ejectSpeedSlider");
+      const ejectSpeedValueEl = document.getElementById("ejectSpeedValue");
 
       const TAU = Math.PI * 2;
       const WORLD_SIZE = 5000;
@@ -428,8 +442,8 @@
       const MIN_SPLIT_SOURCE_MASS = 36;
       const VIRUS_MASS = 100;
       const VIRUS_EXPLODE_MASS = 133;
-      const EJECT_MASS = 15;
-      const EJECT_COST = 16;
+      const DEFAULT_EJECT_MASS = 15;
+      const DEFAULT_EJECT_SPEED = 710;
       const PLAYER_START_MASS = 22500;
       const PLAYER_RESPAWN_MASS = 22500;
       const DEFAULT_FOOD_TARGET = 1200;
@@ -499,7 +513,9 @@
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
           virusTarget: DEFAULT_VIRUS_TARGET,
-          foodTarget: DEFAULT_FOOD_TARGET
+          foodTarget: DEFAULT_FOOD_TARGET,
+          ejectMass: DEFAULT_EJECT_MASS,
+          ejectSpeed: DEFAULT_EJECT_SPEED
         },
         input: {
           mouseX: 0,
@@ -509,6 +525,8 @@
           keys: new Set(),
           splitQueued: false,
           splitSeq: 0,
+          ejectQueued: false,
+          ejectSeq: 0,
           lastAimX: 1,
           lastAimY: 0
         },
@@ -690,9 +708,11 @@
             targetY: WORLD_SIZE * 0.5,
             keys: new Set(),
             splitQueued: false,
+            ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
-            lastNetSplitSeq: 0
+            lastNetSplitSeq: 0,
+            lastNetEjectSeq: 0
           },
           cells: [],
           aiTimer: 0,
@@ -747,8 +767,12 @@
         if (!actor || actor.control !== "local") return;
         actor.input.targetX = state.input.mouseWorldX;
         actor.input.targetY = state.input.mouseWorldY;
-        if (state.input.keys.has("KeyW")) actor.input.keys.add("KeyW");
-        else actor.input.keys.delete("KeyW");
+        if (state.input.keys.has("KeyE")) actor.input.keys.add("KeyE");
+        else actor.input.keys.delete("KeyE");
+        if (state.input.ejectQueued) {
+          actor.input.ejectQueued = true;
+          state.input.ejectQueued = false;
+        }
         if (state.input.splitQueued) {
           actor.input.splitQueued = true;
           state.input.splitQueued = false;
@@ -1128,14 +1152,15 @@
         return createVirus(pos.x, pos.y);
       }
 
-      function createFeed(x, y, dirX, dirY, color, ownerId, speed = 710) {
+      function createFeed(x, y, dirX, dirY, color, ownerId, speed = DEFAULT_EJECT_SPEED, mass = DEFAULT_EJECT_MASS) {
+        const feedMass = clamp(Number(mass) || DEFAULT_EJECT_MASS, 5, 80);
         const feed = {
           id: nextId(),
           type: "feed",
           x: clamp(x, 0, WORLD_SIZE),
           y: clamp(y, 0, WORLD_SIZE),
-          mass: EJECT_MASS,
-          radius: radiusFromMass(EJECT_MASS),
+          mass: feedMass,
+          radius: radiusFromMass(feedMass),
           vx: dirX * speed,
           vy: dirY * speed,
           age: 0,
@@ -1266,33 +1291,35 @@
 
       function ejectMass(actor, now) {
         if (now - actor.lastEject < EJECT_INTERVAL) return false;
-        let emitted = false;
-        for (const cell of actor.cells) {
-          if (cell.mass - EJECT_COST < MIN_SPLIT_SOURCE_MASS) continue;
-          const targetX = isPlayerControlled(actor) ? actor.input.targetX : cell.targetX;
-          const targetY = isPlayerControlled(actor) ? actor.input.targetY : cell.targetY;
-          const n = normalized(targetX - cell.x, targetY - cell.y, actor.input.lastAimX, actor.input.lastAimY);
-          if (n.length > 0.001) {
-            actor.input.lastAimX = n.x;
-            actor.input.lastAimY = n.y;
-          }
-          cell.mass -= EJECT_COST;
-          refreshCell(cell);
-          const startX = cell.x + n.x * (cell.radius + 18);
-          const startY = cell.y + n.y * (cell.radius + 18);
-          const feed = createFeed(startX, startY, n.x, n.y, actor.color, actor.id);
-          feed.vx += cell.vx * 0.25 + cell.boostX * 0.08;
-          feed.vy += cell.vy * 0.25 + cell.boostY * 0.08;
-          emitted = true;
+        const ejectMass = state.settings.ejectMass;
+        const ejectCost = ejectMass + 1;
+        const cell = actor.cells
+          .filter((candidate) => !candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS)
+          .sort((a, b) => b.mass - a.mass)[0];
+        if (!cell) return false;
+
+        const targetX = isPlayerControlled(actor) ? actor.input.targetX : cell.targetX;
+        const targetY = isPlayerControlled(actor) ? actor.input.targetY : cell.targetY;
+        const n = normalized(targetX - cell.x, targetY - cell.y, actor.input.lastAimX, actor.input.lastAimY);
+        if (n.length > 0.001) {
+          actor.input.lastAimX = n.x;
+          actor.input.lastAimY = n.y;
         }
-        if (emitted) actor.lastEject = now;
-        return emitted;
+        cell.mass -= ejectCost;
+        refreshCell(cell);
+        const startX = cell.x + n.x * (cell.radius + 18);
+        const startY = cell.y + n.y * (cell.radius + 18);
+        const feed = createFeed(startX, startY, n.x, n.y, actor.color, actor.id, state.settings.ejectSpeed, ejectMass);
+        feed.vx += cell.vx * 0.25 + cell.boostX * 0.08;
+        feed.vy += cell.vy * 0.25 + cell.boostY * 0.08;
+        actor.lastEject = now;
+        return true;
       }
 
       function scatterMass(cell, ratio, preferredX = 0, preferredY = 0) {
         const removable = Math.max(0, cell.mass - MIN_SPLIT_SOURCE_MASS);
         const loss = Math.min(removable, cell.mass * ratio);
-        const count = Math.min(14, Math.floor(loss / EJECT_MASS));
+        const count = Math.min(14, Math.floor(loss / DEFAULT_EJECT_MASS));
         if (count <= 0) return;
 
         const base = normalized(preferredX, preferredY, 1, 0);
@@ -1311,7 +1338,7 @@
             rand(520, 820)
           );
           feed.age = 0.18;
-          removed += EJECT_MASS;
+          removed += DEFAULT_EJECT_MASS;
         }
         cell.mass = Math.max(MIN_CELL_MASS, cell.mass - removed);
         refreshCell(cell);
@@ -2113,7 +2140,13 @@
       function processPlayerControls(now) {
         for (const actor of state.actors) {
           if (!isPlayerControlled(actor)) continue;
-          if (actor.input.keys.has("KeyW")) ejectMass(actor, now);
+          if (actor.input.ejectQueued) {
+            if (ejectMass(actor, now) || now - actor.lastEject >= EJECT_INTERVAL) {
+              actor.input.ejectQueued = false;
+            }
+          } else if (actor.input.keys.has("KeyE")) {
+            ejectMass(actor, now);
+          }
           if (actor.input.splitQueued) {
             const aim = actorAimDirection(actor);
             splitActor(actor, aim.x, aim.y, now, PLAYER_SPLIT_INTERVAL, actor.input.targetX, actor.input.targetY);
@@ -2781,15 +2814,17 @@
 
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
-        const urgent = state.player.input.splitQueued;
+        const urgent = state.player.input.splitQueued || state.player.input.ejectQueued;
         if (!urgent && now - state.net.lastInputSend < 1 / 30) return;
         netSend({
           t: "input",
           targetX: state.player.input.targetX,
           targetY: state.player.input.targetY,
-          w: state.player.input.keys.has("KeyW"),
+          e: state.player.input.keys.has("KeyE"),
+          ejectSeq: state.input.ejectSeq,
           splitSeq: state.input.splitSeq
         });
+        state.player.input.ejectQueued = false;
         state.player.input.splitQueued = false;
         state.net.lastInputSend = now;
       }
@@ -2807,8 +2842,13 @@
           if (!guest) return;
           guest.input.targetX = clamp(Number(message.targetX) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
           guest.input.targetY = clamp(Number(message.targetY) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
-          if (message.w) guest.input.keys.add("KeyW");
-          else guest.input.keys.delete("KeyW");
+          if (message.e) guest.input.keys.add("KeyE");
+          else guest.input.keys.delete("KeyE");
+          const ejectSeq = Number(message.ejectSeq) || 0;
+          if (ejectSeq > guest.input.lastNetEjectSeq) {
+            guest.input.ejectQueued = true;
+            guest.input.lastNetEjectSeq = ejectSeq;
+          }
           const splitSeq = Number(message.splitSeq) || 0;
           if (splitSeq > guest.input.lastNetSplitSeq) {
             guest.input.splitQueued = true;
@@ -3150,6 +3190,10 @@
         virusValueEl.textContent = String(state.settings.virusTarget);
         foodSlider.value = String(state.settings.foodTarget);
         foodValueEl.textContent = String(state.settings.foodTarget);
+        ejectMassSlider.value = String(state.settings.ejectMass);
+        ejectMassValueEl.textContent = String(state.settings.ejectMass);
+        ejectSpeedSlider.value = String(state.settings.ejectSpeed);
+        ejectSpeedValueEl.textContent = String(state.settings.ejectSpeed);
       }
 
       function trimDynamicEntities() {
@@ -3168,6 +3212,8 @@
         if (kind === "bot") state.settings.botTarget = clamp(number, 0, 200);
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, 500);
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, 100000);
+        if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, 80);
+        if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, 1400);
         syncSettingsControls();
         trimDynamicEntities();
       }
@@ -3200,17 +3246,21 @@
         window.addEventListener("touchmove", onTouch, { passive: false });
         window.addEventListener("wheel", onWheel, { passive: false });
         window.addEventListener("keydown", (event) => {
-          if (event.code === "Space" || event.code === "KeyW") {
+          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE") {
             event.preventDefault();
             state.input.keys.add(event.code);
             if (event.code === "Space" && !event.repeat) {
               state.input.splitQueued = true;
               state.input.splitSeq += 1;
             }
+            if (event.code === "KeyW" && !event.repeat) {
+              state.input.ejectQueued = true;
+              state.input.ejectSeq += 1;
+            }
           }
         });
         window.addEventListener("keyup", (event) => {
-          if (event.code === "Space" || event.code === "KeyW") {
+          if (event.code === "Space" || event.code === "KeyW" || event.code === "KeyE") {
             event.preventDefault();
             state.input.keys.delete(event.code);
           }
@@ -3218,6 +3268,7 @@
         window.addEventListener("blur", () => {
           state.input.keys.clear();
           state.input.splitQueued = false;
+          state.input.ejectQueued = false;
         });
         hostBtn.addEventListener("click", () => {
           startRoomHost();
@@ -3235,6 +3286,8 @@
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
+        ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
+        ejectSpeedSlider.addEventListener("input", () => setWorldSetting("ejectSpeed", ejectSpeedSlider.value));
       }
 
       function seedInitialViruses(avoidX, avoidY) {
