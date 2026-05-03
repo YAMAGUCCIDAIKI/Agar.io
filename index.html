@@ -1354,12 +1354,21 @@
         return didSplit;
       }
 
-      function ejectMass(actor, now) {
+      function ejectMass(actor, now, allCells = false) {
         if (now - actor.lastEject < EJECT_INTERVAL) return false;
         const ejectMass = state.settings.ejectMass;
         const ejectCost = ejectMass + 1;
         const eligible = actor.cells.filter((candidate) => !candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS);
         if (!eligible.length) return false;
+        if (allCells) {
+          let emitted = false;
+          for (const cell of eligible) {
+            if (emitFeedFromCell(actor, cell, ejectMass, ejectCost)) emitted = true;
+          }
+          if (emitted) actor.lastEject = now;
+          return emitted;
+        }
+
         actor.nextEjectIndex %= Math.max(1, actor.cells.length);
         let cell = null;
         for (let offset = 0; offset < actor.cells.length; offset += 1) {
@@ -1373,6 +1382,12 @@
         if (!cell) cell = eligible[0];
         if (!cell) return false;
 
+        const emitted = emitFeedFromCell(actor, cell, ejectMass, ejectCost);
+        if (emitted) actor.lastEject = now;
+        return emitted;
+      }
+
+      function emitFeedFromCell(actor, cell, ejectMass, ejectCost) {
         const targetX = isPlayerControlled(actor) ? actor.input.targetX : cell.targetX;
         const targetY = isPlayerControlled(actor) ? actor.input.targetY : cell.targetY;
         const n = normalized(targetX - cell.x, targetY - cell.y, actor.input.lastAimX, actor.input.lastAimY);
@@ -1387,7 +1402,6 @@
         const feed = createFeed(startX, startY, n.x, n.y, actor.color, actor.id, state.settings.ejectSpeed, ejectMass);
         feed.vx += cell.vx * 0.25 + cell.boostX * 0.08;
         feed.vy += cell.vy * 0.25 + cell.boostY * 0.08;
-        actor.lastEject = now;
         return true;
       }
 
@@ -1618,6 +1632,9 @@
 
           let bestPrey = null;
           let bestPreyScore = 0;
+          let avoidCellX = 0;
+          let avoidCellY = 0;
+          let avoidCellPower = 0;
 
           const nearbyCells = cellGrid.query(cell.x, cell.y, BOT_AI_SCAN_RANGE, aiCellsScratch);
           for (const other of nearbyCells) {
@@ -1626,6 +1643,13 @@
             const dy = other.y - cell.y;
             const d2 = dx * dx + dy * dy;
             const dist = Math.sqrt(d2) || 1;
+
+            if (other.mass > cell.mass * 1.03 && dist < 1180) {
+              const danger = Math.max(0, 1 - dist / 1180) * clamp(other.mass / Math.max(1, cell.mass), 1, 5);
+              avoidCellX -= dx / dist * danger;
+              avoidCellY -= dy / dist * danger;
+              avoidCellPower += danger;
+            }
 
             if (other.radius >= cell.radius * CONSUME_RADIUS_RATIO && dist < 980) {
               continue;
@@ -1661,6 +1685,13 @@
             const n = normalized(avoidVirusX, avoidVirusY, bot.wanderX - cell.x, bot.wanderY - cell.y);
             cell.targetX = clamp(cell.x + n.x * 780, 120, WORLD_SIZE - 120);
             cell.targetY = clamp(cell.y + n.y * 780, 120, WORLD_SIZE - 120);
+            continue;
+          }
+
+          if (avoidCellPower > 0.22) {
+            const n = normalized(avoidCellX, avoidCellY, bot.wanderX - cell.x, bot.wanderY - cell.y);
+            cell.targetX = clamp(cell.x + n.x * 980, 120, WORLD_SIZE - 120);
+            cell.targetY = clamp(cell.y + n.y * 980, 120, WORLD_SIZE - 120);
             continue;
           }
 
@@ -2237,7 +2268,7 @@
               actor.input.ejectQueued = false;
             }
           } else if (actor.input.keys.has("KeyE")) {
-            ejectMass(actor, now);
+            ejectMass(actor, now, true);
           }
           if (actor.input.splitQueued) {
             const aim = actorAimDirection(actor);
@@ -2270,7 +2301,7 @@
         if (state.input.botEjectQueued) {
           for (const bot of state.actors) {
             if (bot.isHuman) continue;
-            ejectMass(bot, now);
+            ejectMass(bot, now, true);
           }
           state.input.botEjectQueued = false;
         }
