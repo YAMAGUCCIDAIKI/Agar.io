@@ -263,7 +263,7 @@
 
     .setting-control {
       display: grid;
-      grid-template-columns: 54px minmax(0, 1fr) 48px;
+      grid-template-columns: 54px minmax(0, 1fr) 48px 56px;
       align-items: center;
       gap: 8px;
       min-height: 28px;
@@ -278,6 +278,19 @@
       text-align: right;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0;
+    }
+
+    .max-input {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 5px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font: 700 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
     }
 
     .view-panel input[type="range"] {
@@ -321,7 +334,7 @@
 
       .view-panel {
         inset: auto 10px 10px auto;
-        width: min(220px, calc(100vw - 158px));
+        width: min(270px, calc(100vw - 158px));
       }
     }
   </style>
@@ -372,26 +385,37 @@
       <span>BOT</span>
       <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="bot count">
       <strong id="botValue">100</strong>
+      <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="bot max">
     </label>
     <label class="setting-control">
       <span>SPIKE</span>
       <input id="virusSlider" type="range" min="0" max="500" step="1" value="0" aria-label="virus count">
       <strong id="virusValue">0</strong>
+      <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="spike max">
     </label>
     <label class="setting-control">
       <span>PELLET</span>
       <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="pellet count">
       <strong id="foodValue">1200</strong>
+      <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="pellet max">
     </label>
     <label class="setting-control">
       <span>EJECT</span>
       <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="15" aria-label="ejected pellet mass">
       <strong id="ejectMassValue">15</strong>
+      <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="eject mass max">
     </label>
     <label class="setting-control">
       <span>SHOT</span>
       <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="ejected pellet speed">
       <strong id="ejectSpeedValue">710</strong>
+      <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="shot speed max">
+    </label>
+    <label class="setting-control">
+      <span>WORLD</span>
+      <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="world size">
+      <strong id="worldSizeValue">5000</strong>
+      <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="world size max">
     </label>
   </section>
 
@@ -421,17 +445,25 @@
       const gameResetBtn = document.getElementById("gameResetBtn");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
+      const botMaxBox = document.getElementById("botMaxBox");
       const virusSlider = document.getElementById("virusSlider");
       const virusValueEl = document.getElementById("virusValue");
+      const virusMaxBox = document.getElementById("virusMaxBox");
       const foodSlider = document.getElementById("foodSlider");
       const foodValueEl = document.getElementById("foodValue");
+      const foodMaxBox = document.getElementById("foodMaxBox");
       const ejectMassSlider = document.getElementById("ejectMassSlider");
       const ejectMassValueEl = document.getElementById("ejectMassValue");
+      const ejectMassMaxBox = document.getElementById("ejectMassMaxBox");
       const ejectSpeedSlider = document.getElementById("ejectSpeedSlider");
       const ejectSpeedValueEl = document.getElementById("ejectSpeedValue");
+      const ejectSpeedMaxBox = document.getElementById("ejectSpeedMaxBox");
+      const worldSizeSlider = document.getElementById("worldSizeSlider");
+      const worldSizeValueEl = document.getElementById("worldSizeValue");
+      const worldSizeMaxBox = document.getElementById("worldSizeMaxBox");
 
       const TAU = Math.PI * 2;
-      const WORLD_SIZE = 5000;
+      let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
       const MAX_CELLS = 16;
@@ -515,7 +547,16 @@
           virusTarget: DEFAULT_VIRUS_TARGET,
           foodTarget: DEFAULT_FOOD_TARGET,
           ejectMass: DEFAULT_EJECT_MASS,
-          ejectSpeed: DEFAULT_EJECT_SPEED
+          ejectSpeed: DEFAULT_EJECT_SPEED,
+          worldSize: WORLD_SIZE,
+          max: {
+            bot: 200,
+            virus: 500,
+            food: 100000,
+            ejectMass: 80,
+            ejectSpeed: 1400,
+            worldSize: 15000
+          }
         },
         input: {
           mouseX: 0,
@@ -717,6 +758,7 @@
           cells: [],
           aiTimer: 0,
           lastEject: -100,
+          nextEjectIndex: 0,
           lastSplit: -100,
           wanderX: rand(300, WORLD_SIZE - 300),
           wanderY: rand(300, WORLD_SIZE - 300),
@@ -1293,9 +1335,19 @@
         if (now - actor.lastEject < EJECT_INTERVAL) return false;
         const ejectMass = state.settings.ejectMass;
         const ejectCost = ejectMass + 1;
-        const cell = actor.cells
-          .filter((candidate) => !candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS)
-          .sort((a, b) => b.mass - a.mass)[0];
+        const eligible = actor.cells.filter((candidate) => !candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS);
+        if (!eligible.length) return false;
+        actor.nextEjectIndex %= Math.max(1, actor.cells.length);
+        let cell = null;
+        for (let offset = 0; offset < actor.cells.length; offset += 1) {
+          const candidate = actor.cells[(actor.nextEjectIndex + offset) % actor.cells.length];
+          if (!candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS) {
+            cell = candidate;
+            actor.nextEjectIndex = (actor.cells.indexOf(candidate) + 1) % actor.cells.length;
+            break;
+          }
+        }
+        if (!cell) cell = eligible[0];
         if (!cell) return false;
 
         const targetX = isPlayerControlled(actor) ? actor.input.targetX : cell.targetX;
@@ -2387,6 +2439,7 @@
       }
 
       function resetFreshWorld(localId, onlineMode = false) {
+        WORLD_SIZE = state.settings.worldSize;
         state.localActorId = localId;
         state.actors.length = 0;
         state.foods.length = 0;
@@ -2753,6 +2806,7 @@
         const message = {
           t: "snapshot",
           now,
+          worldSize: WORLD_SIZE,
           actors: state.actors.map(serializeActor),
           feeds: state.feeds.filter((feed) => !feed.dead).map(serializeCircle)
         };
@@ -2941,6 +2995,13 @@
       }
 
       function applySnapshot(message) {
+        if (message.worldSize) {
+          const incomingWorldSize = Math.max(2000, Math.round(Number(message.worldSize) / 100) * 100);
+          state.settings.max.worldSize = Math.max(state.settings.max.worldSize, incomingWorldSize);
+          state.settings.worldSize = clamp(incomingWorldSize, 2000, state.settings.max.worldSize);
+          clampWorldEntities();
+          syncSettingsControls();
+        }
         const actors = (message.actors || []).map(applyActorSnapshot);
         state.actors = actors;
         state.player = actorById(state.localActorId) || actors[0] || state.player;
@@ -3184,16 +3245,30 @@
       }
 
       function syncSettingsControls() {
+        botSlider.max = String(state.settings.max.bot);
         botSlider.value = String(state.settings.botTarget);
         botValueEl.textContent = String(state.settings.botTarget);
+        botMaxBox.value = String(state.settings.max.bot);
+        virusSlider.max = String(state.settings.max.virus);
         virusSlider.value = String(state.settings.virusTarget);
         virusValueEl.textContent = String(state.settings.virusTarget);
+        virusMaxBox.value = String(state.settings.max.virus);
+        foodSlider.max = String(state.settings.max.food);
         foodSlider.value = String(state.settings.foodTarget);
         foodValueEl.textContent = String(state.settings.foodTarget);
+        foodMaxBox.value = String(state.settings.max.food);
+        ejectMassSlider.max = String(state.settings.max.ejectMass);
         ejectMassSlider.value = String(state.settings.ejectMass);
         ejectMassValueEl.textContent = String(state.settings.ejectMass);
+        ejectMassMaxBox.value = String(state.settings.max.ejectMass);
+        ejectSpeedSlider.max = String(state.settings.max.ejectSpeed);
         ejectSpeedSlider.value = String(state.settings.ejectSpeed);
         ejectSpeedValueEl.textContent = String(state.settings.ejectSpeed);
+        ejectSpeedMaxBox.value = String(state.settings.max.ejectSpeed);
+        worldSizeSlider.max = String(state.settings.max.worldSize);
+        worldSizeSlider.value = String(state.settings.worldSize);
+        worldSizeValueEl.textContent = String(state.settings.worldSize);
+        worldSizeMaxBox.value = String(state.settings.max.worldSize);
       }
 
       function trimDynamicEntities() {
@@ -3207,13 +3282,80 @@
         ensureBotPopulation();
       }
 
+      function clampWorldEntities() {
+        const size = state.settings.worldSize;
+        WORLD_SIZE = size;
+        state.camera.x = clamp(state.camera.x, 0, size);
+        state.camera.y = clamp(state.camera.y, 0, size);
+        state.input.mouseWorldX = clamp(state.input.mouseWorldX, 0, size);
+        state.input.mouseWorldY = clamp(state.input.mouseWorldY, 0, size);
+        for (const food of state.foods) {
+          food.x = clamp(food.x, food.radius, size - food.radius);
+          food.y = clamp(food.y, food.radius, size - food.radius);
+        }
+        for (const feed of state.feeds) {
+          feed.x = clamp(feed.x, feed.radius, size - feed.radius);
+          feed.y = clamp(feed.y, feed.radius, size - feed.radius);
+        }
+        for (const virus of state.viruses) {
+          virus.x = clamp(virus.x, virus.radius, size - virus.radius);
+          virus.y = clamp(virus.y, virus.radius, size - virus.radius);
+        }
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            cell.x = clamp(cell.x, cell.radius, size - cell.radius);
+            cell.y = clamp(cell.y, cell.radius, size - cell.radius);
+          }
+          actor.input.targetX = clamp(actor.input.targetX, 0, size);
+          actor.input.targetY = clamp(actor.input.targetY, 0, size);
+          actor.wanderX = clamp(actor.wanderX, 300, size - 300);
+          actor.wanderY = clamp(actor.wanderY, 300, size - 300);
+        }
+        state.foodGridDirty = true;
+      }
+
       function setWorldSetting(kind, value) {
         const number = Math.round(Number(value) || 0);
-        if (kind === "bot") state.settings.botTarget = clamp(number, 0, 200);
-        if (kind === "virus") state.settings.virusTarget = clamp(number, 0, 500);
-        if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, 100000);
-        if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, 80);
-        if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, 1400);
+        if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
+        if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
+        if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
+        if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
+        if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, state.settings.max.ejectSpeed);
+        if (kind === "worldSize") {
+          state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
+          clampWorldEntities();
+        }
+        syncSettingsControls();
+        trimDynamicEntities();
+      }
+
+      function setSliderMax(kind, value) {
+        const number = Math.round(Number(value) || 0);
+        if (kind === "bot") {
+          state.settings.max.bot = clamp(number, 1, 1000);
+          state.settings.botTarget = clamp(state.settings.botTarget, 0, state.settings.max.bot);
+        }
+        if (kind === "virus") {
+          state.settings.max.virus = clamp(number, 1, 5000);
+          state.settings.virusTarget = clamp(state.settings.virusTarget, 0, state.settings.max.virus);
+        }
+        if (kind === "food") {
+          state.settings.max.food = clamp(Math.round(number / 100) * 100, 100, 500000);
+          state.settings.foodTarget = clamp(state.settings.foodTarget, 0, state.settings.max.food);
+        }
+        if (kind === "ejectMass") {
+          state.settings.max.ejectMass = clamp(number, 5, 500);
+          state.settings.ejectMass = clamp(state.settings.ejectMass, 5, state.settings.max.ejectMass);
+        }
+        if (kind === "ejectSpeed") {
+          state.settings.max.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, 5000);
+          state.settings.ejectSpeed = clamp(state.settings.ejectSpeed, 300, state.settings.max.ejectSpeed);
+        }
+        if (kind === "worldSize") {
+          state.settings.max.worldSize = clamp(Math.round(number / 100) * 100, 2000, 50000);
+          state.settings.worldSize = clamp(state.settings.worldSize, 2000, state.settings.max.worldSize);
+          clampWorldEntities();
+        }
         syncSettingsControls();
         trimDynamicEntities();
       }
@@ -3288,6 +3430,13 @@
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
         ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
         ejectSpeedSlider.addEventListener("input", () => setWorldSetting("ejectSpeed", ejectSpeedSlider.value));
+        worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
+        botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
+        virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
+        foodMaxBox.addEventListener("change", () => setSliderMax("food", foodMaxBox.value));
+        ejectMassMaxBox.addEventListener("change", () => setSliderMax("ejectMass", ejectMassMaxBox.value));
+        ejectSpeedMaxBox.addEventListener("change", () => setSliderMax("ejectSpeed", ejectSpeedMaxBox.value));
+        worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
       }
 
       function seedInitialViruses(avoidX, avoidY) {
