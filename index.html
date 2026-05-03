@@ -1,0 +1,3101 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agar Canvas</title>
+  <meta name="description" content="HTML5 Canvasで遊べるAgar.io風のブラウザゲーム">
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(255, 255, 255, 0.84);
+      --ink: #142033;
+      --muted: #667085;
+      --line: rgba(20, 32, 51, 0.12);
+      --accent: #177ddc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #f7f9fc;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      user-select: none;
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+
+    .hud {
+      position: fixed;
+      inset: auto auto 14px 14px;
+      min-width: 156px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      pointer-events: none;
+    }
+
+    .hud-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 22px;
+      font-size: 12px;
+      letter-spacing: 0;
+      color: var(--muted);
+    }
+
+    .hud-row strong {
+      color: var(--ink);
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .board {
+      position: fixed;
+      inset: 14px 14px auto auto;
+      width: min(260px, calc(100vw - 190px));
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      pointer-events: none;
+    }
+
+    .board-title {
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .rank {
+      display: grid;
+      grid-template-columns: 22px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 22px;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .rank span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rank b {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rank.you {
+      color: #0b5cab;
+      font-weight: 700;
+    }
+
+    .flash {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      transform: translateX(-50%);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      color: var(--ink);
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity 160ms ease;
+      pointer-events: none;
+    }
+
+    .flash.show {
+      opacity: 1;
+    }
+
+    .online-panel {
+      position: fixed;
+      inset: 14px auto auto 14px;
+      width: min(360px, calc(100vw - 28px));
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      pointer-events: auto;
+    }
+
+    .online-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .online-status {
+      max-width: 168px;
+      overflow: hidden;
+      color: var(--accent);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .online-controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .online-controls button {
+      min-height: 30px;
+      border: 1px solid rgba(23, 125, 220, 0.32);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #0b5cab;
+      font: 700 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .online-controls button:hover {
+      background: rgba(23, 125, 220, 0.08);
+    }
+
+    .online-fields {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(76px, 0.6fr);
+      gap: 6px;
+      margin-top: 7px;
+    }
+
+    .online-panel input {
+      width: 100%;
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 7px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font: 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .online-panel textarea {
+      width: 100%;
+      height: 48px;
+      margin-top: 7px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font: 11px/1.3 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .view-panel {
+      position: fixed;
+      inset: auto 14px 14px auto;
+      width: min(300px, calc(100vw - 190px));
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      pointer-events: auto;
+    }
+
+    .view-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .view-row strong {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
+
+    .view-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 72px;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .setting-control {
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr) 42px;
+      align-items: center;
+      gap: 8px;
+      min-height: 28px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .setting-control strong {
+      color: var(--accent);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
+
+    .view-panel input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .view-controls button {
+      grid-column: 2;
+      min-height: 28px;
+      border: 1px solid rgba(23, 125, 220, 0.32);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #0b5cab;
+      font: 700 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .view-controls button:hover {
+      background: rgba(23, 125, 220, 0.08);
+    }
+
+    @media (max-width: 640px) {
+      .hud {
+        inset: auto auto 10px 10px;
+        min-width: 134px;
+      }
+
+      .board {
+        inset: 10px 10px auto auto;
+        width: min(230px, calc(100vw - 156px));
+      }
+
+      .rank:nth-of-type(n + 7) {
+        display: none;
+      }
+
+      .online-panel {
+        width: min(320px, calc(100vw - 20px));
+      }
+
+      .view-panel {
+        inset: auto 10px 10px auto;
+        width: min(220px, calc(100vw - 158px));
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <section class="hud" aria-label="status">
+    <div class="hud-row"><span>Mass</span><strong id="mass">0</strong></div>
+    <div class="hud-row"><span>Cells</span><strong id="cells">1/16</strong></div>
+    <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
+  </section>
+
+  <aside class="board" aria-label="scoreboard">
+    <div class="board-title">SCOREBOARD</div>
+    <div id="scoreboard"></div>
+  </aside>
+
+  <div id="flash" class="flash">RESPAWN</div>
+
+  <section class="online-panel" aria-label="online">
+    <div class="online-title">
+      <span>ONLINE 2P</span>
+      <span id="onlineStatus" class="online-status">OFFLINE</span>
+    </div>
+    <div class="online-controls">
+      <button id="hostBtn" type="button">HOST</button>
+      <button id="joinBtn" type="button">JOIN</button>
+      <button id="applyAnswerBtn" type="button">ANSWER</button>
+      <button id="disconnectBtn" type="button">DISCONNECT</button>
+      <button id="relayHostBtn" type="button">RELAY HOST</button>
+      <button id="relayJoinBtn" type="button">RELAY JOIN</button>
+    </div>
+    <div class="online-fields">
+      <input id="serverUrlBox" spellcheck="false" aria-label="relay server" placeholder="ws://localhost:8080/ws">
+      <input id="roomBox" spellcheck="false" aria-label="room" placeholder="room">
+    </div>
+    <textarea id="offerBox" spellcheck="false" placeholder="Offer"></textarea>
+    <textarea id="answerBox" spellcheck="false" placeholder="Answer"></textarea>
+  </section>
+
+  <section class="view-panel" aria-label="view">
+    <div class="view-row"><span>VIEW</span><strong id="viewValue">100%</strong></div>
+    <div class="view-controls">
+      <button id="gameResetBtn" type="button">RESET</button>
+    </div>
+    <label class="setting-control">
+      <span>BOT</span>
+      <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="bot count">
+      <strong id="botValue">100</strong>
+    </label>
+    <label class="setting-control">
+      <span>SPIKE</span>
+      <input id="virusSlider" type="range" min="0" max="500" step="1" value="0" aria-label="virus count">
+      <strong id="virusValue">0</strong>
+    </label>
+    <label class="setting-control">
+      <span>PELLET</span>
+      <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="pellet count">
+      <strong id="foodValue">1200</strong>
+    </label>
+  </section>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const massEl = document.getElementById("mass");
+      const cellsEl = document.getElementById("cells");
+      const fpsEl = document.getElementById("fps");
+      const scoreboardEl = document.getElementById("scoreboard");
+      const flashEl = document.getElementById("flash");
+      const onlineStatusEl = document.getElementById("onlineStatus");
+      const hostBtn = document.getElementById("hostBtn");
+      const joinBtn = document.getElementById("joinBtn");
+      const applyAnswerBtn = document.getElementById("applyAnswerBtn");
+      const disconnectBtn = document.getElementById("disconnectBtn");
+      const relayHostBtn = document.getElementById("relayHostBtn");
+      const relayJoinBtn = document.getElementById("relayJoinBtn");
+      const serverUrlBox = document.getElementById("serverUrlBox");
+      const roomBox = document.getElementById("roomBox");
+      const offerBox = document.getElementById("offerBox");
+      const answerBox = document.getElementById("answerBox");
+      const viewValueEl = document.getElementById("viewValue");
+      const gameResetBtn = document.getElementById("gameResetBtn");
+      const botSlider = document.getElementById("botSlider");
+      const botValueEl = document.getElementById("botValue");
+      const virusSlider = document.getElementById("virusSlider");
+      const virusValueEl = document.getElementById("virusValue");
+      const foodSlider = document.getElementById("foodSlider");
+      const foodValueEl = document.getElementById("foodValue");
+
+      const TAU = Math.PI * 2;
+      const WORLD_SIZE = 5000;
+      const GRID_SMALL = 50;
+      const GRID_LARGE = 250;
+      const MAX_CELLS = 16;
+      const MAX_CELL_MASS = 22500;
+      const MAX_MERGE_VIRUS_HIT_MASS = MAX_CELL_MASS * 2;
+      const UNCONSUMABLE_CELL_MASS = 16900;
+      const MIN_CELL_MASS = 12;
+      const MIN_SPLIT_SOURCE_MASS = 36;
+      const VIRUS_MASS = 100;
+      const VIRUS_EXPLODE_MASS = 133;
+      const EJECT_MASS = 15;
+      const EJECT_COST = 16;
+      const PLAYER_START_MASS = 22500;
+      const PLAYER_RESPAWN_MASS = 22500;
+      const DEFAULT_FOOD_TARGET = 1200;
+      const DEFAULT_VIRUS_TARGET = 0;
+      const DEFAULT_BOT_COUNT = 100;
+      const BOT_SPAWN_MASS = 700;
+      const CONSUME_RATIO = 1.33;
+      const MASS_DECAY_PER_SECOND = 0.002;
+      const MASS_CAP_SETTLE_FRAMES = 10;
+      const MERGE_COOLDOWN_SECONDS = 10;
+      const EJECT_INTERVAL = 0.09;
+      const PLAYER_SPLIT_INTERVAL = 0.16;
+      const VIRUS_FEED_LIMIT = 7;
+      const VIRUS_RESPAWN_DELAY = 0.5;
+      const BOT_AI_SCAN_RANGE = 1050;
+      const VIRUS_CORE_SPLIT_MASS = 700;
+      const VIRUS_FRAGMENT_LIFE = 2.8;
+      const MAX_CELL_SPREAD = 2400;
+      const WORLD_SYNC_CHUNK = 110;
+      const DEFAULT_VIEW_SCALE = 1;
+
+      const foodPalette = [
+        "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
+        "#ee46bc", "#06aed4", "#84cc16", "#f63d68", "#fdb022"
+      ];
+
+      const botPalette = [
+        "#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed",
+        "#0891b2", "#c026d3", "#4f46e5", "#0f766e", "#ea580c",
+        "#be123c", "#0284c7", "#65a30d"
+      ];
+
+      const botNames = [
+        "Nova", "Orbit", "Pixel", "Rush", "Flux", "Mango",
+        "Comet", "Vector", "Kite", "Mint", "Echo", "Zinc"
+      ];
+
+      const state = {
+        width: 1,
+        height: 1,
+        dpr: 1,
+        now: 0,
+        lastFrame: performance.now(),
+        fps: 60,
+        fpsSample: 60,
+        fpsTimer: 0,
+        nextId: 1,
+        nextBotIndex: 0,
+        player: null,
+        localActorId: "player",
+        actors: [],
+        foods: [],
+        feeds: [],
+        viruses: [],
+        virusRespawnQueue: [],
+        camera: {
+          x: WORLD_SIZE * 0.5,
+          y: WORLD_SIZE * 0.5,
+          zoom: 0.86
+        },
+        viewScale: DEFAULT_VIEW_SCALE,
+        settings: {
+          botTarget: DEFAULT_BOT_COUNT,
+          virusTarget: DEFAULT_VIRUS_TARGET,
+          foodTarget: DEFAULT_FOOD_TARGET
+        },
+        input: {
+          mouseX: 0,
+          mouseY: 0,
+          mouseWorldX: WORLD_SIZE * 0.5,
+          mouseWorldY: WORLD_SIZE * 0.5,
+          keys: new Set(),
+          splitQueued: false,
+          splitSeq: 0,
+          lastAimX: 1,
+          lastAimY: 0
+        },
+        net: {
+          role: "offline",
+          transport: "none",
+          pc: null,
+          channel: null,
+          socket: null,
+          connected: false,
+          status: "OFFLINE",
+          iceCandidates: 0,
+          worldSeq: 0,
+          worldBuffer: null,
+          lastInputSend: -100,
+          lastSnapshotSend: -100,
+          lastWorldSend: -100
+        },
+        flashUntil: 0,
+        hudTimer: 0
+      };
+
+      class SpatialHash {
+        constructor(cellSize) {
+          this.cellSize = cellSize;
+          this.map = new Map();
+        }
+
+        clear() {
+          this.map.clear();
+        }
+
+        key(cx, cy) {
+          return `${cx},${cy}`;
+        }
+
+        insert(item) {
+          const cx = Math.floor(item.x / this.cellSize);
+          const cy = Math.floor(item.y / this.cellSize);
+          const key = this.key(cx, cy);
+          let bucket = this.map.get(key);
+          if (!bucket) {
+            bucket = [];
+            this.map.set(key, bucket);
+          }
+          bucket.push(item);
+        }
+
+        query(x, y, range, out = []) {
+          out.length = 0;
+          const minX = Math.floor((x - range) / this.cellSize);
+          const maxX = Math.floor((x + range) / this.cellSize);
+          const minY = Math.floor((y - range) / this.cellSize);
+          const maxY = Math.floor((y + range) / this.cellSize);
+          for (let cy = minY; cy <= maxY; cy += 1) {
+            for (let cx = minX; cx <= maxX; cx += 1) {
+              const bucket = this.map.get(this.key(cx, cy));
+              if (bucket) out.push(...bucket);
+            }
+          }
+          return out;
+        }
+      }
+
+      const foodGrid = new SpatialHash(180);
+      const feedGrid = new SpatialHash(220);
+      const virusGrid = new SpatialHash(300);
+      const cellGrid = new SpatialHash(430);
+      const scratch = [];
+      const aiCellsScratch = [];
+      const aiQueryScratch = [];
+      const aiEntityScratch = [];
+      const cellQueryScratch = [];
+
+      function nextId() {
+        const id = state.nextId;
+        state.nextId += 1;
+        return id;
+      }
+
+      function rand(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function distSq(ax, ay, bx, by) {
+        const dx = ax - bx;
+        const dy = ay - by;
+        return dx * dx + dy * dy;
+      }
+
+      function radiusFromMass(mass) {
+        return Math.sqrt(Math.max(1, mass)) * 4;
+      }
+
+      function refreshCell(cell) {
+        if (cell.mass < MIN_CELL_MASS) cell.mass = MIN_CELL_MASS;
+        cell.radius = radiusFromMass(cell.mass);
+      }
+
+      function mergeCooldown(mass) {
+        return MERGE_COOLDOWN_SECONDS;
+      }
+
+      function mergeTimeLeft(cell) {
+        return Math.max(0, (cell.mergeReadyAt || 0) - state.now);
+      }
+
+      function canCellMerge(cell) {
+        return mergeTimeLeft(cell) <= 0;
+      }
+
+      function setMergeCooldown(cell, seconds = mergeCooldown(cell.mass)) {
+        cell.mergeReadyAt = state.now + seconds;
+        cell.cooldown = seconds;
+      }
+
+      function addMass(cell, amount) {
+        cell.mass += amount;
+        if (cell.mass > MAX_CELL_MASS) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
+        refreshCell(cell);
+      }
+
+      function normalized(dx, dy, fallbackX = 1, fallbackY = 0) {
+        const length = Math.hypot(dx, dy);
+        if (length < 0.001) return { x: fallbackX, y: fallbackY, length: 0 };
+        return { x: dx / length, y: dy / length, length };
+      }
+
+      function darkenHex(hex, amount = 0.18) {
+        const clean = hex.replace("#", "");
+        const n = parseInt(clean.length === 3 ? clean.replace(/(.)/g, "$1$1") : clean, 16);
+        const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
+        const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
+        const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
+        return `rgb(${r}, ${g}, ${b})`;
+      }
+
+      function canConsume(eater, victim) {
+        if (victim.ownerId && victim.mass >= UNCONSUMABLE_CELL_MASS) return false;
+        if (eater.radius + 0.001 < victim.radius * CONSUME_RATIO) return false;
+        const threshold = eater.radius + 1;
+        if (threshold <= 0) return false;
+        return distSq(eater.x, eater.y, victim.x, victim.y) <= threshold * threshold;
+      }
+
+      function createActor(id, name, color, isHuman = false, control = null) {
+        return {
+          id,
+          name,
+          color,
+          isHuman,
+          control: control || (isHuman ? "local" : "bot"),
+          input: {
+            targetX: WORLD_SIZE * 0.5,
+            targetY: WORLD_SIZE * 0.5,
+            keys: new Set(),
+            splitQueued: false,
+            lastAimX: 1,
+            lastAimY: 0,
+            lastNetSplitSeq: 0
+          },
+          cells: [],
+          aiTimer: 0,
+          lastEject: -100,
+          lastSplit: -100,
+          wanderX: rand(300, WORLD_SIZE - 300),
+          wanderY: rand(300, WORLD_SIZE - 300),
+          respawnAt: 0,
+          respawns: 0
+        };
+      }
+
+      function actorById(id) {
+        return state.actors.find((actor) => actor.id === id) || null;
+      }
+
+      function isLocalActor(actor) {
+        return actor && actor.id === state.localActorId;
+      }
+
+      function isPlayerControlled(actor) {
+        return actor && (actor.control === "local" || actor.control === "remote");
+      }
+
+      function displayActorName(actor) {
+        if (isLocalActor(actor)) return "YOU";
+        if (actor && actor.isHuman) return "P2";
+        return actor ? actor.name : "";
+      }
+
+      function setStatus(text) {
+        state.net.status = text;
+        onlineStatusEl.textContent = text;
+      }
+
+      function defaultRelayUrl() {
+        if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+          return `ws://${location.host}/ws`;
+        }
+        return "ws://localhost:8080/ws";
+      }
+
+      function ensureRelayDefaults() {
+        if (!serverUrlBox.value.trim()) serverUrlBox.value = defaultRelayUrl();
+        if (!roomBox.value.trim()) {
+          roomBox.value = `agar-${Math.random().toString(36).slice(2, 7)}`;
+        }
+      }
+
+      function updateLocalActorInput() {
+        const actor = state.player;
+        if (!actor || actor.control !== "local") return;
+        actor.input.targetX = state.input.mouseWorldX;
+        actor.input.targetY = state.input.mouseWorldY;
+        if (state.input.keys.has("KeyW")) actor.input.keys.add("KeyW");
+        else actor.input.keys.delete("KeyW");
+        if (state.input.splitQueued) {
+          actor.input.splitQueued = true;
+          state.input.splitQueued = false;
+        }
+      }
+
+      function createBotActor() {
+        const index = state.nextBotIndex;
+        state.nextBotIndex += 1;
+        const botName = `${botNames[index % botNames.length]} ${String(index + 1).padStart(2, "0")}`;
+        const bot = createActor(`bot-${index}`, botName, botPalette[index % botPalette.length]);
+        state.actors.push(bot);
+        spawnActor(bot, BOT_SPAWN_MASS);
+        return bot;
+      }
+
+      function ensureBotPopulation() {
+        const target = state.settings.botTarget;
+        let botCount = 0;
+        for (const actor of state.actors) {
+          if (!actor.isHuman) botCount += 1;
+        }
+        for (let i = state.actors.length - 1; i >= 0 && botCount > target; i -= 1) {
+          if (state.actors[i].isHuman) continue;
+          state.actors.splice(i, 1);
+          botCount -= 1;
+        }
+        while (botCount < target) {
+          createBotActor();
+          botCount += 1;
+        }
+      }
+
+      function createCell(actor, x, y, mass) {
+        const cell = {
+          id: nextId(),
+          actor,
+          ownerId: actor.id,
+          x: clamp(x, 0, WORLD_SIZE),
+          y: clamp(y, 0, WORLD_SIZE),
+          mass: Math.max(MIN_CELL_MASS, mass),
+          radius: 1,
+          vx: 0,
+          vy: 0,
+          boostX: 0,
+          boostY: 0,
+          cooldown: 0,
+          mergeReadyAt: 0,
+          capFramesLeft: mass > MAX_CELL_MASS ? MASS_CAP_SETTLE_FRAMES : 0,
+          birthAge: 1,
+          birthDuration: 0,
+          birthX: x,
+          birthY: y,
+          birthScale: 1,
+          fragmentAge: 0,
+          splitBoostAge: 0,
+          virusCooldown: 0,
+          mergeVirusWindow: 0,
+          mergeOverflowMass: Math.max(0, mass - MAX_CELL_MASS),
+          mergeBurstPieces: 1,
+          mergeBurstTotal: mass,
+          targetX: x,
+          targetY: y,
+          dead: false
+        };
+        refreshCell(cell);
+        return cell;
+      }
+
+      function startCellBirth(cell, originX, originY, duration = 0.16, scale = 0.08) {
+        cell.birthAge = 0;
+        cell.birthDuration = duration;
+        cell.birthX = originX;
+        cell.birthY = originY;
+        cell.birthScale = scale;
+      }
+
+      function capBoost(cell, maxSpeed) {
+        const speed = Math.hypot(cell.boostX, cell.boostY);
+        if (speed <= maxSpeed || speed < 0.001) return;
+        const scale = maxSpeed / speed;
+        cell.boostX *= scale;
+        cell.boostY *= scale;
+      }
+
+      function capVelocity(cell, maxSpeed) {
+        const speed = Math.hypot(cell.vx, cell.vy);
+        if (speed <= maxSpeed || speed < 0.001) return;
+        const scale = maxSpeed / speed;
+        cell.vx *= scale;
+        cell.vy *= scale;
+      }
+
+      function randomSpreadAngles(count) {
+        const angles = [];
+        const offset = rand(0, TAU);
+        const step = TAU / Math.max(1, count);
+        for (let i = 0; i < count; i += 1) {
+          angles.push(offset + i * step + rand(-step * 0.42, step * 0.42));
+        }
+        for (let i = angles.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(rand(0, i + 1));
+          const tmp = angles[i];
+          angles[i] = angles[j];
+          angles[j] = tmp;
+        }
+        return angles;
+      }
+
+      function virusFragmentAngles(count) {
+        const angles = [];
+        const step = TAU / Math.max(1, count);
+        const offset = rand(0, TAU);
+        for (let i = 0; i < count; i += 1) {
+          angles.push(offset + (i + rand(0.12, 0.88)) * step);
+        }
+        for (let i = angles.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(rand(0, i + 1));
+          const tmp = angles[i];
+          angles[i] = angles[j];
+          angles[j] = tmp;
+        }
+        return angles;
+      }
+
+      function mergeBurstMasses(total, count) {
+        if (count <= 1) return [total];
+        const parentMass = Math.min(MAX_CELL_MASS, total);
+        const overflow = Math.max(0, total - parentMass);
+        const childCount = count - 1;
+        if (overflow <= 0 || childCount <= 0) return [total];
+
+        const masses = [parentMass];
+        let remainingOverflow = overflow;
+        for (let i = 0; i < childCount; i += 1) {
+          const remainingChildren = childCount - i;
+          const minAllowed = Math.max(MIN_CELL_MASS, remainingOverflow - MAX_CELL_MASS * (remainingChildren - 1));
+          const maxAllowed = Math.min(MAX_CELL_MASS, remainingOverflow - MIN_CELL_MASS * (remainingChildren - 1));
+          const ideal = Math.min(MAX_CELL_MASS, remainingOverflow / remainingChildren);
+          const mass = i === childCount - 1
+            ? remainingOverflow
+            : clamp(
+                ideal * rand(0.9, 1.1),
+                minAllowed,
+                maxAllowed
+              );
+          masses.push(mass);
+          remainingOverflow -= mass;
+        }
+        return masses;
+      }
+
+      function totalMass(actor) {
+        let total = 0;
+        for (const cell of actor.cells) total += cell.mass;
+        return total;
+      }
+
+      function actorCenter(actor) {
+        let mass = 0;
+        let x = 0;
+        let y = 0;
+        for (const cell of actor.cells) {
+          mass += cell.mass;
+          x += cell.x * cell.mass;
+          y += cell.y * cell.mass;
+        }
+        if (mass <= 0) return { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 0 };
+        return { x: x / mass, y: y / mass, mass };
+      }
+
+      function allCells(out = []) {
+        out.length = 0;
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (!cell.dead) out.push(cell);
+          }
+        }
+        return out;
+      }
+
+      function liveCellCount(actor) {
+        let count = 0;
+        for (const cell of actor.cells) {
+          if (!cell.dead) count += 1;
+        }
+        return count;
+      }
+
+      function mergeContributionPieces(cell) {
+        if (cell.mergeBurstTotal > MAX_CELL_MASS && cell.mergeBurstPieces > 1) {
+          return cell.mergeBurstPieces;
+        }
+        return 1;
+      }
+
+      function mergeAccountingMass(cell) {
+        if (cell.mergeBurstTotal > MAX_CELL_MASS) {
+          return Math.max(cell.mass, cell.mergeBurstTotal);
+        }
+        return cell.mass;
+      }
+
+      function mergeVirusHitRadius(cell) {
+        const hitMass = clamp(
+          Math.max(cell.mass, cell.mergeBurstTotal || 0),
+          MAX_CELL_MASS,
+          MAX_MERGE_VIRUS_HIT_MASS
+        );
+        return radiusFromMass(hitMass);
+      }
+
+      function virusCollisionPriority(cell) {
+        if (cell.mergeBurstTotal > MAX_CELL_MASS) {
+          return 100000000 + cell.mergeBurstTotal;
+        }
+        if (cell.mergeVirusWindow > 0) {
+          return 50000000 + cell.mass;
+        }
+        if (cell.fragmentAge > 0) {
+          return cell.mass - 1000000;
+        }
+        return cell.mass;
+      }
+
+      function randomPosition(padding = 80) {
+        return {
+          x: rand(padding, WORLD_SIZE - padding),
+          y: rand(padding, WORLD_SIZE - padding)
+        };
+      }
+
+      function spawnClearanceScore(x, y, radius, options = {}) {
+        let score = Math.min(
+          x - radius,
+          y - radius,
+          WORLD_SIZE - radius - x,
+          WORLD_SIZE - radius - y
+        );
+
+        if (options.avoidX != null && options.avoidY != null) {
+          score = Math.min(score, Math.sqrt(distSq(x, y, options.avoidX, options.avoidY)) - (options.avoidRadius || 0));
+        }
+
+        const cellPadding = options.cellPadding || 0;
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (cell.dead) continue;
+            score = Math.min(score, Math.sqrt(distSq(x, y, cell.x, cell.y)) - radius - cell.radius - cellPadding);
+          }
+        }
+
+        if (options.avoidViruses) {
+          const virusPadding = options.virusPadding || 0;
+          for (const virus of state.viruses) {
+            if (virus.dead) continue;
+            score = Math.min(score, Math.sqrt(distSq(x, y, virus.x, virus.y)) - radius - virus.radius - virusPadding);
+          }
+        }
+
+        if (options.avoidFoods) {
+          const foodPadding = options.foodPadding || 0;
+          for (const food of state.foods) {
+            if (food.dead) continue;
+            score = Math.min(score, Math.sqrt(distSq(x, y, food.x, food.y)) - radius - food.radius - foodPadding);
+          }
+        }
+
+        return score;
+      }
+
+      function findOpenSpawnPosition(radius, padding = 80, attempts = 24, options = {}) {
+        let best = randomPosition(padding);
+        let bestScore = -Infinity;
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const pos = randomPosition(padding);
+          const score = spawnClearanceScore(pos.x, pos.y, radius, options);
+          if (score > bestScore) {
+            best = pos;
+            bestScore = score;
+          }
+        }
+        return best;
+      }
+
+      function spawnActor(actor, mass = 70, preferredX = null, preferredY = null) {
+        const pos = preferredX == null ? findSpawnPosition(mass) : { x: preferredX, y: preferredY };
+        actor.cells.length = 0;
+        actor.respawns += 1;
+        actor.respawnAt = 0;
+        actor.lastSplit = -100;
+        actor.lastEject = -100;
+        const cell = createCell(actor, pos.x, pos.y, mass);
+        actor.cells.push(cell);
+        actor.input.targetX = pos.x;
+        actor.input.targetY = pos.y;
+      }
+
+      function findSpawnPosition(mass) {
+        const radius = radiusFromMass(mass);
+        return findOpenSpawnPosition(radius, 320, 90, {
+          avoidViruses: true,
+          virusPadding: 130,
+          cellPadding: 180
+        });
+      }
+
+      function createFood() {
+        const mass = rand(1.2, 3.4);
+        const radius = radiusFromMass(mass);
+        const pos = findOpenSpawnPosition(radius, 20, 10, {
+          avoidViruses: true,
+          avoidFoods: true,
+          virusPadding: 24,
+          foodPadding: 4,
+          cellPadding: 60
+        });
+        return {
+          id: nextId(),
+          type: "food",
+          x: pos.x,
+          y: pos.y,
+          mass,
+          radius,
+          color: foodPalette[Math.floor(Math.random() * foodPalette.length)],
+          dead: false
+        };
+      }
+
+      function createVirus(x = null, y = null) {
+        const radius = radiusFromMass(VIRUS_MASS);
+        const pos = x == null
+          ? findOpenSpawnPosition(radius, 180, 28, {
+              avoidViruses: true,
+              avoidFoods: true,
+              virusPadding: 28,
+              foodPadding: 8,
+              cellPadding: 120
+            })
+          : { x, y };
+        return {
+          id: nextId(),
+          type: "virus",
+          x: clamp(pos.x, 60, WORLD_SIZE - 60),
+          y: clamp(pos.y, 60, WORLD_SIZE - 60),
+          mass: VIRUS_MASS,
+          radius,
+          vx: 0,
+          vy: 0,
+          feedCount: 0,
+          dead: false
+        };
+      }
+
+      function spawnVirusSafely(avoidX = null, avoidY = null) {
+        const radius = radiusFromMass(VIRUS_MASS);
+        const pos = findOpenSpawnPosition(radius, 180, 36, {
+          avoidViruses: true,
+          avoidFoods: true,
+          avoidX,
+          avoidY,
+          avoidRadius: avoidX == null ? 0 : 560,
+          virusPadding: 32,
+          foodPadding: 8,
+          cellPadding: 130
+        });
+        return createVirus(pos.x, pos.y);
+      }
+
+      function createFeed(x, y, dirX, dirY, color, ownerId, speed = 710) {
+        const feed = {
+          id: nextId(),
+          type: "feed",
+          x: clamp(x, 0, WORLD_SIZE),
+          y: clamp(y, 0, WORLD_SIZE),
+          mass: EJECT_MASS,
+          radius: radiusFromMass(EJECT_MASS),
+          vx: dirX * speed,
+          vy: dirY * speed,
+          age: 0,
+          color,
+          ownerId,
+          dead: false
+        };
+        state.feeds.push(feed);
+        if (state.feeds.length > 420) state.feeds.splice(0, state.feeds.length - 420);
+        return feed;
+      }
+
+      function rebuildSpatialHashes() {
+        foodGrid.clear();
+        feedGrid.clear();
+        virusGrid.clear();
+        cellGrid.clear();
+        for (const food of state.foods) if (!food.dead) foodGrid.insert(food);
+        for (const feed of state.feeds) if (!feed.dead) feedGrid.insert(feed);
+        for (const virus of state.viruses) if (!virus.dead) virusGrid.insert(virus);
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (!cell.dead) cellGrid.insert(cell);
+          }
+        }
+      }
+
+      function screenToWorld(x, y) {
+        return {
+          x: state.camera.x + (x - state.width * 0.5) / state.camera.zoom,
+          y: state.camera.y + (y - state.height * 0.5) / state.camera.zoom
+        };
+      }
+
+      function updateMouseWorld() {
+        const world = screenToWorld(state.input.mouseX, state.input.mouseY);
+        state.input.mouseWorldX = clamp(world.x, 0, WORLD_SIZE);
+        state.input.mouseWorldY = clamp(world.y, 0, WORLD_SIZE);
+      }
+
+      function actorAimDirection(actor) {
+        const center = actorCenter(actor);
+        const n = normalized(
+          actor.input.targetX - center.x,
+          actor.input.targetY - center.y,
+          actor.input.lastAimX,
+          actor.input.lastAimY
+        );
+        if (n.length > 0.001) {
+          actor.input.lastAimX = n.x;
+          actor.input.lastAimY = n.y;
+        }
+        return n;
+      }
+
+      function splitImpulse(radius) {
+        return 2400;
+      }
+
+      function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
+        if (liveCellCount(actor) >= MAX_CELLS) return null;
+        if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
+
+        if (targetX != null && targetY != null) {
+          const aim = normalized(targetX - source.x, targetY - source.y, dirX, dirY);
+          dirX = aim.x;
+          dirY = aim.y;
+        }
+
+        const childMass = source.mass * 0.5;
+        const remaining = source.mass - childMass;
+        if (childMass < MIN_CELL_MASS || remaining < MIN_CELL_MASS) return null;
+
+        source.mass = remaining;
+        refreshCell(source);
+        setMergeCooldown(source);
+
+        const childRadius = radiusFromMass(childMass);
+        const originX = source.x;
+        const originY = source.y;
+        const offset = Math.max(26, childRadius * 0.7);
+        const child = createCell(
+          actor,
+          originX + dirX * offset,
+          originY + dirY * offset,
+          childMass
+        );
+        child.vx = source.vx;
+        child.vy = source.vy;
+        child.boostX = dirX * splitImpulse(child.radius);
+        child.boostY = dirY * splitImpulse(child.radius);
+        child.splitBoostAge = 0.48;
+        source.vx *= 0.32;
+        source.vy *= 0.32;
+        source.boostX *= 0.02;
+        source.boostY *= 0.02;
+        if (targetX != null && targetY != null) {
+          source.targetX = targetX;
+          source.targetY = targetY;
+          child.targetX = targetX;
+          child.targetY = targetY;
+        }
+        setMergeCooldown(child);
+        startCellBirth(child, originX, originY, 0.18, 0.04);
+        actor.cells.push(child);
+        return child;
+      }
+
+      function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null) {
+        if (liveCellCount(actor) >= MAX_CELLS) return false;
+        if (now - actor.lastSplit < interval) return false;
+
+        const candidates = actor.cells
+          .slice()
+          .sort((a, b) => b.mass - a.mass);
+        let didSplit = false;
+        for (const cell of candidates) {
+          if (liveCellCount(actor) >= MAX_CELLS) break;
+          const child = splitCell(actor, cell, dirX, dirY, targetX, targetY);
+          if (child) didSplit = true;
+        }
+        if (didSplit) actor.lastSplit = now;
+        return didSplit;
+      }
+
+      function ejectMass(actor, now) {
+        if (now - actor.lastEject < EJECT_INTERVAL) return false;
+        let emitted = false;
+        for (const cell of actor.cells) {
+          if (cell.mass - EJECT_COST < MIN_SPLIT_SOURCE_MASS) continue;
+          const targetX = isPlayerControlled(actor) ? actor.input.targetX : cell.targetX;
+          const targetY = isPlayerControlled(actor) ? actor.input.targetY : cell.targetY;
+          const n = normalized(targetX - cell.x, targetY - cell.y, actor.input.lastAimX, actor.input.lastAimY);
+          if (n.length > 0.001) {
+            actor.input.lastAimX = n.x;
+            actor.input.lastAimY = n.y;
+          }
+          cell.mass -= EJECT_COST;
+          refreshCell(cell);
+          const startX = cell.x + n.x * (cell.radius + 18);
+          const startY = cell.y + n.y * (cell.radius + 18);
+          const feed = createFeed(startX, startY, n.x, n.y, actor.color, actor.id);
+          feed.vx += cell.vx * 0.25 + cell.boostX * 0.08;
+          feed.vy += cell.vy * 0.25 + cell.boostY * 0.08;
+          emitted = true;
+        }
+        if (emitted) actor.lastEject = now;
+        return emitted;
+      }
+
+      function scatterMass(cell, ratio, preferredX = 0, preferredY = 0) {
+        const removable = Math.max(0, cell.mass - MIN_SPLIT_SOURCE_MASS);
+        const loss = Math.min(removable, cell.mass * ratio);
+        const count = Math.min(14, Math.floor(loss / EJECT_MASS));
+        if (count <= 0) return;
+
+        const base = normalized(preferredX, preferredY, 1, 0);
+        let removed = 0;
+        for (let i = 0; i < count; i += 1) {
+          const angle = Math.atan2(base.y, base.x) + rand(-1.35, 1.35) + i * 0.21;
+          const dirX = Math.cos(angle);
+          const dirY = Math.sin(angle);
+          const feed = createFeed(
+            cell.x + dirX * (cell.radius + 10),
+            cell.y + dirY * (cell.radius + 10),
+            dirX,
+            dirY,
+            cell.actor.color,
+            cell.ownerId,
+            rand(520, 820)
+          );
+          feed.age = 0.18;
+          removed += EJECT_MASS;
+        }
+        cell.mass = Math.max(MIN_CELL_MASS, cell.mass - removed);
+        refreshCell(cell);
+      }
+
+      function explodeCellOnVirus(actor, cell, virus) {
+        const liveCells = liveCellCount(actor);
+        if (liveCells >= MAX_CELLS) {
+          return;
+        }
+
+        const originalMass = cell.mass;
+        const total = originalMass + virus.mass;
+        const slots = MAX_CELLS - liveCells + 1;
+        const originX = cell.x;
+        const originY = cell.y;
+
+        if (cell.mergeBurstTotal > MAX_CELL_MASS && slots > 1) {
+          const mergeTotal = Math.max(originalMass, cell.mergeBurstTotal || 0);
+          const mergeExcess = Math.max(0, mergeTotal - MAX_CELL_MASS);
+          const requiredOverflowPieces = Math.max(1, Math.ceil(mergeExcess / MAX_CELL_MASS));
+          const outputCount = Math.min(slots, 1 + requiredOverflowPieces);
+          if (mergeTotal > MAX_CELL_MASS && outputCount > 1 && mergeExcess >= MIN_CELL_MASS) {
+            const splitMasses = mergeBurstMasses(mergeTotal, outputCount);
+
+            cell.mass = splitMasses[0];
+            cell.mergeOverflowMass = 0;
+            cell.mergeBurstPieces = 1;
+            cell.mergeBurstTotal = cell.mass;
+            cell.capFramesLeft = cell.mass > MAX_CELL_MASS ? MASS_CAP_SETTLE_FRAMES : 0;
+            refreshCell(cell);
+            setMergeCooldown(cell);
+            cell.vx *= 0.14;
+            cell.vy *= 0.14;
+            cell.boostX *= 0.08;
+            cell.boostY *= 0.08;
+            cell.virusCooldown = 0.24;
+            cell.mergeVirusWindow = 0;
+            capBoost(cell, 70);
+            startCellBirth(cell, originX, originY, 0.08, 0.94);
+
+            const angles = virusFragmentAngles(outputCount - 1);
+            for (let i = 1; i < outputCount; i += 1) {
+              const angle = angles[i - 1];
+              const dirX = Math.cos(angle);
+              const dirY = Math.sin(angle);
+              const childMass = Math.max(MIN_CELL_MASS, splitMasses[i]);
+              const childRadius = radiusFromMass(childMass);
+              const spawnDistance = cell.radius + childRadius * rand(1.05, 1.52) + rand(28, 122);
+              const child = createCell(
+                actor,
+                clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+                clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+                childMass
+              );
+              child.vx = cell.vx * 0.08;
+              child.vy = cell.vy * 0.08;
+              const massDrag = clamp(Math.sqrt(90 / Math.max(20, child.mass)), 0.62, 1.12);
+              const burst = rand(900, 1320) * massDrag;
+              child.boostX = dirX * burst;
+              child.boostY = dirY * burst;
+              capBoost(child, 1120);
+              child.fragmentAge = VIRUS_FRAGMENT_LIFE;
+              child.virusCooldown = 0.24;
+              setMergeCooldown(child);
+              startCellBirth(child, originX, originY, 0.16, 0.72);
+              actor.cells.push(child);
+            }
+            return;
+          }
+        }
+
+        if (originalMass >= VIRUS_CORE_SPLIT_MASS && slots > 1) {
+          const fragmentCount = Math.min(
+            slots - 1,
+            15,
+            Math.max(5, Math.floor(originalMass / 350) + 4)
+          );
+          if (fragmentCount > 0) {
+            const fragmentBudget = Math.max(MIN_CELL_MASS * fragmentCount, originalMass * 0.5);
+            const weights = [];
+            let weightTotal = 0;
+            for (let i = 0; i < fragmentCount; i += 1) {
+              const weight = rand(0.45, 1.65);
+              weights.push(weight);
+              weightTotal += weight;
+            }
+            const fragmentMasses = weights.map((weight) => Math.max(MIN_CELL_MASS, fragmentBudget * weight / weightTotal));
+            const actualFragmentTotal = fragmentMasses.reduce((sum, mass) => sum + mass, 0);
+            const coreMass = Math.max(MIN_CELL_MASS, originalMass - actualFragmentTotal + virus.mass);
+
+            cell.mass = coreMass;
+            if (cell.mass > MAX_CELL_MASS) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
+            refreshCell(cell);
+            setMergeCooldown(cell);
+            startCellBirth(cell, originX, originY, 0.1, 0.86);
+
+            cell.vx *= 0.16;
+            cell.vy *= 0.16;
+            cell.boostX *= 0.08;
+            cell.boostY *= 0.08;
+            cell.virusCooldown = 0.38;
+            capBoost(cell, 70);
+            const angles = virusFragmentAngles(fragmentCount);
+            for (let i = 0; i < fragmentCount; i += 1) {
+              const angle = angles[i];
+              const dirX = Math.cos(angle);
+              const dirY = Math.sin(angle);
+              const childRadius = radiusFromMass(fragmentMasses[i]);
+              const spawnDistance = cell.radius + childRadius * rand(1.0, 1.42) + rand(18, 96);
+              const child = createCell(
+                actor,
+                clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+                clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+                fragmentMasses[i]
+              );
+              child.vx = cell.vx * 0.08;
+              child.vy = cell.vy * 0.08;
+              const massDrag = clamp(Math.sqrt(80 / Math.max(20, child.mass)), 0.62, 1.08);
+              const burst = rand(900, 1300) * massDrag;
+              child.boostX = dirX * burst;
+              child.boostY = dirY * burst;
+              capBoost(child, 1120);
+              child.fragmentAge = VIRUS_FRAGMENT_LIFE;
+              child.virusCooldown = 0.38;
+              setMergeCooldown(child);
+              startCellBirth(child, originX, originY, 0.2, 0.02);
+              actor.cells.push(child);
+            }
+            return;
+          }
+        }
+
+        const desiredPieces = clamp(Math.floor(total / MIN_SPLIT_SOURCE_MASS), 4, MAX_CELLS);
+        const pieces = Math.min(slots, desiredPieces);
+        if (pieces <= 1) {
+          scatterMass(cell, 0.22, cell.x - virus.x, cell.y - virus.y);
+          return;
+        }
+
+        const pieceMass = Math.max(MIN_CELL_MASS, total / pieces);
+        cell.mass = pieceMass;
+        refreshCell(cell);
+        setMergeCooldown(cell);
+        cell.vx *= 0.18;
+        cell.vy *= 0.18;
+        cell.boostX *= 0.1;
+        cell.boostY *= 0.1;
+        cell.virusCooldown = 0.38;
+        capBoost(cell, 80);
+        startCellBirth(cell, originX, originY, 0.12, 0.72);
+
+        const angles = virusFragmentAngles(pieces - 1);
+        for (let i = 1; i < pieces; i += 1) {
+          const angle = angles[i - 1];
+          const dirX = Math.cos(angle);
+          const dirY = Math.sin(angle);
+          const childRadius = radiusFromMass(pieceMass);
+          const spawnDistance = cell.radius + childRadius * rand(1.0, 1.34) + rand(14, 84);
+          const child = createCell(
+            actor,
+            clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+            clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+            pieceMass
+          );
+          child.vx = cell.vx * 0.08;
+          child.vy = cell.vy * 0.08;
+          child.boostX = dirX * rand(900, 1300);
+          child.boostY = dirY * rand(900, 1300);
+          capBoost(child, 1120);
+          child.fragmentAge = VIRUS_FRAGMENT_LIFE;
+          child.virusCooldown = 0.38;
+          setMergeCooldown(child);
+          startCellBirth(child, originX, originY, 0.2, 0.03);
+          actor.cells.push(child);
+        }
+      }
+
+      function updateBotAI(bot, dt, now) {
+        bot.aiTimer -= dt;
+        if (bot.aiTimer > 0) return;
+        bot.aiTimer = rand(0.16, 0.32);
+
+        const center = actorCenter(bot);
+        if (distSq(center.x, center.y, bot.wanderX, bot.wanderY) < 160 * 160 || Math.random() < 0.03) {
+          bot.wanderX = rand(260, WORLD_SIZE - 260);
+          bot.wanderY = rand(260, WORLD_SIZE - 260);
+        }
+
+        for (const cell of bot.cells) {
+          let bestPrey = null;
+          let bestPreyScore = 0;
+
+          const nearbyCells = cellGrid.query(cell.x, cell.y, BOT_AI_SCAN_RANGE, aiCellsScratch);
+          for (const other of nearbyCells) {
+            if (other.ownerId === bot.id || other.dead) continue;
+            const dx = other.x - cell.x;
+            const dy = other.y - cell.y;
+            const d2 = dx * dx + dy * dy;
+            const dist = Math.sqrt(d2) || 1;
+
+            if (other.radius >= cell.radius * CONSUME_RATIO && dist < 980) {
+              continue;
+            }
+
+            if (cell.radius >= other.radius * CONSUME_RATIO && dist < 1050) {
+              const score = other.mass / Math.max(120, dist);
+              if (score > bestPreyScore) {
+                bestPreyScore = score;
+                bestPrey = other;
+              }
+            }
+          }
+
+          const nearbyViruses = virusGrid.query(cell.x, cell.y, 620, aiEntityScratch);
+          let avoidVirusX = 0;
+          let avoidVirusY = 0;
+          let avoidVirusPower = 0;
+          for (const virus of nearbyViruses) {
+            if (cell.mass < VIRUS_EXPLODE_MASS) continue;
+            const dx = virus.x - cell.x;
+            const dy = virus.y - cell.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > 620 * 620) continue;
+            const d = Math.sqrt(d2) || 1;
+            const danger = Math.max(0, 1 - d / 620);
+            avoidVirusX -= dx / d * danger;
+            avoidVirusY -= dy / d * danger;
+            avoidVirusPower += danger;
+          }
+
+          if (avoidVirusPower > 0.18) {
+            const n = normalized(avoidVirusX, avoidVirusY, bot.wanderX - cell.x, bot.wanderY - cell.y);
+            cell.targetX = clamp(cell.x + n.x * 780, 120, WORLD_SIZE - 120);
+            cell.targetY = clamp(cell.y + n.y * 780, 120, WORLD_SIZE - 120);
+            continue;
+          }
+
+          if (bestPrey) {
+            cell.targetX = bestPrey.x;
+            cell.targetY = bestPrey.y;
+            const d = Math.hypot(bestPrey.x - cell.x, bestPrey.y - cell.y);
+            continue;
+          }
+
+          let nearestHuman = null;
+          let nearestHumanD2 = Infinity;
+          for (const actor of state.actors) {
+            if (!actor.isHuman || actor.id === bot.id) continue;
+            for (const humanCell of actor.cells) {
+              if (humanCell.dead) continue;
+              const d2 = distSq(cell.x, cell.y, humanCell.x, humanCell.y);
+              if (d2 < nearestHumanD2) {
+                nearestHumanD2 = d2;
+                nearestHuman = humanCell;
+              }
+            }
+          }
+
+          if (nearestHuman) {
+            const orbit = nearestHuman.radius * 0.42 + 46;
+            const angle = (cell.id * 2.399 + bot.respawns * 0.73) % TAU;
+            cell.targetX = clamp(nearestHuman.x + Math.cos(angle) * orbit, 80, WORLD_SIZE - 80);
+            cell.targetY = clamp(nearestHuman.y + Math.sin(angle) * orbit, 80, WORLD_SIZE - 80);
+            continue;
+          }
+
+          let bestFood = null;
+          let bestFoodD2 = Infinity;
+          const nearbyFood = foodGrid.query(cell.x, cell.y, 620, aiEntityScratch);
+          for (const food of nearbyFood) {
+            if (food.dead) continue;
+            const d2 = distSq(cell.x, cell.y, food.x, food.y);
+            if (d2 < bestFoodD2) {
+              bestFoodD2 = d2;
+              bestFood = food;
+            }
+          }
+
+          const nearbyFeeds = feedGrid.query(cell.x, cell.y, 760, aiEntityScratch);
+          for (const feed of nearbyFeeds) {
+            if (feed.dead || feed.age < 0.25) continue;
+            const d2 = distSq(cell.x, cell.y, feed.x, feed.y) * 0.45;
+            if (d2 < bestFoodD2 && cell.radius >= feed.radius * CONSUME_RATIO) {
+              bestFoodD2 = d2;
+              bestFood = feed;
+            }
+          }
+
+          if (bestFood) {
+            cell.targetX = bestFood.x;
+            cell.targetY = bestFood.y;
+          } else {
+            cell.targetX = bot.wanderX;
+            cell.targetY = bot.wanderY;
+          }
+        }
+      }
+
+      function actorHasMergeRoom(actor) {
+        return liveCellCount(actor) < MAX_CELLS;
+      }
+
+      function cellSpeed(cell) {
+        return clamp(1440 / Math.pow(cell.radius, 0.46), 116, 436);
+      }
+
+      function updateCellMotion(dt) {
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (isPlayerControlled(actor)) {
+              cell.targetX = actor.input.targetX;
+              cell.targetY = actor.input.targetY;
+            }
+
+            const dx = cell.targetX - cell.x;
+            const dy = cell.targetY - cell.y;
+            const n = normalized(dx, dy, 0, 0);
+            const speed = cellSpeed(cell);
+            const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
+            const desiredX = n.x * speed * throttle;
+            const desiredY = n.y * speed * throttle;
+            const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 0.8 : 4.7));
+
+            cell.vx += (desiredX - cell.vx) * steer;
+            cell.vy += (desiredY - cell.vy) * steer;
+            const maxBoost = cell.fragmentAge > 0
+              ? 1120
+              : (cell.splitBoostAge > 0 ? 2700 : 720);
+            capVelocity(cell, speed * 1.35);
+            capBoost(cell, maxBoost);
+            cell.x += (cell.vx + cell.boostX) * dt;
+            cell.y += (cell.vy + cell.boostY) * dt;
+
+            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 3.35 : 3.7);
+            const decay = Math.exp(-dt * decayRate);
+            cell.boostX *= decay;
+            cell.boostY *= decay;
+            if (Math.abs(cell.boostX) < 0.02) cell.boostX = 0;
+            if (Math.abs(cell.boostY) < 0.02) cell.boostY = 0;
+            capBoost(cell, maxBoost);
+
+            if (cell.birthAge < cell.birthDuration) {
+              cell.birthAge = Math.min(cell.birthDuration, cell.birthAge + dt);
+            }
+            if (cell.fragmentAge > 0) cell.fragmentAge = Math.max(0, cell.fragmentAge - dt);
+            if (cell.splitBoostAge > 0) cell.splitBoostAge = Math.max(0, cell.splitBoostAge - dt);
+            if (cell.virusCooldown > 0) cell.virusCooldown = Math.max(0, cell.virusCooldown - dt);
+            if (cell.mergeVirusWindow > 0) cell.mergeVirusWindow = Math.max(0, cell.mergeVirusWindow - dt);
+            cell.cooldown = mergeTimeLeft(cell);
+            let cappedThisFrame = false;
+            if (cell.mass > MAX_CELL_MASS) {
+              if (cell.capFramesLeft <= 0) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
+              const frameStep = Math.min(cell.capFramesLeft, dt * 60);
+              const reduceRatio = frameStep / Math.max(1, cell.capFramesLeft);
+              cell.mass -= (cell.mass - MAX_CELL_MASS) * reduceRatio;
+              cell.capFramesLeft -= frameStep;
+              if (cell.capFramesLeft <= 0.001 || cell.mass <= MAX_CELL_MASS + 0.001) {
+                cell.mass = MAX_CELL_MASS;
+                cell.capFramesLeft = 0;
+              }
+              cell.mergeOverflowMass = Math.max(0, Math.min(cell.mergeOverflowMass, cell.mass - MAX_CELL_MASS));
+              refreshCell(cell);
+              cappedThisFrame = true;
+            } else {
+              cell.capFramesLeft = 0;
+              cell.mergeOverflowMass = 0;
+            }
+            if (cell.mass > 100 && !cappedThisFrame) {
+              cell.mass = Math.max(MIN_CELL_MASS, cell.mass - cell.mass * MASS_DECAY_PER_SECOND * dt);
+              refreshCell(cell);
+            }
+
+            if (cell.x < cell.radius) {
+              cell.x = cell.radius;
+              cell.boostX = Math.max(0, cell.boostX);
+              cell.vx = Math.max(0, cell.vx);
+            } else if (cell.x > WORLD_SIZE - cell.radius) {
+              cell.x = WORLD_SIZE - cell.radius;
+              cell.boostX = Math.min(0, cell.boostX);
+              cell.vx = Math.min(0, cell.vx);
+            }
+
+            if (cell.y < cell.radius) {
+              cell.y = cell.radius;
+              cell.boostY = Math.max(0, cell.boostY);
+              cell.vy = Math.max(0, cell.vy);
+            } else if (cell.y > WORLD_SIZE - cell.radius) {
+              cell.y = WORLD_SIZE - cell.radius;
+              cell.boostY = Math.min(0, cell.boostY);
+              cell.vy = Math.min(0, cell.vy);
+            }
+          }
+        }
+      }
+
+      function tryMerge(actor, a, b) {
+        if (!canCellMerge(a) || !canCellMerge(b)) return false;
+
+        const aMergeMass = mergeAccountingMass(a);
+        const bMergeMass = mergeAccountingMass(b);
+        let big = aMergeMass >= bMergeMass ? a : b;
+        let small = big === a ? b : a;
+        const bigMergeMass = big === a ? aMergeMass : bMergeMass;
+        const smallMergeMass = small === a ? aMergeMass : bMergeMass;
+        const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
+        const overlapDepth = big.radius + small.radius - centerDistance;
+        if (overlapDepth <= small.radius) return false;
+
+        const total = bigMergeMass + smallMergeMass;
+        const mergePieces = mergeContributionPieces(big) + mergeContributionPieces(small);
+        const inv = 1 / total;
+        big.x = (big.x * bigMergeMass + small.x * smallMergeMass) * inv;
+        big.y = (big.y * bigMergeMass + small.y * smallMergeMass) * inv;
+        big.vx = (big.vx * bigMergeMass + small.vx * smallMergeMass) * inv;
+        big.vy = (big.vy * bigMergeMass + small.vy * smallMergeMass) * inv;
+        big.boostX = (big.boostX * bigMergeMass + small.boostX * smallMergeMass) * inv;
+        big.boostY = (big.boostY * bigMergeMass + small.boostY * smallMergeMass) * inv;
+        big.mass = total;
+        big.virusCooldown = 0;
+        big.mergeOverflowMass = Math.max(0, total - MAX_CELL_MASS);
+        big.mergeBurstPieces = total > MAX_CELL_MASS ? mergePieces : 1;
+        big.mergeBurstTotal = total;
+        big.mergeVirusWindow = total > MAX_CELL_MASS ? 4.0 : 0.28;
+        if (big.mass > MAX_CELL_MASS) big.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
+        refreshCell(big);
+        capVelocity(big, cellSpeed(big) * 1.25);
+        capBoost(big, 120);
+        small.dead = true;
+        return true;
+      }
+
+      function separateOwnCells(actor) {
+        for (let i = 0; i < actor.cells.length; i += 1) {
+          const a = actor.cells[i];
+          if (a.dead) continue;
+          for (let j = i + 1; j < actor.cells.length; j += 1) {
+            const b = actor.cells[j];
+            if (b.dead) continue;
+
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const d = Math.hypot(dx, dy) || 0.001;
+            const touch = a.radius + b.radius;
+            const bothMergeReady = canCellMerge(a) && canCellMerge(b);
+            if (bothMergeReady) continue;
+
+            const minD = touch * 0.94;
+            if (d >= minD) continue;
+
+            const rawOverlap = minD - d;
+            const overlap = Math.min(rawOverlap * 0.28, 16);
+            const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233) % TAU);
+            const nx = d < 0.01 ? Math.cos(fallbackAngle) : dx / d;
+            const ny = d < 0.01 ? Math.sin(fallbackAngle) : dy / d;
+            const total = a.mass + b.mass;
+            const aShare = b.mass / total;
+            const bShare = a.mass / total;
+            a.x -= nx * overlap * aShare;
+            a.y -= ny * overlap * aShare;
+            b.x += nx * overlap * bShare;
+            b.y += ny * overlap * bShare;
+            a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius);
+            a.y = clamp(a.y, a.radius, WORLD_SIZE - a.radius);
+            b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
+            b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius);
+
+            const damping = (a.splitBoostAge > 0 || b.splitBoostAge > 0) ? 0.995 : 0.94;
+            a.vx *= damping;
+            a.vy *= damping;
+            b.vx *= damping;
+            b.vy *= damping;
+            a.boostX *= damping;
+            a.boostY *= damping;
+            b.boostX *= damping;
+            b.boostY *= damping;
+            dampOwnFragmentCollision(a, b);
+          }
+        }
+      }
+
+      function dampOwnFragmentCollision(a, b) {
+        const applyDamping = (fragment, other) => {
+          if (fragment.fragmentAge <= 0) return;
+          const sizeRatio = Math.sqrt(fragment.mass / Math.max(fragment.mass, other.mass));
+          const keepBoost = clamp(sizeRatio, 0.16, 0.82);
+          const keepVelocity = clamp(0.42 + sizeRatio * 0.34, 0.42, 0.82);
+          fragment.boostX *= keepBoost;
+          fragment.boostY *= keepBoost;
+          fragment.vx *= keepVelocity;
+          fragment.vy *= keepVelocity;
+        };
+
+        applyDamping(a, b);
+        applyDamping(b, a);
+      }
+
+      function limitOwnCellSpread(actor) {
+        if (actor.cells.length < 2) return;
+        const center = actorCenter(actor);
+        const maxDistance = clamp(
+          220 + Math.sqrt(center.mass) * 5 + actor.cells.length * 22,
+          340,
+          MAX_CELL_SPREAD
+        );
+
+        for (const cell of actor.cells) {
+          if (cell.dead) continue;
+          const dx = cell.x - center.x;
+          const dy = cell.y - center.y;
+          const d = Math.hypot(dx, dy);
+          const splitAllowance = cell.splitBoostAge > 0 ? 5400 * Math.min(1, cell.splitBoostAge / 0.42) : 0;
+          const allowed = maxDistance + cell.radius * 0.35 + splitAllowance;
+          if (d <= allowed || d < 0.001) continue;
+
+          const nx = dx / d;
+          const ny = dy / d;
+          const overshoot = d - allowed;
+          const pull = Math.min(overshoot, 28 + overshoot * 0.26);
+          cell.x -= nx * pull;
+          cell.y -= ny * pull;
+
+          const outwardBoost = cell.boostX * nx + cell.boostY * ny;
+          if (outwardBoost > 0) {
+            cell.boostX -= nx * outwardBoost * 0.55;
+            cell.boostY -= ny * outwardBoost * 0.55;
+          }
+
+          const hardLimit = allowed * 1.16;
+          if (d > hardLimit) {
+            cell.x = center.x + nx * hardLimit;
+            cell.y = center.y + ny * hardLimit;
+          }
+
+          cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius);
+          cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius);
+        }
+      }
+
+      function resolveOwnCells() {
+        for (const actor of state.actors) {
+          let merged = true;
+          while (merged) {
+            merged = false;
+            mergeLoop:
+            for (let i = 0; i < actor.cells.length; i += 1) {
+              for (let j = i + 1; j < actor.cells.length; j += 1) {
+                if (tryMerge(actor, actor.cells[i], actor.cells[j])) {
+                  actor.cells = actor.cells.filter((cell) => !cell.dead);
+                  merged = true;
+                  break mergeLoop;
+                }
+              }
+            }
+          }
+          separateOwnCells(actor);
+          limitOwnCellSpread(actor);
+        }
+      }
+
+      function updateLooseMass(dt) {
+        for (const feed of state.feeds) {
+          feed.age += dt;
+          feed.x += feed.vx * dt;
+          feed.y += feed.vy * dt;
+          const decay = Math.exp(-dt * 2.65);
+          feed.vx *= decay;
+          feed.vy *= decay;
+          if (feed.x < feed.radius || feed.x > WORLD_SIZE - feed.radius) {
+            feed.x = clamp(feed.x, feed.radius, WORLD_SIZE - feed.radius);
+            feed.vx *= -0.22;
+          }
+          if (feed.y < feed.radius || feed.y > WORLD_SIZE - feed.radius) {
+            feed.y = clamp(feed.y, feed.radius, WORLD_SIZE - feed.radius);
+            feed.vy *= -0.22;
+          }
+          if (feed.age > 24) feed.dead = true;
+        }
+
+        for (const virus of state.viruses) {
+          virus.x += virus.vx * dt;
+          virus.y += virus.vy * dt;
+          const decay = Math.exp(-dt * 1.25);
+          virus.vx *= decay;
+          virus.vy *= decay;
+          if (virus.x < virus.radius || virus.x > WORLD_SIZE - virus.radius) {
+            virus.x = clamp(virus.x, virus.radius, WORLD_SIZE - virus.radius);
+            virus.vx *= -0.28;
+          }
+          if (virus.y < virus.radius || virus.y > WORLD_SIZE - virus.radius) {
+            virus.y = clamp(virus.y, virus.radius, WORLD_SIZE - virus.radius);
+            virus.vy *= -0.28;
+          }
+        }
+      }
+
+      function handleFoodEating() {
+        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
+        const nearby = [];
+        for (const cell of cells) {
+          foodGrid.query(cell.x, cell.y, cell.radius + 36, nearby);
+          for (const food of nearby) {
+            if (food.dead) continue;
+            if (canConsume(cell, food)) {
+              food.dead = true;
+              addMass(cell, food.mass);
+            }
+          }
+        }
+      }
+
+      function handleFeedVirusCollisions() {
+        const nearby = [];
+        for (const feed of state.feeds) {
+          if (feed.dead) continue;
+          virusGrid.query(feed.x, feed.y, 90, nearby);
+          for (const virus of nearby) {
+            if (virus.dead) continue;
+            const hit = virus.radius + feed.radius * 0.4;
+            if (distSq(feed.x, feed.y, virus.x, virus.y) > hit * hit) continue;
+
+            feed.dead = true;
+            const owner = actorById(feed.ownerId);
+            if (owner && owner.isHuman) {
+              virus.feedCount += 1;
+              const n = normalized(feed.vx, feed.vy, feed.x - virus.x, feed.y - virus.y);
+              if (virus.feedCount >= VIRUS_FEED_LIMIT) {
+                virus.feedCount = 0;
+                const spawnX = clamp(virus.x + n.x * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
+                const spawnY = clamp(virus.y + n.y * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
+                const newVirus = createVirus(spawnX, spawnY);
+                newVirus.vx = n.x * 540;
+                newVirus.vy = n.y * 540;
+                state.viruses.push(newVirus);
+              }
+            }
+            break;
+          }
+        }
+      }
+
+      function handleFeedEating() {
+        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
+        const nearby = [];
+        for (const cell of cells) {
+          feedGrid.query(cell.x, cell.y, cell.radius + 60, nearby);
+          for (const feed of nearby) {
+            if (feed.dead || feed.age < 0.25) continue;
+            if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
+            if (canConsume(cell, feed)) {
+              feed.dead = true;
+              addMass(cell, feed.mass);
+            }
+          }
+        }
+      }
+
+      function handleVirusCellCollisions() {
+        const cells = allCells(scratch)
+          .sort((a, b) => virusCollisionPriority(b) - virusCollisionPriority(a));
+        const nearby = [];
+        for (const cell of cells) {
+          if (cell.dead) continue;
+          const overCapMergeContact = cell.mergeBurstTotal > MAX_CELL_MASS ||
+            (cell.mergeVirusWindow > 0 && (cell.mergeOverflowMass > 0 || cell.mass > MAX_CELL_MASS));
+          const virusHitRadius = overCapMergeContact ? mergeVirusHitRadius(cell) : cell.radius;
+          const mergeContactPad = (cell.mergeVirusWindow > 0 || overCapMergeContact)
+            ? Math.min(overCapMergeContact ? 760 : 120, virusHitRadius * (overCapMergeContact ? 0.55 : 0.16))
+            : 0;
+          virusGrid.query(cell.x, cell.y, virusHitRadius + 360 + mergeContactPad, nearby);
+          for (const virus of nearby) {
+            if (virus.dead) continue;
+            const liveCells = liveCellCount(cell.actor);
+            const touch = virusHitRadius + virus.radius * (overCapMergeContact ? 3.4 : 1.18) + mergeContactPad;
+            const touchesVirus = distSq(cell.x, cell.y, virus.x, virus.y) <= touch * touch;
+
+            if (overCapMergeContact && liveCells < MAX_CELLS && cell.mass >= VIRUS_EXPLODE_MASS && touchesVirus) {
+              explodeCellOnVirus(cell.actor, cell, virus);
+              virus.dead = true;
+              break;
+            }
+
+            if (liveCells >= MAX_CELLS) {
+              if (canConsume(cell, virus)) {
+                virus.dead = true;
+                addMass(cell, virus.mass);
+                break;
+              }
+              continue;
+            }
+
+            if (cell.virusCooldown > 0) continue;
+            if (cell.mass < VIRUS_EXPLODE_MASS) continue;
+            if (touchesVirus) {
+              explodeCellOnVirus(cell.actor, cell, virus);
+              virus.dead = true;
+              break;
+            }
+          }
+        }
+      }
+
+      function handleCellEating() {
+        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
+        for (const eater of cells) {
+          if (eater.dead) continue;
+          const nearbyCells = cellGrid.query(eater.x, eater.y, eater.radius + 650, cellQueryScratch);
+          for (const victim of nearbyCells) {
+            if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canConsume(eater, victim)) continue;
+            victim.dead = true;
+            addMass(eater, victim.mass);
+          }
+        }
+      }
+
+      function cleanupAndRespawn() {
+        for (const actor of state.actors) {
+          actor.cells = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_CELL_MASS);
+          if (actor.cells.length === 0) {
+            if (actor.isHuman) {
+              spawnActor(actor, PLAYER_RESPAWN_MASS);
+              state.flashUntil = state.now + 1.25;
+            } else {
+              if (actor.respawnAt <= 0) {
+                actor.respawnAt = state.now + 0.5;
+              } else if (state.now >= actor.respawnAt) {
+                spawnActor(actor, BOT_SPAWN_MASS);
+              }
+            }
+          }
+        }
+
+        state.foods = state.foods.filter((food) => !food.dead);
+        state.feeds = state.feeds.filter((feed) => !feed.dead);
+        const foodTarget = state.settings.foodTarget;
+        const virusTarget = state.settings.virusTarget;
+        if (state.foods.length > foodTarget) state.foods.length = foodTarget;
+        const liveVirusesBeforeCleanup = state.viruses.length;
+        state.viruses = state.viruses.filter((virus) => !virus.dead);
+        if (state.viruses.length > virusTarget) state.viruses.length = virusTarget;
+        const maxQueuedViruses = Math.max(0, virusTarget - state.viruses.length);
+        if (state.virusRespawnQueue.length > maxQueuedViruses) {
+          state.virusRespawnQueue.length = maxQueuedViruses;
+        }
+        const removedViruses = liveVirusesBeforeCleanup - state.viruses.length;
+        const missingViruses = Math.max(0, virusTarget - state.viruses.length - state.virusRespawnQueue.length);
+        const queuedVirusRespawns = Math.min(removedViruses, missingViruses);
+        for (let i = 0; i < queuedVirusRespawns; i += 1) {
+          state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
+        }
+
+        state.virusRespawnQueue = state.virusRespawnQueue.filter((spawnAt) => {
+          if (spawnAt <= state.now && state.viruses.length < virusTarget) {
+            state.viruses.push(spawnVirusSafely());
+            return false;
+          }
+          return true;
+        });
+
+        while (state.foods.length < foodTarget) state.foods.push(createFood());
+        while (state.viruses.length + state.virusRespawnQueue.length < virusTarget) {
+          state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
+        }
+        ensureBotPopulation();
+      }
+
+      function updateCamera(dt) {
+        const center = actorCenter(state.player);
+        const total = Math.max(1, center.mass);
+        const targetZoom = mobileTargetZoom(total, state.player.cells.length);
+        const follow = 1 - Math.exp(-dt * 5.3);
+        state.camera.x += (center.x - state.camera.x) * follow;
+        state.camera.y += (center.y - state.camera.y) * follow;
+        state.camera.zoom += (targetZoom - state.camera.zoom) * (1 - Math.exp(-dt * 3.8));
+      }
+
+      function mobileTargetZoom(total, cellCount) {
+        const baseZoom = clamp(
+          Math.min(state.width, state.height) / (820 + Math.sqrt(total) * 23 + cellCount * 48),
+          0.16,
+          1.05
+        );
+        return clamp(baseZoom / state.viewScale, 0.08, 1.28);
+      }
+
+      function updateHud(dt) {
+        state.hudTimer -= dt;
+        if (state.hudTimer > 0) return;
+        state.hudTimer = 0.12;
+
+        const playerMass = totalMass(state.player);
+        massEl.textContent = String(Math.round(playerMass));
+        cellsEl.textContent = `${state.player.cells.length}/${MAX_CELLS}`;
+        fpsEl.textContent = String(Math.round(state.fps));
+
+        const ranked = state.actors
+          .map((actor) => ({ actor, mass: totalMass(actor) }))
+          .sort((a, b) => b.mass - a.mass)
+          .slice(0, 10);
+        scoreboardEl.innerHTML = ranked
+          .map((entry, index) => {
+            const cls = isLocalActor(entry.actor) ? "rank you" : "rank";
+            return `<div class="${cls}"><span>${index + 1}</span><span>${displayActorName(entry.actor)}</span><b>${Math.round(entry.mass)}</b></div>`;
+          })
+          .join("");
+
+        flashEl.classList.toggle("show", state.now < state.flashUntil);
+      }
+
+      function processPlayerControls(now) {
+        for (const actor of state.actors) {
+          if (!isPlayerControlled(actor)) continue;
+          if (actor.input.keys.has("KeyW")) ejectMass(actor, now);
+          if (actor.input.splitQueued) {
+            const aim = actorAimDirection(actor);
+            splitActor(actor, aim.x, aim.y, now, PLAYER_SPLIT_INTERVAL, actor.input.targetX, actor.input.targetY);
+            actor.input.splitQueued = false;
+          }
+        }
+      }
+
+      function update(dt, now) {
+        state.now = now;
+        updateMouseWorld();
+        updateLocalActorInput();
+
+        if (state.net.role === "client") {
+          if (state.net.connected) sendLocalInput(now);
+          updateCamera(dt);
+          updateHud(dt);
+          return;
+        }
+
+        processPlayerControls(now);
+
+        rebuildSpatialHashes();
+        for (const actor of state.actors) {
+          if (!actor.isHuman) updateBotAI(actor, dt, now);
+        }
+
+        updateCellMotion(dt);
+        resolveOwnCells();
+        updateLooseMass(dt);
+        rebuildSpatialHashes();
+        handleFeedVirusCollisions();
+        handleFoodEating();
+        handleFeedEating();
+        handleVirusCellCollisions();
+        handleCellEating();
+        cleanupAndRespawn();
+        updateCamera(dt);
+        updateHud(dt);
+        sendAuthoritativeSnapshot(now);
+      }
+
+      function networkSupported() {
+        return typeof RTCPeerConnection === "function";
+      }
+
+      function createPeerConnection() {
+        state.net.iceCandidates = 0;
+        const pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" }
+          ]
+        });
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            state.net.iceCandidates += 1;
+            if (!state.net.connected) setStatus(`ICE ${state.net.iceCandidates}`);
+          }
+        };
+        pc.onconnectionstatechange = () => {
+          const status = pc.connectionState.toUpperCase();
+          if (pc.connectionState === "connected") setStatus("CONNECTED");
+          else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") setStatus(status);
+          else setStatus(status);
+        };
+        pc.oniceconnectionstatechange = () => {
+          if (pc.iceConnectionState === "checking") setStatus("CHECKING");
+          if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") setStatus("CONNECTED");
+          if (pc.iceConnectionState === "failed") setStatus("ICE FAILED");
+        };
+        return pc;
+      }
+
+      function waitForIceGathering(pc, label = "ICE") {
+        if (pc.iceGatheringState === "complete") return Promise.resolve();
+        return new Promise((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            pc.removeEventListener("icegatheringstatechange", onChange);
+            resolve();
+          };
+          const onChange = () => {
+            if (!done) setStatus(`${label} ${pc.iceGatheringState.toUpperCase()}`);
+            if (pc.iceGatheringState === "complete") finish();
+          };
+          pc.addEventListener("icegatheringstatechange", onChange);
+          setStatus(`${label} WAIT`);
+          setTimeout(finish, 9000);
+        });
+      }
+
+      function parseSignal(text, label) {
+        try {
+          const value = text.trim();
+          const signal = value.startsWith("AGAR1:")
+            ? JSON.parse(base64UrlDecode(value.slice(6)))
+            : JSON.parse(value);
+          if (!signal || !signal.type || !signal.sdp) throw new Error("bad signal");
+          return signal;
+        } catch (error) {
+          setStatus(`${label} NG`);
+          return null;
+        }
+      }
+
+      function base64UrlEncode(text) {
+        return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      }
+
+      function base64UrlDecode(text) {
+        const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+        return atob(padded);
+      }
+
+      function encodeSignal(description) {
+        const payload = JSON.stringify({
+          type: description.type,
+          sdp: description.sdp
+        });
+        return `AGAR1:${base64UrlEncode(payload)}`;
+      }
+
+      function copySignal(text) {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+        navigator.clipboard.writeText(text).catch(() => {});
+      }
+
+      function netSend(message) {
+        if (state.net.transport === "relay") {
+          const socket = state.net.socket;
+          if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+          try {
+            socket.send(JSON.stringify(message));
+            return true;
+          } catch (error) {
+            setStatus("RELAY SEND NG");
+            return false;
+          }
+        }
+
+        const channel = state.net.channel;
+        if (!channel || channel.readyState !== "open") return false;
+        try {
+          channel.send(JSON.stringify(message));
+          return true;
+        } catch (error) {
+          setStatus("SEND NG");
+          return false;
+        }
+      }
+
+      function setupDataChannel(channel) {
+        state.net.transport = "webrtc";
+        state.net.channel = channel;
+        channel.onopen = () => {
+          state.net.connected = true;
+          setStatus("CONNECTED");
+          if (state.net.role === "host") {
+            state.net.lastSnapshotSend = -100;
+            state.net.lastWorldSend = -100;
+            sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+          }
+        };
+        channel.onclose = () => {
+          state.net.connected = false;
+          setStatus("CLOSED");
+        };
+        channel.onerror = () => setStatus("CHANNEL NG");
+        channel.onmessage = (event) => handleNetMessage(event.data);
+      }
+
+      function resetFreshWorld(localId, onlineMode = false) {
+        state.localActorId = localId;
+        state.actors.length = 0;
+        state.foods.length = 0;
+        state.feeds.length = 0;
+        state.viruses.length = 0;
+        state.virusRespawnQueue.length = 0;
+        state.nextBotIndex = 0;
+
+        if (onlineMode) {
+          const host = createActor("host", "P1", "#2e90fa", true, localId === "host" ? "local" : "remote");
+          const guest = createActor("guest", "P2", "#f04438", true, localId === "guest" ? "local" : "remote");
+          state.actors.push(host, guest);
+          state.player = localId === "guest" ? guest : host;
+          if (localId === "host") {
+            spawnActor(host, PLAYER_START_MASS);
+            spawnActor(guest, PLAYER_START_MASS);
+            while (state.foods.length < state.settings.foodTarget) state.foods.push(createFood());
+            const center = actorCenter(host);
+            seedInitialViruses(center.x, center.y);
+          }
+        } else {
+          const player = createActor("player", "YOU", "#2e90fa", true, "local");
+          state.player = player;
+          state.actors.push(player);
+          spawnActor(player, PLAYER_START_MASS);
+          ensureBotPopulation();
+          while (state.foods.length < state.settings.foodTarget) state.foods.push(createFood());
+          const center = actorCenter(player);
+          seedInitialViruses(center.x, center.y);
+        }
+
+        const center = actorCenter(state.player);
+        state.camera.x = center.x;
+        state.camera.y = center.y;
+        state.camera.zoom = mobileTargetZoom(Math.max(1, center.mass), Math.max(1, state.player.cells.length));
+        rebuildSpatialHashes();
+        state.flashUntil = state.now + 1.0;
+      }
+
+      function closeNetwork(keepWorld = true) {
+        if (state.net.socket) {
+          state.net.socket.onopen = null;
+          state.net.socket.onclose = null;
+          state.net.socket.onerror = null;
+          state.net.socket.onmessage = null;
+          try { state.net.socket.close(); } catch (error) {}
+        }
+        if (state.net.channel) {
+          state.net.channel.onopen = null;
+          state.net.channel.onclose = null;
+          state.net.channel.onerror = null;
+          state.net.channel.onmessage = null;
+          try { state.net.channel.close(); } catch (error) {}
+        }
+        if (state.net.pc) {
+          state.net.pc.onconnectionstatechange = null;
+          state.net.pc.oniceconnectionstatechange = null;
+          state.net.pc.ondatachannel = null;
+          try { state.net.pc.close(); } catch (error) {}
+        }
+        state.net.role = "offline";
+        state.net.transport = "none";
+        state.net.pc = null;
+        state.net.channel = null;
+        state.net.socket = null;
+        state.net.connected = false;
+        state.net.iceCandidates = 0;
+        state.net.worldBuffer = null;
+        state.net.lastInputSend = -100;
+        state.net.lastSnapshotSend = -100;
+        state.net.lastWorldSend = -100;
+        setStatus("OFFLINE");
+        if (!keepWorld) resetFreshWorld("player", false);
+      }
+
+      async function startHostOnline() {
+        if (!networkSupported()) {
+          setStatus("NO WEBRTC");
+          return;
+        }
+        closeNetwork(true);
+        resetFreshWorld("host", true);
+        state.net.role = "host";
+        state.net.transport = "webrtc";
+        const pc = createPeerConnection();
+        state.net.pc = pc;
+        setupDataChannel(pc.createDataChannel("agar-state"));
+        setStatus("MAKE OFFER");
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitForIceGathering(pc, "OFFER ICE");
+        const signal = encodeSignal(pc.localDescription);
+        offerBox.value = signal;
+        copySignal(signal);
+        offerBox.focus();
+        offerBox.select();
+        setStatus("OFFER OK");
+      }
+
+      async function createGuestAnswer() {
+        if (!networkSupported()) {
+          setStatus("NO WEBRTC");
+          return;
+        }
+        const offer = parseSignal(offerBox.value, "OFFER");
+        if (!offer) return;
+        closeNetwork(true);
+        resetFreshWorld("guest", true);
+        state.net.role = "client";
+        state.net.transport = "webrtc";
+        const pc = createPeerConnection();
+        state.net.pc = pc;
+        pc.ondatachannel = (event) => setupDataChannel(event.channel);
+        setStatus("MAKE ANSWER");
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await waitForIceGathering(pc, "ANSWER ICE");
+        const signal = encodeSignal(pc.localDescription);
+        answerBox.value = signal;
+        copySignal(signal);
+        answerBox.focus();
+        answerBox.select();
+        setStatus("ANSWER OK");
+      }
+
+      async function applyHostAnswer() {
+        if (state.net.role !== "host" || !state.net.pc) {
+          setStatus("NO HOST");
+          return;
+        }
+        const answer = parseSignal(answerBox.value, "ANSWER");
+        if (!answer) return;
+        await state.net.pc.setRemoteDescription(answer);
+        setStatus("CONNECTING");
+      }
+
+      function startRelayOnline(role) {
+        if (typeof WebSocket !== "function") {
+          setStatus("NO WS");
+          return;
+        }
+
+        ensureRelayDefaults();
+        const url = serverUrlBox.value.trim();
+        if (!/^wss?:\/\//i.test(url)) {
+          setStatus("SET RELAY URL");
+          serverUrlBox.focus();
+          return;
+        }
+        const room = roomBox.value.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
+        roomBox.value = room;
+
+        closeNetwork(true);
+        resetFreshWorld(role === "host" ? "host" : "guest", true);
+        state.net.role = role === "host" ? "host" : "client";
+        state.net.transport = "relay";
+        state.net.connected = false;
+        setStatus("RELAY CONNECT");
+
+        const socket = new WebSocket(url);
+        state.net.socket = socket;
+
+        socket.onopen = () => {
+          state.net.connected = true;
+          setStatus("RELAY JOIN");
+          socket.send(JSON.stringify({
+            t: "relayJoin",
+            room,
+            role: state.net.role
+          }));
+          if (state.net.role === "host") {
+            state.net.lastSnapshotSend = -100;
+            state.net.lastWorldSend = -100;
+          }
+        };
+
+        socket.onmessage = (event) => handleRelayMessage(event.data);
+        socket.onerror = () => setStatus("RELAY NG");
+        socket.onclose = () => {
+          state.net.connected = false;
+          if (state.net.transport === "relay") setStatus("RELAY CLOSED");
+        };
+      }
+
+      function handleRelayMessage(data) {
+        let message = null;
+        try {
+          message = JSON.parse(data);
+        } catch (error) {
+          return;
+        }
+
+        if (message.t === "relayReady") {
+          setStatus(`ROOM ${message.peers}/2`);
+          return;
+        }
+
+        if (message.t === "relayPeer") {
+          setStatus(`PEER ${message.peers}/2`);
+          if (state.net.role === "host" && message.peers >= 2) {
+            sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+          }
+          return;
+        }
+
+        if (message.t === "relayError") {
+          setStatus(message.message || "RELAY ERROR");
+          return;
+        }
+
+        handleNetMessage(JSON.stringify(message));
+      }
+
+      function serializeCell(cell) {
+        return {
+          id: cell.id,
+          x: cell.x,
+          y: cell.y,
+          mass: cell.mass,
+          vx: cell.vx,
+          vy: cell.vy,
+          boostX: cell.boostX,
+          boostY: cell.boostY,
+          mergeReadyAt: cell.mergeReadyAt,
+          capFramesLeft: cell.capFramesLeft,
+          birthAge: cell.birthAge,
+          birthDuration: cell.birthDuration,
+          birthX: cell.birthX,
+          birthY: cell.birthY,
+          birthScale: cell.birthScale,
+          fragmentAge: cell.fragmentAge,
+          splitBoostAge: cell.splitBoostAge,
+          virusCooldown: cell.virusCooldown,
+          mergeVirusWindow: cell.mergeVirusWindow,
+          mergeOverflowMass: cell.mergeOverflowMass,
+          mergeBurstPieces: cell.mergeBurstPieces,
+          mergeBurstTotal: cell.mergeBurstTotal,
+          targetX: cell.targetX,
+          targetY: cell.targetY
+        };
+      }
+
+      function serializeActor(actor) {
+        return {
+          id: actor.id,
+          name: actor.name,
+          color: actor.color,
+          isHuman: actor.isHuman,
+          cells: actor.cells.filter((cell) => !cell.dead).map(serializeCell)
+        };
+      }
+
+      function serializeCircle(entity) {
+        return {
+          id: entity.id,
+          x: entity.x,
+          y: entity.y,
+          mass: entity.mass,
+          radius: entity.radius,
+          color: entity.color,
+          vx: entity.vx || 0,
+          vy: entity.vy || 0,
+          age: entity.age || 0,
+          feedCount: entity.feedCount || 0,
+          ownerId: entity.ownerId || ""
+        };
+      }
+
+      function sendAuthoritativeSnapshot(now, forceWorld = false) {
+        if (state.net.role !== "host" || !state.net.connected) return;
+        const sendFast = forceWorld || now - state.net.lastSnapshotSend >= 1 / 14;
+        const sendWorld = forceWorld || now - state.net.lastWorldSend >= 1.0;
+        if (!sendFast && !sendWorld) return;
+
+        const message = {
+          t: "snapshot",
+          now,
+          actors: state.actors.map(serializeActor),
+          feeds: state.feeds.filter((feed) => !feed.dead).map(serializeCircle)
+        };
+        if (netSend(message)) state.net.lastSnapshotSend = now;
+        if (sendWorld) {
+          state.net.worldSeq += 1;
+          sendWorldChunks("foods", state.foods.filter((food) => !food.dead).map(serializeCircle), state.net.worldSeq);
+          sendWorldChunks("viruses", state.viruses.filter((virus) => !virus.dead).map(serializeCircle), state.net.worldSeq);
+          state.net.lastWorldSend = now;
+        }
+      }
+
+      function sendWorldChunks(kind, items, seq) {
+        const total = Math.max(1, Math.ceil(items.length / WORLD_SYNC_CHUNK));
+        for (let index = 0; index < total; index += 1) {
+          const start = index * WORLD_SYNC_CHUNK;
+          netSend({
+            t: "world",
+            kind,
+            seq,
+            index,
+            total,
+            items: items.slice(start, start + WORLD_SYNC_CHUNK)
+          });
+        }
+      }
+
+      function sendLocalInput(now) {
+        if (state.net.role !== "client" || !state.net.connected || !state.player) return;
+        const urgent = state.player.input.splitQueued;
+        if (!urgent && now - state.net.lastInputSend < 1 / 30) return;
+        netSend({
+          t: "input",
+          targetX: state.player.input.targetX,
+          targetY: state.player.input.targetY,
+          w: state.player.input.keys.has("KeyW"),
+          splitSeq: state.input.splitSeq
+        });
+        state.player.input.splitQueued = false;
+        state.net.lastInputSend = now;
+      }
+
+      function handleNetMessage(data) {
+        let message = null;
+        try {
+          message = JSON.parse(data);
+        } catch (error) {
+          return;
+        }
+
+        if (state.net.role === "host" && message.t === "input") {
+          const guest = actorById("guest");
+          if (!guest) return;
+          guest.input.targetX = clamp(Number(message.targetX) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
+          guest.input.targetY = clamp(Number(message.targetY) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
+          if (message.w) guest.input.keys.add("KeyW");
+          else guest.input.keys.delete("KeyW");
+          const splitSeq = Number(message.splitSeq) || 0;
+          if (splitSeq > guest.input.lastNetSplitSeq) {
+            guest.input.splitQueued = true;
+            guest.input.lastNetSplitSeq = splitSeq;
+          }
+          return;
+        }
+
+        if (state.net.role === "client" && message.t === "snapshot") {
+          applySnapshot(message);
+          return;
+        }
+
+        if (state.net.role === "client" && message.t === "world") {
+          applyWorldChunk(message);
+        }
+      }
+
+      function applyCellSnapshot(actor, data) {
+        const cell = {
+          id: data.id,
+          actor,
+          ownerId: actor.id,
+          x: clamp(data.x, 0, WORLD_SIZE),
+          y: clamp(data.y, 0, WORLD_SIZE),
+          mass: Math.max(MIN_CELL_MASS, data.mass),
+          radius: 1,
+          vx: data.vx || 0,
+          vy: data.vy || 0,
+          boostX: data.boostX || 0,
+          boostY: data.boostY || 0,
+          cooldown: 0,
+          mergeReadyAt: data.mergeReadyAt || 0,
+          capFramesLeft: data.capFramesLeft || 0,
+          birthAge: data.birthAge == null ? 1 : data.birthAge,
+          birthDuration: data.birthDuration || 0,
+          birthX: data.birthX == null ? data.x : data.birthX,
+          birthY: data.birthY == null ? data.y : data.birthY,
+          birthScale: data.birthScale == null ? 1 : data.birthScale,
+          fragmentAge: data.fragmentAge || 0,
+          splitBoostAge: data.splitBoostAge || 0,
+          virusCooldown: data.virusCooldown || 0,
+          mergeVirusWindow: data.mergeVirusWindow || 0,
+          mergeOverflowMass: data.mergeOverflowMass || 0,
+          mergeBurstPieces: data.mergeBurstPieces || 1,
+          mergeBurstTotal: data.mergeBurstTotal || data.mass,
+          targetX: data.targetX == null ? data.x : data.targetX,
+          targetY: data.targetY == null ? data.y : data.targetY,
+          dead: false
+        };
+        refreshCell(cell);
+        return cell;
+      }
+
+      function applyActorSnapshot(data) {
+        let actor = actorById(data.id);
+        if (!actor) {
+          actor = createActor(
+            data.id,
+            data.name || data.id,
+            data.color || "#2e90fa",
+            Boolean(data.isHuman),
+            data.id === state.localActorId ? "local" : (data.isHuman ? "remote" : "bot")
+          );
+        }
+        actor.name = data.name || actor.name;
+        actor.color = data.color || actor.color;
+        actor.isHuman = Boolean(data.isHuman);
+        actor.control = data.id === state.localActorId ? "local" : (actor.isHuman ? "remote" : "bot");
+        actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData));
+        return actor;
+      }
+
+      function applyEntitySnapshot(data, type) {
+        return {
+          id: data.id,
+          type,
+          x: clamp(data.x, 0, WORLD_SIZE),
+          y: clamp(data.y, 0, WORLD_SIZE),
+          mass: Math.max(type === "food" ? 1 : MIN_CELL_MASS, data.mass),
+          radius: data.radius || radiusFromMass(data.mass),
+          color: data.color || (type === "virus" ? "#12e05a" : foodPalette[0]),
+          vx: data.vx || 0,
+          vy: data.vy || 0,
+          age: data.age || 0,
+          feedCount: data.feedCount || 0,
+          ownerId: data.ownerId || "",
+          dead: false
+        };
+      }
+
+      function applySnapshot(message) {
+        const actors = (message.actors || []).map(applyActorSnapshot);
+        state.actors = actors;
+        state.player = actorById(state.localActorId) || actors[0] || state.player;
+
+        state.feeds = (message.feeds || []).map((entity) => applyEntitySnapshot(entity, "feed"));
+        rebuildSpatialHashes();
+      }
+
+      function applyWorldChunk(message) {
+        if (message.kind !== "foods" && message.kind !== "viruses") return;
+        if (!state.net.worldBuffer || state.net.worldBuffer.seq !== message.seq) {
+          state.net.worldBuffer = {
+            seq: message.seq,
+            foods: new Map(),
+            viruses: new Map()
+          };
+        }
+
+        const bucket = state.net.worldBuffer[message.kind];
+        bucket.set(message.index, message.items || []);
+        if (bucket.size < message.total) return;
+
+        const merged = [];
+        for (let index = 0; index < message.total; index += 1) {
+          const chunk = bucket.get(index);
+          if (!chunk) return;
+          merged.push(...chunk);
+        }
+
+        if (message.kind === "foods") {
+          state.foods = merged.map((entity) => applyEntitySnapshot(entity, "food"));
+        } else {
+          state.viruses = merged.map((entity) => applyEntitySnapshot(entity, "virus"));
+        }
+        rebuildSpatialHashes();
+      }
+
+      function visibleWorldBounds(pad = 120) {
+        const halfW = state.width * 0.5 / state.camera.zoom;
+        const halfH = state.height * 0.5 / state.camera.zoom;
+        return {
+          left: state.camera.x - halfW - pad,
+          right: state.camera.x + halfW + pad,
+          top: state.camera.y - halfH - pad,
+          bottom: state.camera.y + halfH + pad
+        };
+      }
+
+      function isVisible(item, bounds, pad = 0) {
+        return item.x + item.radius + pad >= bounds.left &&
+          item.x - item.radius - pad <= bounds.right &&
+          item.y + item.radius + pad >= bounds.top &&
+          item.y - item.radius - pad <= bounds.bottom;
+      }
+
+      function drawGrid(bounds) {
+        ctx.lineWidth = 1 / state.camera.zoom;
+        ctx.strokeStyle = "#e6ebf2";
+        ctx.beginPath();
+        const startSmallX = Math.floor(bounds.left / GRID_SMALL) * GRID_SMALL;
+        const endSmallX = Math.ceil(bounds.right / GRID_SMALL) * GRID_SMALL;
+        const startSmallY = Math.floor(bounds.top / GRID_SMALL) * GRID_SMALL;
+        const endSmallY = Math.ceil(bounds.bottom / GRID_SMALL) * GRID_SMALL;
+        for (let x = startSmallX; x <= endSmallX; x += GRID_SMALL) {
+          ctx.moveTo(x, bounds.top);
+          ctx.lineTo(x, bounds.bottom);
+        }
+        for (let y = startSmallY; y <= endSmallY; y += GRID_SMALL) {
+          ctx.moveTo(bounds.left, y);
+          ctx.lineTo(bounds.right, y);
+        }
+        ctx.stroke();
+
+        ctx.lineWidth = 1.4 / state.camera.zoom;
+        ctx.strokeStyle = "#cfd8e3";
+        ctx.beginPath();
+        const startLargeX = Math.floor(bounds.left / GRID_LARGE) * GRID_LARGE;
+        const endLargeX = Math.ceil(bounds.right / GRID_LARGE) * GRID_LARGE;
+        const startLargeY = Math.floor(bounds.top / GRID_LARGE) * GRID_LARGE;
+        const endLargeY = Math.ceil(bounds.bottom / GRID_LARGE) * GRID_LARGE;
+        for (let x = startLargeX; x <= endLargeX; x += GRID_LARGE) {
+          ctx.moveTo(x, bounds.top);
+          ctx.lineTo(x, bounds.bottom);
+        }
+        for (let y = startLargeY; y <= endLargeY; y += GRID_LARGE) {
+          ctx.moveTo(bounds.left, y);
+          ctx.lineTo(bounds.right, y);
+        }
+        ctx.stroke();
+      }
+
+      function drawCircleEntity(entity) {
+        ctx.beginPath();
+        ctx.arc(entity.x, entity.y, entity.radius, 0, TAU);
+        ctx.fillStyle = entity.color;
+        ctx.fill();
+      }
+
+      function drawVirus(virus) {
+        const spikes = 30;
+        ctx.beginPath();
+        for (let i = 0; i < spikes; i += 1) {
+          const angle = (i / spikes) * TAU;
+          const radius = virus.radius * (i % 2 === 0 ? 1.18 : 0.84);
+          const x = virus.x + Math.cos(angle) * radius;
+          const y = virus.y + Math.sin(angle) * radius;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "#12e05a";
+        ctx.fill();
+        ctx.lineWidth = Math.max(3 / state.camera.zoom, virus.radius * 0.09);
+        ctx.strokeStyle = "#0d9940";
+        ctx.stroke();
+      }
+
+      function drawCell(cell) {
+        const actor = cell.actor;
+        let progress = 1;
+        if (cell.birthDuration > 0 && cell.birthAge < cell.birthDuration) {
+          progress = clamp(cell.birthAge / cell.birthDuration, 0, 1);
+          progress = 1 - Math.pow(1 - progress, 3);
+        }
+        const scale = cell.birthScale + (1 - cell.birthScale) * progress;
+        const drawX = cell.birthX + (cell.x - cell.birthX) * progress;
+        const drawY = cell.birthY + (cell.y - cell.birthY) * progress;
+        const r = Math.max(1, cell.radius * scale);
+        ctx.beginPath();
+        ctx.arc(drawX, drawY, r, 0, TAU);
+        ctx.fillStyle = actor.color;
+        ctx.fill();
+        ctx.lineWidth = Math.max(3 / state.camera.zoom, r * 0.045);
+        ctx.strokeStyle = isLocalActor(actor) ? "#07529e" : darkenHex(actor.color, 0.24);
+        ctx.stroke();
+
+        if (scale > 0.72 && r * state.camera.zoom > 14) {
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const nameSize = clamp(r * 0.34, 13, 42);
+          ctx.font = `700 ${nameSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+          ctx.lineWidth = Math.max(2, nameSize * 0.16);
+          ctx.strokeStyle = "rgba(8, 18, 32, 0.42)";
+          ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+          const label = displayActorName(actor);
+          ctx.strokeText(label, drawX, drawY - nameSize * 0.12);
+          ctx.fillText(label, drawX, drawY - nameSize * 0.12);
+
+          if (r * state.camera.zoom > 32) {
+            const massSize = clamp(r * 0.2, 10, 25);
+            ctx.font = `700 ${massSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+            ctx.lineWidth = Math.max(2, massSize * 0.14);
+            ctx.strokeText(String(Math.round(cell.mass)), drawX, drawY + nameSize * 0.62);
+            ctx.fillText(String(Math.round(cell.mass)), drawX, drawY + nameSize * 0.62);
+          }
+        }
+      }
+
+      function draw() {
+        ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+        ctx.fillStyle = "#f7f9fc";
+        ctx.fillRect(0, 0, state.width, state.height);
+
+        ctx.save();
+        ctx.translate(state.width * 0.5, state.height * 0.5);
+        ctx.scale(state.camera.zoom, state.camera.zoom);
+        ctx.translate(-state.camera.x, -state.camera.y);
+
+        const bounds = visibleWorldBounds();
+        drawGrid(bounds);
+
+        ctx.lineWidth = 3 / state.camera.zoom;
+        ctx.strokeStyle = "rgba(128, 139, 154, 0.55)";
+        ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+
+        for (const food of state.foods) {
+          if (isVisible(food, bounds, 20)) drawCircleEntity(food);
+        }
+
+        for (const feed of state.feeds) {
+          if (!isVisible(feed, bounds, 20)) continue;
+          ctx.beginPath();
+          ctx.arc(feed.x, feed.y, feed.radius, 0, TAU);
+          ctx.fillStyle = feed.color;
+          ctx.fill();
+          ctx.lineWidth = 1.5 / state.camera.zoom;
+          ctx.strokeStyle = "rgba(20,32,51,0.22)";
+          ctx.stroke();
+        }
+
+        for (const virus of state.viruses) {
+          if (isVisible(virus, bounds, 90)) drawVirus(virus);
+        }
+
+        const cells = allCells(scratch).sort((a, b) => a.radius - b.radius);
+        for (const cell of cells) {
+          if (isVisible(cell, bounds, 80)) drawCell(cell);
+        }
+
+        ctx.restore();
+      }
+
+      function resize() {
+        state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        state.width = Math.max(320, window.innerWidth);
+        state.height = Math.max(240, window.innerHeight);
+        canvas.width = Math.floor(state.width * state.dpr);
+        canvas.height = Math.floor(state.height * state.dpr);
+        canvas.style.width = `${state.width}px`;
+        canvas.style.height = `${state.height}px`;
+        state.input.mouseX = state.width * 0.5;
+        state.input.mouseY = state.height * 0.5;
+      }
+
+      function onPointerMove(event) {
+        state.input.mouseX = event.clientX;
+        state.input.mouseY = event.clientY;
+      }
+
+      function onTouch(event) {
+        if (!event.touches.length) return;
+        const touch = event.touches[0];
+        state.input.mouseX = touch.clientX;
+        state.input.mouseY = touch.clientY;
+        event.preventDefault();
+      }
+
+      function setViewScalePercent(value) {
+        const percent = clamp(Number(value) || 100, 55, 220);
+        state.viewScale = percent / 100;
+        viewValueEl.textContent = `${Math.round(percent)}%`;
+      }
+
+      function onWheel(event) {
+        event.preventDefault();
+        const direction = event.deltaY > 0 ? 1 : -1;
+        setViewScalePercent(state.viewScale * 100 + direction * 6);
+      }
+
+      function syncSettingsControls() {
+        botSlider.value = String(state.settings.botTarget);
+        botValueEl.textContent = String(state.settings.botTarget);
+        virusSlider.value = String(state.settings.virusTarget);
+        virusValueEl.textContent = String(state.settings.virusTarget);
+        foodSlider.value = String(state.settings.foodTarget);
+        foodValueEl.textContent = String(state.settings.foodTarget);
+      }
+
+      function trimDynamicEntities() {
+        if (state.foods.length > state.settings.foodTarget) state.foods.length = state.settings.foodTarget;
+        if (state.viruses.length > state.settings.virusTarget) state.viruses.length = state.settings.virusTarget;
+        const maxQueue = Math.max(0, state.settings.virusTarget - state.viruses.length);
+        if (state.virusRespawnQueue.length > maxQueue) state.virusRespawnQueue.length = maxQueue;
+        ensureBotPopulation();
+      }
+
+      function setWorldSetting(kind, value) {
+        const number = Math.round(Number(value) || 0);
+        if (kind === "bot") state.settings.botTarget = clamp(number, 0, 200);
+        if (kind === "virus") state.settings.virusTarget = clamp(number, 0, 500);
+        if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, 100000);
+        syncSettingsControls();
+        trimDynamicEntities();
+      }
+
+      function resetGameToStart() {
+        if (state.net.role === "offline") {
+          resetFreshWorld("player", false);
+          return;
+        }
+
+        if (state.net.role === "host") {
+          const transport = state.net.transport;
+          resetFreshWorld("host", true);
+          state.net.role = "host";
+          state.net.transport = transport;
+          state.net.connected = Boolean(state.net.channel?.readyState === "open" || state.net.socket?.readyState === WebSocket.OPEN);
+          state.net.lastSnapshotSend = -100;
+          state.net.lastWorldSend = -100;
+          sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+          return;
+        }
+
+        setStatus("HOST RESET");
+      }
+
+      function bindInput() {
+        window.addEventListener("resize", resize);
+        window.addEventListener("pointermove", onPointerMove);
+        window.addEventListener("touchstart", onTouch, { passive: false });
+        window.addEventListener("touchmove", onTouch, { passive: false });
+        window.addEventListener("wheel", onWheel, { passive: false });
+        window.addEventListener("keydown", (event) => {
+          if (event.code === "Space" || event.code === "KeyW") {
+            event.preventDefault();
+            state.input.keys.add(event.code);
+            if (event.code === "Space" && !event.repeat) {
+              state.input.splitQueued = true;
+              state.input.splitSeq += 1;
+            }
+          }
+        });
+        window.addEventListener("keyup", (event) => {
+          if (event.code === "Space" || event.code === "KeyW") {
+            event.preventDefault();
+            state.input.keys.delete(event.code);
+          }
+        });
+        window.addEventListener("blur", () => {
+          state.input.keys.clear();
+          state.input.splitQueued = false;
+        });
+        hostBtn.addEventListener("click", () => {
+          startHostOnline().catch(() => setStatus("HOST NG"));
+        });
+        joinBtn.addEventListener("click", () => {
+          createGuestAnswer().catch(() => setStatus("JOIN NG"));
+        });
+        applyAnswerBtn.addEventListener("click", () => {
+          applyHostAnswer().catch(() => setStatus("ANSWER NG"));
+        });
+        relayHostBtn.addEventListener("click", () => startRelayOnline("host"));
+        relayJoinBtn.addEventListener("click", () => startRelayOnline("client"));
+        disconnectBtn.addEventListener("click", () => closeNetwork(false));
+        gameResetBtn.addEventListener("click", resetGameToStart);
+        botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
+        virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
+        foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
+      }
+
+      function seedInitialViruses(avoidX, avoidY) {
+        state.viruses.length = 0;
+        state.virusRespawnQueue.length = 0;
+        const virusTarget = state.settings.virusTarget;
+        if (virusTarget <= 0) return;
+        const columns = Math.ceil(Math.sqrt(virusTarget));
+        const rows = Math.ceil(virusTarget / columns);
+        const margin = 420;
+        const stepX = (WORLD_SIZE - margin * 2) / Math.max(1, columns - 1);
+        const stepY = (WORLD_SIZE - margin * 2) / Math.max(1, rows - 1);
+        const jitterX = Math.min(34, stepX * 0.22);
+        const jitterY = Math.min(34, stepY * 0.22);
+
+        for (let row = 0; row < rows && state.viruses.length < virusTarget; row += 1) {
+          for (let column = 0; column < columns && state.viruses.length < virusTarget; column += 1) {
+            const x = margin + column * stepX + rand(-jitterX, jitterX);
+            const y = margin + row * stepY + rand(-jitterY, jitterY);
+            if (distSq(x, y, avoidX, avoidY) < 560 * 560) continue;
+            if (!virusSpawnIsSafe(x, y)) continue;
+            state.viruses.push(createVirus(x, y));
+          }
+        }
+
+        while (state.viruses.length < virusTarget) {
+          state.viruses.push(spawnVirusSafely(avoidX, avoidY));
+        }
+      }
+
+      function virusSpawnIsSafe(x, y) {
+        const virusRadius = radiusFromMass(VIRUS_MASS);
+        for (const virus of state.viruses) {
+          if (virus.dead) continue;
+          const safeDistance = virusRadius + virus.radius + 10;
+          if (distSq(x, y, virus.x, virus.y) < safeDistance * safeDistance) return false;
+        }
+
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            const safeDistance = cell.radius + virusRadius + 120;
+            if (distSq(x, y, cell.x, cell.y) < safeDistance * safeDistance) return false;
+          }
+        }
+        return true;
+      }
+
+      function init() {
+        resize();
+        bindInput();
+        ensureRelayDefaults();
+        setViewScalePercent(DEFAULT_VIEW_SCALE * 100);
+        syncSettingsControls();
+
+        resetFreshWorld("player", false);
+
+        requestAnimationFrame(loop);
+      }
+
+      function loop(time) {
+        const dt = Math.min(0.04, Math.max(0.001, (time - state.lastFrame) / 1000));
+        state.lastFrame = time;
+        const now = time / 1000;
+
+        state.fpsSample += ((1 / dt) - state.fpsSample) * 0.08;
+        state.fpsTimer += dt;
+        if (state.fpsTimer > 0.25) {
+          state.fps = state.fpsSample;
+          state.fpsTimer = 0;
+        }
+
+        update(dt, now);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
