@@ -1299,6 +1299,10 @@
         return clamp(120 + radius * 0.28, 150, 280);
       }
 
+      function splitRecoilDistance(radius) {
+        return clamp(radius * 0.08, 10, 42);
+      }
+
       function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
         if (liveCellCount(actor) >= MAX_CELLS) return null;
         if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
@@ -1338,6 +1342,10 @@
         source.vy = source.vy * 0.24 - dirY * recoil * 0.18;
         source.boostX = source.boostX * 0.02 - dirX * recoil;
         source.boostY = source.boostY * 0.02 - dirY * recoil;
+        const recoilDistance = splitRecoilDistance(source.radius);
+        source.x = clamp(source.x - dirX * recoilDistance, source.radius, WORLD_SIZE - source.radius);
+        source.y = clamp(source.y - dirY * recoilDistance, source.radius, WORLD_SIZE - source.radius);
+        startCellBirth(source, originX, originY, 0.1, 1);
         if (targetX != null && targetY != null) {
           source.targetX = targetX;
           source.targetY = targetY;
