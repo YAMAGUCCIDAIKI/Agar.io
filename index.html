@@ -1136,6 +1136,8 @@
           boostY: 0,
           faceX: 1,
           faceY: 0,
+          splitDirX: null,
+          splitDirY: null,
           sweepActive: false,
           sweepPoints: null,
           sweepFromX: x,
@@ -1576,8 +1578,12 @@
         child.vy = source.vy;
         source.faceX = dirX;
         source.faceY = dirY;
+        source.splitDirX = dirX;
+        source.splitDirY = dirY;
         child.faceX = dirX;
         child.faceY = dirY;
+        child.splitDirX = dirX;
+        child.splitDirY = dirY;
         const impulse = splitImpulse(child.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
@@ -2043,6 +2049,17 @@
       }
 
       function turnCellFacing(cell, targetDir, dt) {
+        if (cell.splitBoostAge > 0) {
+          const fixed = normalized(
+            Number.isFinite(cell.splitDirX) ? cell.splitDirX : cell.faceX,
+            Number.isFinite(cell.splitDirY) ? cell.splitDirY : cell.faceY,
+            cell.faceX || 1,
+            cell.faceY || 0
+          );
+          cell.faceX = fixed.x;
+          cell.faceY = fixed.y;
+          return;
+        }
         const current = normalized(
           Number.isFinite(cell.faceX) ? cell.faceX : 1,
           Number.isFinite(cell.faceY) ? cell.faceY : 0,
@@ -2150,8 +2167,16 @@
             const speed = cellSpeed(cell);
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
             if (n.length > 0.001) turnCellFacing(cell, n, dt);
-            const desiredX = (Number.isFinite(cell.faceX) ? cell.faceX : n.x) * speed * throttle;
-            const desiredY = (Number.isFinite(cell.faceY) ? cell.faceY : n.y) * speed * throttle;
+            const moveDir = cell.splitBoostAge > 0
+              ? normalized(
+                  Number.isFinite(cell.splitDirX) ? cell.splitDirX : cell.faceX,
+                  Number.isFinite(cell.splitDirY) ? cell.splitDirY : cell.faceY,
+                  cell.faceX || n.x,
+                  cell.faceY || n.y
+                )
+              : { x: Number.isFinite(cell.faceX) ? cell.faceX : n.x, y: Number.isFinite(cell.faceY) ? cell.faceY : n.y };
+            const desiredX = moveDir.x * speed * throttle;
+            const desiredY = moveDir.y * speed * throttle;
             const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
 
             cell.vx += (desiredX - cell.vx) * steer;
@@ -3271,6 +3296,8 @@
           boostY: cell.boostY,
           faceX: cell.faceX,
           faceY: cell.faceY,
+          splitDirX: cell.splitDirX,
+          splitDirY: cell.splitDirY,
           mergeReadyAt: cell.mergeReadyAt,
           capFramesLeft: cell.capFramesLeft,
           birthAge: cell.birthAge,
@@ -3522,6 +3549,8 @@
         );
         cell.faceX = face.x;
         cell.faceY = face.y;
+        cell.splitDirX = data.splitDirX == null ? (existing?.splitDirX ?? null) : data.splitDirX;
+        cell.splitDirY = data.splitDirY == null ? (existing?.splitDirY ?? null) : data.splitDirY;
         cell.sweepActive = false;
         cell.sweepPoints = null;
         cell.sweepFromX = cell.x;
