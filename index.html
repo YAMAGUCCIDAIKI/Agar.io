@@ -544,9 +544,11 @@
       const VIRUS_CORE_SPLIT_MASS = 700;
       const VIRUS_FRAGMENT_LIFE = 2.8;
       const MAX_CELL_SPREAD = 2400;
-      const WORLD_SYNC_CHUNK = 500;
-      const MAX_SYNC_FOODS = 5000;
-      const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
+      const WORLD_SYNC_CHUNK = 300;
+      const MAX_SYNC_FOODS = 1800;
+      const MAX_SYNC_FEEDS = 900;
+      const NETWORK_RENDER_RANGE = 2600;
+      const CLIENT_WORLD_CHUNKS_PER_FRAME = 1;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
@@ -1202,14 +1204,16 @@
         return total;
       }
 
-      function actorCenter(actor) {
+      function actorCenter(actor, useRender = false) {
         let mass = 0;
         let x = 0;
         let y = 0;
         for (const cell of actor.cells) {
+          const cellX = useRender && Number.isFinite(cell.renderX) ? cell.renderX : cell.x;
+          const cellY = useRender && Number.isFinite(cell.renderY) ? cell.renderY : cell.y;
           mass += cell.mass;
-          x += cell.x * cell.mass;
-          y += cell.y * cell.mass;
+          x += cellX * cell.mass;
+          y += cellY * cell.mass;
         }
         if (mass <= 0) return { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 0 };
         return { x: x / mass, y: y / mass, mass };
@@ -1233,23 +1237,13 @@
         return count;
       }
 
-      function mergeContributionPieces(cell) {
-        if (cell.mergeBurstTotal > MAX_CELL_MASS && cell.mergeBurstPieces > 1) {
-          return cell.mergeBurstPieces;
-        }
-        return 1;
-      }
-
       function mergeAccountingMass(cell) {
-        if (cell.mergeBurstTotal > MAX_CELL_MASS) {
-          return Math.max(cell.mass, cell.mergeBurstTotal);
-        }
         return cell.mass;
       }
 
       function mergeVirusHitRadius(cell) {
         const hitMass = clamp(
-          Math.max(cell.mass, cell.mergeBurstTotal || 0),
+          cell.mass,
           MAX_CELL_MASS,
           MAX_MERGE_VIRUS_HIT_MASS
         );
@@ -1257,8 +1251,8 @@
       }
 
       function virusCollisionPriority(cell) {
-        if (cell.mergeBurstTotal > MAX_CELL_MASS) {
-          return 100000000 + cell.mergeBurstTotal;
+        if (cell.mass > MAX_CELL_MASS) {
+          return 100000000 + cell.mass;
         }
         if (cell.mergeVirusWindow > 0) {
           return 50000000 + cell.mass;
@@ -1443,14 +1437,18 @@
         return feed;
       }
 
+      function rebuildFoodGridOnly() {
+        foodGrid.clear();
+        for (const food of state.foods) if (!food.dead) foodGrid.insert(food);
+        state.foodGridDirty = false;
+      }
+
       function rebuildSpatialHashes() {
         feedGrid.clear();
         virusGrid.clear();
         cellGrid.clear();
         if (state.foodGridDirty) {
-          foodGrid.clear();
-          for (const food of state.foods) if (!food.dead) foodGrid.insert(food);
-          state.foodGridDirty = false;
+          rebuildFoodGridOnly();
         }
         for (const feed of state.feeds) if (!feed.dead) feedGrid.insert(feed);
         for (const virus of state.viruses) if (!virus.dead) virusGrid.insert(virus);
@@ -1671,8 +1669,8 @@
         const originX = cell.x;
         const originY = cell.y;
 
-        if (cell.mergeBurstTotal > MAX_CELL_MASS && slots > 1) {
-          const mergeTotal = Math.max(originalMass, cell.mergeBurstTotal || 0);
+        if (originalMass > MAX_CELL_MASS && slots > 1) {
+          const mergeTotal = originalMass;
           const mergeExcess = Math.max(0, mergeTotal - MAX_CELL_MASS);
           const requiredOverflowPieces = Math.max(1, Math.ceil(mergeExcess / MAX_CELL_MASS));
           const outputCount = Math.min(slots, 1 + requiredOverflowPieces);
@@ -2141,11 +2139,15 @@
                 cell.capFramesLeft = 0;
               }
               cell.mergeOverflowMass = Math.max(0, Math.min(cell.mergeOverflowMass, cell.mass - MAX_CELL_MASS));
+              cell.mergeBurstPieces = 1;
+              cell.mergeBurstTotal = cell.mass;
               refreshCell(cell);
               cappedThisFrame = true;
             } else {
               cell.capFramesLeft = 0;
               cell.mergeOverflowMass = 0;
+              cell.mergeBurstPieces = 1;
+              cell.mergeBurstTotal = cell.mass;
             }
             if (cell.mass > 100 && !cappedThisFrame) {
               cell.mass = Math.max(MIN_CELL_MASS, cell.mass - cell.mass * MASS_DECAY_PER_SECOND * dt);
@@ -2190,7 +2192,6 @@
         if (!hasHalfAreaOverlap(a, b, centerDistance)) return false;
 
         const total = bigMergeMass + smallMergeMass;
-        const mergePieces = mergeContributionPieces(big) + mergeContributionPieces(small);
         const inv = 1 / total;
         big.x = (big.x * bigMergeMass + small.x * smallMergeMass) * inv;
         big.y = (big.y * bigMergeMass + small.y * smallMergeMass) * inv;
@@ -2200,9 +2201,9 @@
         big.boostY = (big.boostY * bigMergeMass + small.boostY * smallMergeMass) * inv;
         big.mass = total;
         big.virusCooldown = 0;
-        big.mergeOverflowMass = Math.max(0, total - MAX_CELL_MASS);
-        big.mergeBurstPieces = total > MAX_CELL_MASS ? mergePieces : 1;
-        big.mergeBurstTotal = total;
+        big.mergeOverflowMass = Math.max(0, big.mass - MAX_CELL_MASS);
+        big.mergeBurstPieces = 1;
+        big.mergeBurstTotal = big.mass;
         big.mergeVirusWindow = total > MAX_CELL_MASS ? 4.0 : 0.28;
         if (big.mass > MAX_CELL_MASS) big.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
         refreshCell(big);
@@ -2429,7 +2430,7 @@
         const nearby = [];
         for (const cell of cells) {
           if (cell.dead) continue;
-          const overCapMergeContact = cell.mergeBurstTotal > MAX_CELL_MASS ||
+          const overCapMergeContact = cell.mass > MAX_CELL_MASS ||
             (cell.mergeVirusWindow > 0 && (cell.mergeOverflowMass > 0 || cell.mass > MAX_CELL_MASS));
           const virusHitRadius = overCapMergeContact ? mergeVirusHitRadius(cell) : cell.radius;
           const mergeContactPad = (cell.mergeVirusWindow > 0 || overCapMergeContact)
@@ -2574,7 +2575,7 @@
       }
 
       function updateCamera(dt) {
-        const center = actorCenter(state.player);
+        const center = actorCenter(state.player, state.net.role === "client");
         const total = Math.max(1, center.mass);
         const targetZoom = mobileTargetZoom(total, state.player.cells.length);
         const follow = 1 - Math.exp(-dt * 5.3);
@@ -2674,6 +2675,7 @@
 
         if (state.net.role === "client") {
           processClientNetworkUpdates();
+          updateClientRenderState(dt);
           if (state.net.connected) sendLocalInput(now);
           updateCamera(dt);
           updateHud(dt);
@@ -3274,7 +3276,7 @@
           now,
           worldSize: WORLD_SIZE,
           actors: state.actors.map(serializeActor),
-          feeds: state.feeds.filter((feed) => !feed.dead).map(serializeCircle)
+          feeds: feedsForNetworkSync().map(serializeCircle)
         };
         if (netSend(message)) state.net.lastSnapshotSend = now;
         if (sendWorld) {
@@ -3286,35 +3288,33 @@
       }
 
       function foodsForNetworkSync() {
+        if (state.foodGridDirty) rebuildFoodGridOnly();
         const liveFoods = state.foods.filter((food) => !food.dead);
         if (liveFoods.length <= MAX_SYNC_FOODS) return liveFoods;
-        const foods = [];
+        return networkEntitiesNearHumans(foodGrid, MAX_SYNC_FOODS, NETWORK_RENDER_RANGE);
+      }
+
+      function feedsForNetworkSync() {
+        const liveFeeds = state.feeds.filter((feed) => !feed.dead);
+        if (liveFeeds.length <= MAX_SYNC_FEEDS) return liveFeeds;
+        return networkEntitiesNearHumans(feedGrid, MAX_SYNC_FEEDS, NETWORK_RENDER_RANGE);
+      }
+
+      function networkEntitiesNearHumans(grid, limit, range) {
+        const items = [];
         const seen = new Set();
-        const addVisibleForActor = (actor) => {
-          if (!actor || !actor.isHuman) return;
-          const center = actorCenter(actor);
-          const range = 1600;
-          const nearby = foodGrid.queryRect(center.x - range, center.y - range, center.x + range, center.y + range, aiEntityScratch);
-          for (const food of nearby) {
-            if (food.dead || seen.has(food.id)) continue;
-            seen.add(food.id);
-            foods.push(food);
-            if (foods.length >= MAX_SYNC_FOODS) return;
-          }
-        };
-
         for (const actor of state.actors) {
-          addVisibleForActor(actor);
-          if (foods.length >= MAX_SYNC_FOODS) return foods;
+          if (!actor || !actor.isHuman) continue;
+          const center = actorCenter(actor);
+          const nearby = grid.queryRect(center.x - range, center.y - range, center.x + range, center.y + range, aiEntityScratch);
+          for (const item of nearby) {
+            if (item.dead || seen.has(item.id)) continue;
+            seen.add(item.id);
+            items.push(item);
+            if (items.length >= limit) return items;
+          }
         }
-
-        const stride = Math.max(1, Math.ceil(liveFoods.length / MAX_SYNC_FOODS));
-        for (let i = 0; i < liveFoods.length && foods.length < MAX_SYNC_FOODS; i += stride) {
-          const food = liveFoods[i];
-          if (seen.has(food.id)) continue;
-          foods.push(food);
-        }
-        return foods;
+        return items;
       }
 
       function sendWorldChunks(kind, items, seq) {
@@ -3360,6 +3360,25 @@
           state.net.pendingSnapshot = null;
           applySnapshot(snapshot);
         }
+      }
+
+      function updateRenderPosition(entity, dt, followRate = 18) {
+        if (!Number.isFinite(entity.renderX)) entity.renderX = entity.x;
+        if (!Number.isFinite(entity.renderY)) entity.renderY = entity.y;
+        const lead = Math.min(0.08, dt * 2);
+        const targetX = clamp(entity.x + (entity.vx || 0) * lead, 0, WORLD_SIZE);
+        const targetY = clamp(entity.y + (entity.vy || 0) * lead, 0, WORLD_SIZE);
+        const follow = 1 - Math.exp(-dt * followRate);
+        entity.renderX += (targetX - entity.renderX) * follow;
+        entity.renderY += (targetY - entity.renderY) * follow;
+      }
+
+      function updateClientRenderState(dt) {
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) updateRenderPosition(cell, dt, 20);
+        }
+        for (const feed of state.feeds) updateRenderPosition(feed, dt, 14);
+        for (const virus of state.viruses) updateRenderPosition(virus, dt, 10);
       }
 
       function handleNetMessage(data) {
@@ -3432,6 +3451,8 @@
         cell.sweepFromY = cell.y;
         cell.sweepToX = cell.x;
         cell.sweepToY = cell.y;
+        cell.renderX = Number.isFinite(existing?.renderX) ? existing.renderX : cell.x;
+        cell.renderY = Number.isFinite(existing?.renderY) ? existing.renderY : cell.y;
         cell.cooldown = 0;
         cell.mergeReadyAt = data.mergeReadyAt || 0;
         cell.capFramesLeft = data.capFramesLeft || 0;
@@ -3474,7 +3495,7 @@
         return actor;
       }
 
-      function applyEntitySnapshot(data, type) {
+      function applyEntitySnapshot(data, type, existing = null) {
         return {
           id: data.id,
           type,
@@ -3488,8 +3509,15 @@
           age: data.age || 0,
           feedCount: data.feedCount || 0,
           ownerId: data.ownerId || "",
+          renderX: Number.isFinite(existing?.renderX) ? existing.renderX : clamp(data.x, 0, WORLD_SIZE),
+          renderY: Number.isFinite(existing?.renderY) ? existing.renderY : clamp(data.y, 0, WORLD_SIZE),
           dead: false
         };
+      }
+
+      function applyEntityListSnapshot(items, type, existingList) {
+        const byId = new Map(existingList.map((entity) => [entity.id, entity]));
+        return (items || []).map((entity) => applyEntitySnapshot(entity, type, byId.get(entity.id)));
       }
 
       function applySnapshot(message) {
@@ -3509,8 +3537,7 @@
         state.actors = actors;
         state.player = actorById(state.localActorId) || actors[0] || state.player;
 
-        state.feeds = (message.feeds || []).map((entity) => applyEntitySnapshot(entity, "feed"));
-        rebuildSpatialHashes();
+        state.feeds = applyEntityListSnapshot(message.feeds, "feed", state.feeds);
       }
 
       function applyWorldChunk(message) {
@@ -3535,12 +3562,12 @@
         }
 
         if (message.kind === "foods") {
-          state.foods = merged.map((entity) => applyEntitySnapshot(entity, "food"));
+          state.foods = applyEntityListSnapshot(merged, "food", state.foods);
           state.foodGridDirty = true;
+          rebuildFoodGridOnly();
         } else {
-          state.viruses = merged.map((entity) => applyEntitySnapshot(entity, "virus"));
+          state.viruses = applyEntityListSnapshot(merged, "virus", state.viruses);
         }
-        rebuildSpatialHashes();
       }
 
       function visibleWorldBounds(pad = 120) {
@@ -3554,11 +3581,21 @@
         };
       }
 
+      function entityRenderX(entity) {
+        return Number.isFinite(entity.renderX) ? entity.renderX : entity.x;
+      }
+
+      function entityRenderY(entity) {
+        return Number.isFinite(entity.renderY) ? entity.renderY : entity.y;
+      }
+
       function isVisible(item, bounds, pad = 0) {
-        return item.x + item.radius + pad >= bounds.left &&
-          item.x - item.radius - pad <= bounds.right &&
-          item.y + item.radius + pad >= bounds.top &&
-          item.y - item.radius - pad <= bounds.bottom;
+        const x = entityRenderX(item);
+        const y = entityRenderY(item);
+        return x + item.radius + pad >= bounds.left &&
+          x - item.radius - pad <= bounds.right &&
+          y + item.radius + pad >= bounds.top &&
+          y - item.radius - pad <= bounds.bottom;
       }
 
       function drawGrid(bounds) {
@@ -3599,19 +3636,21 @@
 
       function drawCircleEntity(entity) {
         ctx.beginPath();
-        ctx.arc(entity.x, entity.y, entity.radius, 0, TAU);
+        ctx.arc(entityRenderX(entity), entityRenderY(entity), entity.radius, 0, TAU);
         ctx.fillStyle = entity.color;
         ctx.fill();
       }
 
       function drawVirus(virus) {
         const spikes = 30;
+        const centerX = entityRenderX(virus);
+        const centerY = entityRenderY(virus);
         ctx.beginPath();
         for (let i = 0; i < spikes; i += 1) {
           const angle = (i / spikes) * TAU;
           const radius = virus.radius * (i % 2 === 0 ? 1.18 : 0.84);
-          const x = virus.x + Math.cos(angle) * radius;
-          const y = virus.y + Math.sin(angle) * radius;
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
@@ -3631,8 +3670,10 @@
           progress = 1 - Math.pow(1 - progress, 3);
         }
         const scale = cell.birthScale + (1 - cell.birthScale) * progress;
-        const drawX = cell.birthX + (cell.x - cell.birthX) * progress;
-        const drawY = cell.birthY + (cell.y - cell.birthY) * progress;
+        const cellX = entityRenderX(cell);
+        const cellY = entityRenderY(cell);
+        const drawX = cell.birthX + (cellX - cell.birthX) * progress;
+        const drawY = cell.birthY + (cellY - cell.birthY) * progress;
         const r = Math.max(1, cell.radius * scale);
         ctx.beginPath();
         ctx.arc(drawX, drawY, r, 0, TAU);
@@ -3690,7 +3731,7 @@
         for (const feed of state.feeds) {
           if (!isVisible(feed, bounds, 20)) continue;
           ctx.beginPath();
-          ctx.arc(feed.x, feed.y, feed.radius, 0, TAU);
+          ctx.arc(entityRenderX(feed), entityRenderY(feed), feed.radius, 0, TAU);
           ctx.fillStyle = feed.color;
           ctx.fill();
           ctx.lineWidth = 1.5 / state.camera.zoom;
