@@ -445,6 +445,18 @@
       <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
     </label>
     <label class="setting-control">
+      <span>分裂速度</span>
+      <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="分裂速度">
+      <strong id="splitSpeedValue">100</strong>
+      <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
+    </label>
+    <label class="setting-control">
+      <span>ゲーム速度</span>
+      <input id="gameSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="ゲーム速度">
+      <strong id="gameSpeedValue">100</strong>
+      <input id="gameSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="ゲーム速度上限">
+    </label>
+    <label class="setting-control">
       <span>合体</span>
       <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="合体までの時間">
       <strong id="mergeCooldownValue">10</strong>
@@ -504,6 +516,12 @@
       const splitRecoilSlider = document.getElementById("splitRecoilSlider");
       const splitRecoilValueEl = document.getElementById("splitRecoilValue");
       const splitRecoilMaxBox = document.getElementById("splitRecoilMaxBox");
+      const splitSpeedSlider = document.getElementById("splitSpeedSlider");
+      const splitSpeedValueEl = document.getElementById("splitSpeedValue");
+      const splitSpeedMaxBox = document.getElementById("splitSpeedMaxBox");
+      const gameSpeedSlider = document.getElementById("gameSpeedSlider");
+      const gameSpeedValueEl = document.getElementById("gameSpeedValue");
+      const gameSpeedMaxBox = document.getElementById("gameSpeedMaxBox");
       const mergeCooldownSlider = document.getElementById("mergeCooldownSlider");
       const mergeCooldownValueEl = document.getElementById("mergeCooldownValue");
       const mergeCooldownMaxBox = document.getElementById("mergeCooldownMaxBox");
@@ -532,6 +550,8 @@
       const DEFAULT_VIRUS_TARGET = 0;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 8;
+      const DEFAULT_SPLIT_SPEED = 100;
+      const DEFAULT_GAME_SPEED = 100;
       const DEFAULT_MERGE_COOLDOWN = 10;
       const BOT_SPAWN_MASS = 700;
       const CONSUME_MASS_RATIO = 1.325;
@@ -576,6 +596,8 @@
         height: 1,
         dpr: 1,
         now: 0,
+        realNow: 0,
+        simTime: 0,
         lastFrame: performance.now(),
         fps: 60,
         fpsSample: 60,
@@ -604,6 +626,8 @@
           ejectSpeed: DEFAULT_EJECT_SPEED,
           ejectRate: DEFAULT_EJECT_RATE,
           splitRecoil: DEFAULT_SPLIT_RECOIL,
+          splitSpeed: DEFAULT_SPLIT_SPEED,
+          gameSpeed: DEFAULT_GAME_SPEED,
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
           max: {
@@ -614,6 +638,8 @@
             ejectSpeed: 1400,
             ejectRate: 50,
             splitRecoil: 40,
+            splitSpeed: 300,
+            gameSpeed: 300,
             mergeCooldown: 60,
             worldSize: 15000
           }
@@ -1488,7 +1514,15 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(410 + radius * 0.55, 460, 660);
+        return clamp(410 + radius * 0.55, 460, 660) * splitSpeedScale();
+      }
+
+      function splitSpeedScale() {
+        return Math.max(0.05, state.settings.splitSpeed / 100);
+      }
+
+      function gameSpeedScale() {
+        return Math.max(0.05, state.settings.gameSpeed / 100);
       }
 
       function splitRecoilDistance(radius) {
@@ -2017,7 +2051,7 @@
             if (speed > maxSpeed) maxSpeed = speed;
           }
         }
-        return clamp(Math.ceil(maxSpeed * dt / 26), 1, 4);
+        return clamp(Math.ceil(maxSpeed * dt / 12), 1, 28);
       }
 
       function beginCellSweeps() {
@@ -2105,7 +2139,7 @@
             cell.vy += (desiredY - cell.vy) * steer;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? 920 : 720);
+              : (cell.splitBoostAge > 0 ? 920 * splitSpeedScale() : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
@@ -2436,12 +2470,14 @@
           const mergeContactPad = (cell.mergeVirusWindow > 0 || overCapMergeContact)
             ? Math.min(overCapMergeContact ? 760 : 120, virusHitRadius * (overCapMergeContact ? 0.55 : 0.16))
             : 0;
-          virusGrid.query(cell.x, cell.y, virusHitRadius + 360 + mergeContactPad, nearby);
+          queryAlongCellPath(virusGrid, cell, virusHitRadius + 360 + mergeContactPad, nearby);
           for (const virus of nearby) {
             if (virus.dead) continue;
             const liveCells = liveCellCount(cell.actor);
             const touch = virusHitRadius + virus.radius * (overCapMergeContact ? 3.4 : 1.18) + mergeContactPad;
-            const touchesVirus = distSq(cell.x, cell.y, virus.x, virus.y) <= touch * touch;
+            const touchesVirus = hasSweepPath(cell)
+              ? sweptPointDistSq(cell, virus.x, virus.y) <= touch * touch
+              : distSq(cell.x, cell.y, virus.x, virus.y) <= touch * touch;
 
             if (overCapMergeContact && liveCells < MAX_CELLS && cell.mass >= VIRUS_EXPLODE_MASS && touchesVirus) {
               explodeCellOnVirus(cell.actor, cell, virus);
@@ -2668,15 +2704,16 @@
         }
       }
 
-      function update(dt, now) {
+      function update(dt, now, realNow = now) {
         state.now = now;
+        state.realNow = realNow;
         updateMouseWorld();
         updateLocalActorInput();
 
         if (state.net.role === "client") {
           processClientNetworkUpdates();
           updateClientRenderState(dt);
-          if (state.net.connected) sendLocalInput(now);
+          if (state.net.connected) sendLocalInput(state.realNow);
           updateCamera(dt);
           updateHud(dt);
           return;
@@ -2702,7 +2739,7 @@
         cleanupAndRespawn();
         updateCamera(dt);
         updateHud(dt);
-        sendAuthoritativeSnapshot(now);
+        sendAuthoritativeSnapshot(state.realNow);
       }
 
       function networkSupported() {
@@ -2850,7 +2887,7 @@
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
             state.net.lastWorldSend = -100;
-            sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+            sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
         };
         channel.onclose = () => {
@@ -2880,7 +2917,7 @@
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
             state.net.lastWorldSend = -100;
-            sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+            sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
         });
         conn.on("data", (data) => {
@@ -3195,7 +3232,7 @@
         if (message.t === "relayPeer") {
           setStatus(`PEER ${message.peers}/2`);
           if (state.net.role === "host" && message.peers >= 2) {
-            sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+            sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
           return;
         }
@@ -3275,6 +3312,10 @@
           t: "snapshot",
           now,
           worldSize: WORLD_SIZE,
+          settings: {
+            splitSpeed: state.settings.splitSpeed,
+            gameSpeed: state.settings.gameSpeed
+          },
           actors: state.actors.map(serializeActor),
           feeds: feedsForNetworkSync().map(serializeCircle)
         };
@@ -3365,9 +3406,11 @@
       function updateRenderPosition(entity, dt, followRate = 18) {
         if (!Number.isFinite(entity.renderX)) entity.renderX = entity.x;
         if (!Number.isFinite(entity.renderY)) entity.renderY = entity.y;
-        const lead = Math.min(0.08, dt * 2);
-        const targetX = clamp(entity.x + (entity.vx || 0) * lead, 0, WORLD_SIZE);
-        const targetY = clamp(entity.y + (entity.vy || 0) * lead, 0, WORLD_SIZE);
+        const speed = Math.hypot((entity.vx || 0) + (entity.boostX || 0), (entity.vy || 0) + (entity.boostY || 0));
+        const lead = entity.splitBoostAge > 0 ? Math.min(0.12, dt * 4) : Math.min(0.08, dt * 2);
+        const targetX = clamp(entity.x + ((entity.vx || 0) + (entity.boostX || 0)) * lead, 0, WORLD_SIZE);
+        const targetY = clamp(entity.y + ((entity.vy || 0) + (entity.boostY || 0)) * lead, 0, WORLD_SIZE);
+        if (entity.splitBoostAge > 0 && speed > 220) followRate = Math.max(followRate, 30);
         const follow = 1 - Math.exp(-dt * followRate);
         entity.renderX += (targetX - entity.renderX) * follow;
         entity.renderY += (targetY - entity.renderY) * follow;
@@ -3397,9 +3440,11 @@
           if (message.e) guest.input.keys.add("KeyE");
           else guest.input.keys.delete("KeyE");
           const ejectSeq = Number(message.ejectSeq) || 0;
+          let urgentInput = false;
           if (ejectSeq > guest.input.lastNetEjectSeq) {
             guest.input.ejectQueued = true;
             guest.input.lastNetEjectSeq = ejectSeq;
+            urgentInput = true;
           }
           const splitSeq = Number(message.splitSeq) || 0;
           if (splitSeq > guest.input.lastNetSplitSeq) {
@@ -3407,7 +3452,9 @@
             guest.input.splitQueued = true;
             guest.input.splitCount += splitCount;
             guest.input.lastNetSplitSeq = splitSeq;
+            urgentInput = true;
           }
+          if (urgentInput) state.net.lastSnapshotSend = -100;
           return;
         }
 
@@ -3532,6 +3579,24 @@
             clampWorldEntities();
           }
           if (worldChanged || state.settings.max.worldSize !== previousMax) syncSettingsControls();
+        }
+        if (message.settings) {
+          let settingsChanged = false;
+          if (Number.isFinite(message.settings.splitSpeed)) {
+            const nextMax = Math.max(state.settings.max.splitSpeed, message.settings.splitSpeed);
+            const nextValue = clamp(message.settings.splitSpeed, 10, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitSpeed || nextValue !== state.settings.splitSpeed;
+            state.settings.max.splitSpeed = nextMax;
+            state.settings.splitSpeed = nextValue;
+          }
+          if (Number.isFinite(message.settings.gameSpeed)) {
+            const nextMax = Math.max(state.settings.max.gameSpeed, message.settings.gameSpeed);
+            const nextValue = clamp(message.settings.gameSpeed, 10, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.gameSpeed || nextValue !== state.settings.gameSpeed;
+            state.settings.max.gameSpeed = nextMax;
+            state.settings.gameSpeed = nextValue;
+          }
+          if (settingsChanged) syncSettingsControls();
         }
         const actors = (message.actors || []).map(applyActorSnapshot);
         state.actors = actors;
@@ -3818,6 +3883,14 @@
         splitRecoilSlider.value = String(state.settings.splitRecoil);
         splitRecoilValueEl.textContent = String(state.settings.splitRecoil);
         splitRecoilMaxBox.value = String(state.settings.max.splitRecoil);
+        splitSpeedSlider.max = String(state.settings.max.splitSpeed);
+        splitSpeedSlider.value = String(state.settings.splitSpeed);
+        splitSpeedValueEl.textContent = String(state.settings.splitSpeed);
+        splitSpeedMaxBox.value = String(state.settings.max.splitSpeed);
+        gameSpeedSlider.max = String(state.settings.max.gameSpeed);
+        gameSpeedSlider.value = String(state.settings.gameSpeed);
+        gameSpeedValueEl.textContent = String(state.settings.gameSpeed);
+        gameSpeedMaxBox.value = String(state.settings.max.gameSpeed);
         mergeCooldownSlider.max = String(state.settings.max.mergeCooldown);
         mergeCooldownSlider.value = String(state.settings.mergeCooldown);
         mergeCooldownValueEl.textContent = String(state.settings.mergeCooldown);
@@ -3881,6 +3954,8 @@
         if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, state.settings.max.ejectSpeed);
         if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
         if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
+        if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
+        if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
@@ -3920,6 +3995,14 @@
           state.settings.max.splitRecoil = Math.max(1, number);
           state.settings.splitRecoil = clamp(state.settings.splitRecoil, 0, state.settings.max.splitRecoil);
         }
+        if (kind === "splitSpeed") {
+          state.settings.max.splitSpeed = Math.max(10, Math.round(number / 5) * 5);
+          state.settings.splitSpeed = clamp(state.settings.splitSpeed, 10, state.settings.max.splitSpeed);
+        }
+        if (kind === "gameSpeed") {
+          state.settings.max.gameSpeed = Math.max(10, Math.round(number / 5) * 5);
+          state.settings.gameSpeed = clamp(state.settings.gameSpeed, 10, state.settings.max.gameSpeed);
+        }
         if (kind === "mergeCooldown") {
           state.settings.max.mergeCooldown = Math.max(1, number);
           state.settings.mergeCooldown = clamp(state.settings.mergeCooldown, 0, state.settings.max.mergeCooldown);
@@ -3947,7 +4030,7 @@
           state.net.connected = Boolean(state.net.channel?.readyState === "open" || state.net.socket?.readyState === WebSocket.OPEN);
           state.net.lastSnapshotSend = -100;
           state.net.lastWorldSend = -100;
-          sendAuthoritativeSnapshot(state.now || performance.now() / 1000, true);
+          sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           return;
         }
 
@@ -4037,6 +4120,8 @@
         ejectSpeedSlider.addEventListener("input", () => setWorldSetting("ejectSpeed", ejectSpeedSlider.value));
         ejectRateSlider.addEventListener("input", () => setWorldSetting("ejectRate", ejectRateSlider.value));
         splitRecoilSlider.addEventListener("input", () => setWorldSetting("splitRecoil", splitRecoilSlider.value));
+        splitSpeedSlider.addEventListener("input", () => setWorldSetting("splitSpeed", splitSpeedSlider.value));
+        gameSpeedSlider.addEventListener("input", () => setWorldSetting("gameSpeed", gameSpeedSlider.value));
         mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
@@ -4046,6 +4131,8 @@
         ejectSpeedMaxBox.addEventListener("change", () => setSliderMax("ejectSpeed", ejectSpeedMaxBox.value));
         ejectRateMaxBox.addEventListener("change", () => setSliderMax("ejectRate", ejectRateMaxBox.value));
         splitRecoilMaxBox.addEventListener("change", () => setSliderMax("splitRecoil", splitRecoilMaxBox.value));
+        splitSpeedMaxBox.addEventListener("change", () => setSliderMax("splitSpeed", splitSpeedMaxBox.value));
+        gameSpeedMaxBox.addEventListener("change", () => setSliderMax("gameSpeed", gameSpeedMaxBox.value));
         mergeCooldownMaxBox.addEventListener("change", () => setSliderMax("mergeCooldown", mergeCooldownMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
       }
@@ -4117,7 +4204,7 @@
       function loop(time) {
         const dt = Math.min(0.04, Math.max(0.001, (time - state.lastFrame) / 1000));
         state.lastFrame = time;
-        const now = time / 1000;
+        const realNow = time / 1000;
 
         state.fpsSample += ((1 / dt) - state.fpsSample) * 0.08;
         state.fpsTimer += dt;
@@ -4126,7 +4213,18 @@
           state.fpsTimer = 0;
         }
 
-        update(dt, now);
+        if (state.net.role === "client") {
+          state.simTime += dt;
+          update(dt, state.simTime, realNow);
+        } else {
+          const scaledDt = dt * gameSpeedScale();
+          const steps = clamp(Math.ceil(scaledDt / 0.035), 1, 12);
+          const stepDt = scaledDt / steps;
+          for (let i = 0; i < steps; i += 1) {
+            state.simTime += stepDt;
+            update(stepDt, state.simTime, realNow);
+          }
+        }
         draw();
         requestAnimationFrame(loop);
       }
