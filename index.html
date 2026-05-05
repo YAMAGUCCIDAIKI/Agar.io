@@ -422,8 +422,8 @@
     </label>
     <label class="setting-control">
       <span>吐く量</span>
-      <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="15" aria-label="吐く粒の大きさ">
-      <strong id="ejectMassValue">15</strong>
+      <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="21" aria-label="吐く粒の大きさ">
+      <strong id="ejectMassValue">21</strong>
       <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="吐く量上限">
     </label>
     <label class="setting-control">
@@ -452,9 +452,9 @@
     </label>
     <label class="setting-control">
       <span>ゲーム速度</span>
-      <input id="gameSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="ゲーム速度">
-      <strong id="gameSpeedValue">100</strong>
-      <input id="gameSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="ゲーム速度上限">
+      <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
+      <strong id="gameSpeedValue">1x</strong>
+      <input id="gameSpeedMaxBox" class="max-input" type="number" min="0.1" step="0.1" value="3" aria-label="ゲーム速度上限">
     </label>
     <label class="setting-control">
       <span>合体</span>
@@ -464,8 +464,8 @@
     </label>
     <label class="setting-control">
       <span>広さ</span>
-      <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="サーバーの広さ">
-      <strong id="worldSizeValue">5000</strong>
+      <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="4800" aria-label="サーバーの広さ">
+      <strong id="worldSizeValue">4800</strong>
       <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
     </label>
   </section>
@@ -530,7 +530,7 @@
       const worldSizeMaxBox = document.getElementById("worldSizeMaxBox");
 
       const TAU = Math.PI * 2;
-      let WORLD_SIZE = 5000;
+      let WORLD_SIZE = 4800;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
       const MAX_CELLS = 16;
@@ -541,7 +541,7 @@
       const MIN_SPLIT_SOURCE_MASS = 36;
       const VIRUS_MASS = 100;
       const VIRUS_EXPLODE_MASS = 133;
-      const DEFAULT_EJECT_MASS = 15;
+      const DEFAULT_EJECT_MASS = 21;
       const DEFAULT_EJECT_SPEED = 710;
       const DEFAULT_EJECT_RATE = 11;
       const PLAYER_START_MASS = 22500;
@@ -551,7 +551,7 @@
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 8;
       const DEFAULT_SPLIT_SPEED = 100;
-      const DEFAULT_GAME_SPEED = 100;
+      const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 10;
       const BOT_SPAWN_MASS = 700;
       const CONSUME_MASS_RATIO = 1.325;
@@ -640,7 +640,7 @@
             ejectRate: 50,
             splitRecoil: 40,
             splitSpeed: 300,
-            gameSpeed: 300,
+            gameSpeed: 3,
             mergeCooldown: 60,
             worldSize: 15000
           }
@@ -1530,7 +1530,7 @@
       }
 
       function gameSpeedScale() {
-        return Math.max(0.05, state.settings.gameSpeed / 100);
+        return Math.max(0.05, state.settings.gameSpeed);
       }
 
       function splitRecoilDistance(radius) {
@@ -3613,7 +3613,7 @@
           }
           if (Number.isFinite(message.settings.gameSpeed)) {
             const nextMax = Math.max(state.settings.max.gameSpeed, message.settings.gameSpeed);
-            const nextValue = clamp(message.settings.gameSpeed, 10, nextMax);
+            const nextValue = clamp(message.settings.gameSpeed, 0.1, nextMax);
             settingsChanged = settingsChanged || nextMax !== state.settings.max.gameSpeed || nextValue !== state.settings.gameSpeed;
             state.settings.max.gameSpeed = nextMax;
             state.settings.gameSpeed = nextValue;
@@ -3875,6 +3875,10 @@
         setViewScalePercent(state.viewScale * 100 + direction * 6);
       }
 
+      function formatMultiplier(value) {
+        return `${Number(value).toFixed(1).replace(/\.0$/, "")}x`;
+      }
+
       function syncSettingsControls() {
         botSlider.max = String(state.settings.max.bot);
         botSlider.value = String(state.settings.botTarget);
@@ -3911,7 +3915,7 @@
         splitSpeedMaxBox.value = String(state.settings.max.splitSpeed);
         gameSpeedSlider.max = String(state.settings.max.gameSpeed);
         gameSpeedSlider.value = String(state.settings.gameSpeed);
-        gameSpeedValueEl.textContent = String(state.settings.gameSpeed);
+        gameSpeedValueEl.textContent = formatMultiplier(state.settings.gameSpeed);
         gameSpeedMaxBox.value = String(state.settings.max.gameSpeed);
         mergeCooldownSlider.max = String(state.settings.max.mergeCooldown);
         mergeCooldownSlider.value = String(state.settings.mergeCooldown);
@@ -3967,7 +3971,8 @@
       }
 
       function setWorldSetting(kind, value) {
-        const number = Math.round(Number(value) || 0);
+        const rawNumber = Number(value) || 0;
+        const number = Math.round(rawNumber);
         if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
         if (kind === "botMode") state.settings.botMode = value === "chase" ? "chase" : "hunt";
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
@@ -3977,7 +3982,7 @@
         if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
         if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
         if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
-        if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.gameSpeed);
+        if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
@@ -3988,7 +3993,8 @@
       }
 
       function setSliderMax(kind, value) {
-        const number = Math.round(Number(value) || 0);
+        const rawNumber = Number(value) || 0;
+        const number = Math.round(rawNumber);
         if (kind === "bot") {
           state.settings.max.bot = Math.max(1, number);
           state.settings.botTarget = clamp(state.settings.botTarget, 0, state.settings.max.bot);
@@ -4022,8 +4028,8 @@
           state.settings.splitSpeed = clamp(state.settings.splitSpeed, 10, state.settings.max.splitSpeed);
         }
         if (kind === "gameSpeed") {
-          state.settings.max.gameSpeed = Math.max(10, Math.round(number / 5) * 5);
-          state.settings.gameSpeed = clamp(state.settings.gameSpeed, 10, state.settings.max.gameSpeed);
+          state.settings.max.gameSpeed = Math.max(0.1, Math.round(rawNumber * 10) / 10);
+          state.settings.gameSpeed = clamp(state.settings.gameSpeed, 0.1, state.settings.max.gameSpeed);
         }
         if (kind === "mergeCooldown") {
           state.settings.max.mergeCooldown = Math.max(1, number);
