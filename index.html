@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agar Canvas</title>
+  <title>アガーキャンバス</title>
   <meta name="description" content="HTML5 Canvasで遊べるAgar.io風のブラウザゲーム">
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <style>
@@ -265,7 +265,7 @@
 
     .setting-control {
       display: grid;
-      grid-template-columns: 54px minmax(0, 1fr) 48px 56px;
+      grid-template-columns: 72px minmax(0, 1fr) 48px 56px;
       align-items: center;
       gap: 8px;
       min-height: 28px;
@@ -356,105 +356,105 @@
 <body>
   <canvas id="game"></canvas>
 
-  <section class="hud" aria-label="status">
-    <div class="hud-row"><span>Mass</span><strong id="mass">0</strong></div>
-    <div class="hud-row"><span>Cells</span><strong id="cells">1/16</strong></div>
+  <section class="hud" aria-label="状態">
+    <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
+    <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
   </section>
 
-  <aside class="board" aria-label="scoreboard">
-    <div class="board-title">SCOREBOARD</div>
+  <aside class="board" aria-label="ランキング">
+    <div class="board-title">ランキング</div>
     <div id="scoreboard"></div>
   </aside>
 
-  <div id="flash" class="flash">RESPAWN</div>
+  <div id="flash" class="flash">復活</div>
 
-  <section class="online-panel" aria-label="online">
+  <section class="online-panel" aria-label="オンライン">
     <div class="online-title">
-      <span>ONLINE 2P</span>
-      <span id="onlineStatus" class="online-status">OFFLINE</span>
+      <span>オンライン2人</span>
+      <span id="onlineStatus" class="online-status">オフライン</span>
     </div>
     <div class="online-controls">
-      <button id="hostBtn" type="button">CREATE ROOM</button>
-      <button id="joinBtn" type="button">JOIN ROOM</button>
-      <button id="applyAnswerBtn" type="button">ANSWER</button>
-      <button id="disconnectBtn" type="button">DISCONNECT</button>
-      <button id="relayHostBtn" type="button">RELAY HOST</button>
-      <button id="relayJoinBtn" type="button">RELAY JOIN</button>
+      <button id="hostBtn" type="button">部屋を作る</button>
+      <button id="joinBtn" type="button">部屋に入る</button>
+      <button id="applyAnswerBtn" type="button">回答反映</button>
+      <button id="disconnectBtn" type="button">切断</button>
+      <button id="relayHostBtn" type="button">リレー作成</button>
+      <button id="relayJoinBtn" type="button">リレー参加</button>
     </div>
     <div class="online-fields">
-      <input id="serverUrlBox" spellcheck="false" aria-label="relay server" placeholder="ws://localhost:8080/ws">
-      <input id="roomBox" spellcheck="false" aria-label="room" placeholder="room">
+      <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
+      <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
     </div>
-    <textarea id="offerBox" spellcheck="false" placeholder="Offer"></textarea>
-    <textarea id="answerBox" spellcheck="false" placeholder="Answer"></textarea>
+    <textarea id="offerBox" spellcheck="false" placeholder="オファー"></textarea>
+    <textarea id="answerBox" spellcheck="false" placeholder="回答"></textarea>
   </section>
 
-  <section class="view-panel" aria-label="view">
-    <div class="view-row"><span>VIEW</span><strong id="viewValue">100%</strong></div>
+  <section class="view-panel" aria-label="設定">
+    <div class="view-row"><span>表示</span><strong id="viewValue">100%</strong></div>
     <div class="view-controls">
-      <button id="gameResetBtn" type="button">RESET</button>
+      <button id="gameResetBtn" type="button">リセット</button>
     </div>
     <label class="setting-control">
-      <span>BOT</span>
-      <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="bot count">
+      <span>ボット</span>
+      <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
       <strong id="botValue">100</strong>
-      <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="bot max">
+      <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="ボット上限">
     </label>
     <label class="setting-control">
-      <span>BOTMODE</span>
-      <select id="botModeSelect" class="mode-select" aria-label="bot mode">
-        <option value="hunt">HUNT SMALL</option>
-        <option value="chase">CHASE PLAYER</option>
+      <span>行動</span>
+      <select id="botModeSelect" class="mode-select" aria-label="ボット行動">
+        <option value="hunt">小さい相手を狙う</option>
+        <option value="chase">プレイヤーを追う</option>
       </select>
     </label>
     <label class="setting-control">
-      <span>SPIKE</span>
-      <input id="virusSlider" type="range" min="0" max="500" step="1" value="0" aria-label="virus count">
+      <span>とげ</span>
+      <input id="virusSlider" type="range" min="0" max="500" step="1" value="0" aria-label="とげ数">
       <strong id="virusValue">0</strong>
-      <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="spike max">
+      <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="とげ上限">
     </label>
     <label class="setting-control">
-      <span>PELLET</span>
-      <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="pellet count">
+      <span>ペレット</span>
+      <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="ペレット数">
       <strong id="foodValue">1200</strong>
-      <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="pellet max">
+      <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="ペレット上限">
     </label>
     <label class="setting-control">
-      <span>EJECT</span>
-      <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="15" aria-label="ejected pellet mass">
+      <span>吐く量</span>
+      <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="15" aria-label="吐く粒の大きさ">
       <strong id="ejectMassValue">15</strong>
-      <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="eject mass max">
+      <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="吐く量上限">
     </label>
     <label class="setting-control">
-      <span>SHOT</span>
-      <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="ejected pellet speed">
+      <span>粒速度</span>
+      <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="吐く粒の速度">
       <strong id="ejectSpeedValue">710</strong>
-      <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="shot speed max">
+      <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="粒速度上限">
     </label>
     <label class="setting-control">
-      <span>RAPID</span>
-      <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="eject fire rate">
+      <span>連射</span>
+      <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="粒の連射速度">
       <strong id="ejectRateValue">11</strong>
-      <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="eject fire rate max">
+      <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="連射上限">
     </label>
     <label class="setting-control">
-      <span>RECOIL</span>
-      <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="8" aria-label="split recoil size">
+      <span>反動</span>
+      <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="8" aria-label="分裂反動の大きさ">
       <strong id="splitRecoilValue">8</strong>
-      <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="split recoil max">
+      <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
     </label>
     <label class="setting-control">
-      <span>MERGE</span>
-      <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="split merge cooldown">
+      <span>合体</span>
+      <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="合体までの時間">
       <strong id="mergeCooldownValue">10</strong>
-      <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="merge cooldown max">
+      <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="合体時間上限">
     </label>
     <label class="setting-control">
-      <span>WORLD</span>
-      <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="world size">
+      <span>広さ</span>
+      <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="サーバーの広さ">
       <strong id="worldSizeValue">5000</strong>
-      <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="world size max">
+      <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
     </label>
   </section>
 
@@ -720,7 +720,6 @@
       const cellGrid = new SpatialHash(430);
       const scratch = [];
       const aiCellsScratch = [];
-      const aiQueryScratch = [];
       const aiEntityScratch = [];
       const cellQueryScratch = [];
 
@@ -844,14 +843,59 @@
       }
 
       function displayActorName(actor) {
-        if (isLocalActor(actor)) return "YOU";
+        if (isLocalActor(actor)) return "自分";
         if (actor && actor.isHuman) return "P2";
         return actor ? actor.name : "";
       }
 
+      function statusLabel(text) {
+        const direct = {
+          "OFFLINE": "オフライン",
+          "CONNECTED": "接続済み",
+          "CONNECTING": "接続中",
+          "CHECKING": "確認中",
+          "CLOSED": "切断済み",
+          "ICE FAILED": "ICE失敗",
+          "CHANNEL NG": "通信エラー",
+          "ROOM FULL": "満室",
+          "NO ROOM": "部屋なし",
+          "ROOM NG": "部屋エラー",
+          "ROOM BUSY": "部屋使用中",
+          "ROOM LOST": "部屋切断",
+          "ROOM OPENING": "部屋作成中",
+          "ROOM JOINING": "入室中",
+          "ROOM SEND NG": "部屋送信失敗",
+          "SEND NG": "送信失敗",
+          "NO WEBRTC": "WebRTCなし",
+          "NO WS": "WebSocketなし",
+          "NO HOST": "ホストなし",
+          "NO PEER": "相手なし",
+          "MAKE OFFER": "オファー作成中",
+          "OFFER OK": "オファー完了",
+          "MAKE ANSWER": "回答作成中",
+          "ANSWER OK": "回答完了",
+          "ANSWER NG": "回答失敗",
+          "SET RELAY URL": "リレーURL入力",
+          "RELAY CONNECT": "リレー接続中",
+          "RELAY JOIN": "リレー入室中",
+          "RELAY NG": "リレー失敗",
+          "RELAY SEND NG": "リレー送信失敗",
+          "RELAY CLOSED": "リレー切断",
+          "HOST RESET": "ホストでリセット",
+          "PEERJS LOAD NG": "PeerJS読込失敗"
+        };
+        if (direct[text]) return direct[text];
+        if (text.startsWith("ROOM ")) return text.replace("ROOM ", "部屋 ");
+        if (text.startsWith("PEER ")) return text.replace("PEER ", "相手 ");
+        if (text.startsWith("ICE ")) return text.replace("ICE ", "ICE ");
+        if (text.includes(" WAIT")) return text.replace(" WAIT", " 待機中");
+        if (text.includes(" NG")) return text.replace(" NG", " 失敗");
+        return text;
+      }
+
       function setStatus(text) {
         state.net.status = text;
-        onlineStatusEl.textContent = text;
+        onlineStatusEl.textContent = statusLabel(text);
       }
 
       function defaultRelayUrl() {
@@ -972,22 +1016,6 @@
         const scale = maxSpeed / speed;
         cell.vx *= scale;
         cell.vy *= scale;
-      }
-
-      function randomSpreadAngles(count) {
-        const angles = [];
-        const offset = rand(0, TAU);
-        const step = TAU / Math.max(1, count);
-        for (let i = 0; i < count; i += 1) {
-          angles.push(offset + i * step + rand(-step * 0.42, step * 0.42));
-        }
-        for (let i = angles.length - 1; i > 0; i -= 1) {
-          const j = Math.floor(rand(0, i + 1));
-          const tmp = angles[i];
-          angles[i] = angles[j];
-          angles[j] = tmp;
-        }
-        return angles;
       }
 
       function virusFragmentAngles(count) {
@@ -1327,7 +1355,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(560 + radius * 0.85, 620, 860);
+        return clamp(410 + radius * 0.55, 460, 660);
       }
 
       function splitRecoilDistance(radius) {
@@ -1819,10 +1847,6 @@
           }
         }
         return nearest;
-      }
-
-      function actorHasMergeRoom(actor) {
-        return liveCellCount(actor) < MAX_CELLS;
       }
 
       function cellSpeed(cell) {
