@@ -791,6 +791,31 @@
         );
       }
 
+      function circleOverlapArea(radiusA, radiusB, distance) {
+        if (distance >= radiusA + radiusB) return 0;
+        const smallerRadius = Math.min(radiusA, radiusB);
+        if (distance <= Math.abs(radiusA - radiusB)) return Math.PI * smallerRadius * smallerRadius;
+        const angleA = 2 * Math.acos(clamp(
+          (distance * distance + radiusA * radiusA - radiusB * radiusB) / (2 * distance * radiusA),
+          -1,
+          1
+        ));
+        const angleB = 2 * Math.acos(clamp(
+          (distance * distance + radiusB * radiusB - radiusA * radiusA) / (2 * distance * radiusB),
+          -1,
+          1
+        ));
+        return 0.5 * radiusA * radiusA * (angleA - Math.sin(angleA)) +
+          0.5 * radiusB * radiusB * (angleB - Math.sin(angleB));
+      }
+
+      function hasHalfAreaOverlap(a, b, distance) {
+        const overlapArea = circleOverlapArea(a.radius, b.radius, distance);
+        const halfAreaA = Math.PI * a.radius * a.radius * 0.5;
+        const halfAreaB = Math.PI * b.radius * b.radius * 0.5;
+        return overlapArea >= halfAreaA || overlapArea >= halfAreaB;
+      }
+
       function radiusFromMass(mass) {
         return Math.sqrt(Math.max(1, mass)) * 4;
       }
@@ -2162,8 +2187,7 @@
         const bigMergeMass = big === a ? aMergeMass : bMergeMass;
         const smallMergeMass = small === a ? aMergeMass : bMergeMass;
         const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
-        const overlapDepth = big.radius + small.radius - centerDistance;
-        if (overlapDepth <= Math.max(3, small.radius * 0.18)) return false;
+        if (!hasHalfAreaOverlap(a, b, centerDistance)) return false;
 
         const total = bigMergeMass + smallMergeMass;
         const mergePieces = mergeContributionPieces(big) + mergeContributionPieces(small);
