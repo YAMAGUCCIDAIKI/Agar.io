@@ -982,6 +982,7 @@
           lastEject: -100,
           nextEjectIndex: 0,
           lastSplit: -100,
+          lastSplitFrame: -1,
           lastMergeFrame: -1,
           wanderX: rand(300, WORLD_SIZE - 300),
           wanderY: rand(300, WORLD_SIZE - 300),
@@ -1149,6 +1150,7 @@
           birthScale: 1,
           fragmentAge: 0,
           splitBoostAge: 0,
+          separationGraceUntil: 0,
           virusCooldown: 0,
           mergeVirusWindow: 0,
           mergeOverflowMass: Math.max(0, mass - MAX_CELL_MASS),
@@ -1360,6 +1362,7 @@
         actor.respawns += 1;
         actor.respawnAt = 0;
         actor.lastSplit = -100;
+        actor.lastSplitFrame = -1;
         actor.lastEject = -100;
         const cell = createCell(actor, pos.x, pos.y, mass);
         actor.cells.push(cell);
@@ -1561,11 +1564,10 @@
         const childRadius = radiusFromMass(childMass);
         const originX = source.x;
         const originY = source.y;
-        const offset = source.radius + childRadius + 3;
         const child = createCell(
           actor,
-          clamp(originX + dirX * offset, childRadius, WORLD_SIZE - childRadius),
-          clamp(originY + dirY * offset, childRadius, WORLD_SIZE - childRadius),
+          clamp(originX, childRadius, WORLD_SIZE - childRadius),
+          clamp(originY, childRadius, WORLD_SIZE - childRadius),
           childMass
         );
         child.vx = source.vx;
@@ -1578,6 +1580,8 @@
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
         child.splitBoostAge = 0.22;
+        source.separationGraceUntil = state.now + 0.14;
+        child.separationGraceUntil = state.now + 0.14;
         source.vx *= 0.24;
         source.vy *= 0.24;
         source.boostX *= 0.02;
@@ -1611,8 +1615,7 @@
         }
         if (didSplit) {
           actor.lastSplit = now;
-          separateOwnCells(actor);
-          separateOwnCells(actor);
+          actor.lastSplitFrame = state.frameIndex;
           sendSplitRenderEvent(actor);
         }
         return didSplit;
@@ -2271,6 +2274,7 @@
               const b = actor.cells[j];
               if (b.dead) continue;
               if (canCellMerge(a) && canCellMerge(b)) continue;
+              if (a.separationGraceUntil > state.now || b.separationGraceUntil > state.now) continue;
 
               const dx = b.x - a.x;
               const dy = b.y - a.y;
@@ -2662,12 +2666,17 @@
           }
           if (actor.input.splitQueued) {
             const aim = actorAimDirection(actor);
-            const splitCount = Math.max(1, Math.min(4, actor.input.splitCount || 1));
-            for (let i = 0; i < splitCount; i += 1) {
-              if (!splitActor(actor, aim.x, aim.y, now, 0, actor.input.targetX, actor.input.targetY)) break;
+            if (actor.lastSplitFrame !== state.frameIndex) {
+              if (splitActor(actor, aim.x, aim.y, now, 0, actor.input.targetX, actor.input.targetY)) {
+                actor.input.splitCount = Math.max(0, (actor.input.splitCount || 1) - 1);
+              } else {
+                actor.input.splitCount = 0;
+              }
             }
-            actor.input.splitQueued = false;
-            actor.input.splitCount = 0;
+            if (actor.input.splitCount <= 0) {
+              actor.input.splitQueued = false;
+              actor.input.splitCount = 0;
+            }
           }
         }
         processBotManualControls(now);
