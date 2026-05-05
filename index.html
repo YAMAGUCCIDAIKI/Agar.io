@@ -598,6 +598,7 @@
         now: 0,
         realNow: 0,
         simTime: 0,
+        frameIndex: 0,
         lastFrame: performance.now(),
         fps: 60,
         fpsSample: 60,
@@ -655,6 +656,8 @@
           splitSeq: 0,
           ejectQueued: false,
           ejectSeq: 0,
+          respawnQueued: false,
+          respawnSeq: 0,
           botSplitQueued: false,
           botEjectQueued: false,
           lastAimX: 1,
@@ -971,13 +974,15 @@
             lastAimX: 1,
             lastAimY: 0,
             lastNetSplitSeq: 0,
-            lastNetEjectSeq: 0
+            lastNetEjectSeq: 0,
+            lastNetRespawnSeq: 0
           },
           cells: [],
           aiTimer: 0,
           lastEject: -100,
           nextEjectIndex: 0,
           lastSplit: -100,
+          lastMergeFrame: -1,
           wanderX: rand(300, WORLD_SIZE - 300),
           wanderY: rand(300, WORLD_SIZE - 300),
           respawnAt: 0,
@@ -1608,8 +1613,17 @@
           actor.lastSplit = now;
           separateOwnCells(actor);
           separateOwnCells(actor);
+          sendSplitRenderEvent(actor);
         }
         return didSplit;
+      }
+
+      function sendSplitRenderEvent(actor) {
+        if (state.net.role !== "host" || !state.net.connected || !actor.isHuman) return;
+        netSend({
+          t: "splitEvent",
+          actor: serializeActor(actor)
+        });
       }
 
       function ejectMass(actor, now, allCells = false) {
@@ -2343,15 +2357,13 @@
 
       function resolveOwnCells() {
         for (const actor of state.actors) {
-          let merged = true;
-          while (merged) {
-            merged = false;
+          if (actor.lastMergeFrame !== state.frameIndex) {
             mergeLoop:
             for (let i = 0; i < actor.cells.length; i += 1) {
               for (let j = i + 1; j < actor.cells.length; j += 1) {
                 if (tryMerge(actor, actor.cells[i], actor.cells[j])) {
                   actor.cells = actor.cells.filter((cell) => !cell.dead);
-                  merged = true;
+                  actor.lastMergeFrame = state.frameIndex;
                   break mergeLoop;
                 }
               }
@@ -2464,29 +2476,14 @@
         const nearby = [];
         for (const cell of cells) {
           if (cell.dead) continue;
-          const overCapMergeContact = cell.mass > MAX_CELL_MASS ||
-            (cell.mergeVirusWindow > 0 && (cell.mergeOverflowMass > 0 || cell.mass > MAX_CELL_MASS));
-          const virusHitRadius = overCapMergeContact ? mergeVirusHitRadius(cell) : cell.radius;
-          const mergeContactPad = (cell.mergeVirusWindow > 0 || overCapMergeContact)
-            ? Math.min(overCapMergeContact ? 760 : 120, virusHitRadius * (overCapMergeContact ? 0.55 : 0.16))
-            : 0;
-          queryAlongCellPath(virusGrid, cell, virusHitRadius + 360 + mergeContactPad, nearby);
+          queryAlongCellPath(virusGrid, cell, cell.radius + 360, nearby);
           for (const virus of nearby) {
             if (virus.dead) continue;
             const liveCells = liveCellCount(cell.actor);
-            const touch = virusHitRadius + virus.radius * (overCapMergeContact ? 3.4 : 1.18) + mergeContactPad;
-            const touchesVirus = hasSweepPath(cell)
-              ? sweptPointDistSq(cell, virus.x, virus.y) <= touch * touch
-              : distSq(cell.x, cell.y, virus.x, virus.y) <= touch * touch;
-
-            if (overCapMergeContact && liveCells < MAX_CELLS && cell.mass >= VIRUS_EXPLODE_MASS && touchesVirus) {
-              explodeCellOnVirus(cell.actor, cell, virus);
-              virus.dead = true;
-              break;
-            }
+            const eatsVirus = canConsumeSwept(cell, virus);
 
             if (liveCells >= MAX_CELLS) {
-              if (canConsume(cell, virus)) {
+              if (eatsVirus) {
                 virus.dead = true;
                 addMass(cell, virus.mass);
                 break;
@@ -2496,7 +2493,7 @@
 
             if (cell.virusCooldown > 0) continue;
             if (cell.mass < VIRUS_EXPLODE_MASS) continue;
-            if (touchesVirus) {
+            if (eatsVirus) {
               explodeCellOnVirus(cell.actor, cell, virus);
               virus.dead = true;
               break;
@@ -3375,7 +3372,7 @@
 
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
-        const urgent = state.player.input.splitQueued || state.player.input.ejectQueued;
+        const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued;
         if (!urgent && now - state.net.lastInputSend < 1 / 30) return;
         netSend({
           t: "input",
@@ -3383,11 +3380,13 @@
           targetY: state.player.input.targetY,
           e: state.player.input.keys.has("KeyE"),
           ejectSeq: state.input.ejectSeq,
-          splitSeq: state.input.splitSeq
+          splitSeq: state.input.splitSeq,
+          respawnSeq: state.input.respawnSeq
         });
         state.player.input.ejectQueued = false;
         state.player.input.splitQueued = false;
         state.player.input.splitCount = 0;
+        state.input.respawnQueued = false;
         state.net.lastInputSend = now;
       }
 
@@ -3454,7 +3453,21 @@
             guest.input.lastNetSplitSeq = splitSeq;
             urgentInput = true;
           }
+          const respawnSeq = Number(message.respawnSeq) || 0;
+          if (respawnSeq > guest.input.lastNetRespawnSeq) {
+            spawnActor(guest, PLAYER_RESPAWN_MASS);
+            guest.input.lastNetRespawnSeq = respawnSeq;
+            urgentInput = true;
+          }
           if (urgentInput) state.net.lastSnapshotSend = -100;
+          return;
+        }
+
+        if (state.net.role === "client" && message.t === "splitEvent" && message.actor) {
+          const actor = applyActorSnapshot(message.actor);
+          if (!state.actors.includes(actor)) state.actors.push(actor);
+          if (actor.id === state.localActorId) state.player = actor;
+          updateClientRenderState(1 / 60);
           return;
         }
 
@@ -4037,6 +4050,19 @@
         setStatus("HOST RESET");
       }
 
+      function respawnLocalPlayer() {
+        if (!state.player) return;
+        if (state.net.role === "client") {
+          state.input.respawnQueued = true;
+          state.input.respawnSeq += 1;
+          return;
+        }
+        spawnActor(state.player, PLAYER_RESPAWN_MASS);
+        state.flashUntil = state.now + 1.0;
+        state.net.lastSnapshotSend = -100;
+        rebuildSpatialHashes();
+      }
+
       function bindInput() {
         window.addEventListener("resize", resize);
         window.addEventListener("pointermove", onPointerMove);
@@ -4052,7 +4078,8 @@
             event.code === "KeyW" ||
             event.code === "KeyE" ||
             event.code === "KeyZ" ||
-            event.code === "KeyX"
+            event.code === "KeyX" ||
+            event.code === "KeyN"
           ) {
             event.preventDefault();
             state.input.keys.add(event.code);
@@ -4074,6 +4101,7 @@
             }
             if (event.code === "KeyZ" && !event.repeat) state.input.botSplitQueued = true;
             if (event.code === "KeyX" && !event.repeat) state.input.botEjectQueued = true;
+            if (event.code === "KeyN" && !event.repeat) respawnLocalPlayer();
           }
         });
         window.addEventListener("keyup", (event) => {
@@ -4085,7 +4113,8 @@
             event.code === "KeyW" ||
             event.code === "KeyE" ||
             event.code === "KeyZ" ||
-            event.code === "KeyX"
+            event.code === "KeyX" ||
+            event.code === "KeyN"
           ) {
             event.preventDefault();
             state.input.keys.delete(event.code);
@@ -4096,6 +4125,7 @@
           state.input.splitQueued = false;
           state.input.splitCount = 0;
           state.input.ejectQueued = false;
+          state.input.respawnQueued = false;
           state.input.botSplitQueued = false;
           state.input.botEjectQueued = false;
         });
@@ -4202,6 +4232,7 @@
       }
 
       function loop(time) {
+        state.frameIndex += 1;
         const dt = Math.min(0.04, Math.max(0.001, (time - state.lastFrame) / 1000));
         state.lastFrame = time;
         const realNow = time / 1000;
