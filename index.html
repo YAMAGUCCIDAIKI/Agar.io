@@ -743,6 +743,54 @@
         return dx * dx + dy * dy;
       }
 
+      function segmentPointDistSq(ax, ay, bx, by, px, py) {
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSq = dx * dx + dy * dy;
+        if (lengthSq < 0.0001) return distSq(ax, ay, px, py);
+        const t = clamp(((px - ax) * dx + (py - ay) * dy) / lengthSq, 0, 1);
+        const closestX = ax + dx * t;
+        const closestY = ay + dy * t;
+        return distSq(closestX, closestY, px, py);
+      }
+
+      function cross(ax, ay, bx, by) {
+        return ax * by - ay * bx;
+      }
+
+      function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+        const rx = bx - ax;
+        const ry = by - ay;
+        const sx = dx - cx;
+        const sy = dy - cy;
+        const denominator = cross(rx, ry, sx, sy);
+        const qpx = cx - ax;
+        const qpy = cy - ay;
+
+        if (Math.abs(denominator) < 0.000001) {
+          if (Math.abs(cross(qpx, qpy, rx, ry)) > 0.000001) return false;
+          const rr = rx * rx + ry * ry;
+          if (rr < 0.000001) return segmentPointDistSq(cx, cy, dx, dy, ax, ay) < 0.000001;
+          const t0 = ((cx - ax) * rx + (cy - ay) * ry) / rr;
+          const t1 = ((dx - ax) * rx + (dy - ay) * ry) / rr;
+          return Math.max(Math.min(t0, t1), 0) <= Math.min(Math.max(t0, t1), 1);
+        }
+
+        const t = cross(qpx, qpy, sx, sy) / denominator;
+        const u = cross(qpx, qpy, rx, ry) / denominator;
+        return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+      }
+
+      function segmentSegmentDistSq(ax, ay, bx, by, cx, cy, dx, dy) {
+        if (segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy)) return 0;
+        return Math.min(
+          segmentPointDistSq(ax, ay, bx, by, cx, cy),
+          segmentPointDistSq(ax, ay, bx, by, dx, dy),
+          segmentPointDistSq(cx, cy, dx, dy, ax, ay),
+          segmentPointDistSq(cx, cy, dx, dy, bx, by)
+        );
+      }
+
       function radiusFromMass(mass) {
         return Math.sqrt(Math.max(1, mass)) * 4;
       }
@@ -790,13 +838,67 @@
         return `rgb(${r}, ${g}, ${b})`;
       }
 
-      function canConsume(eater, victim) {
+      function consumeThreshold(eater, victim) {
         if (victim.ownerId && victim.mass >= UNCONSUMABLE_CELL_MASS) return false;
         if (eater.mass + 0.001 < victim.mass * CONSUME_MASS_RATIO) return false;
         if (eater.radius + 0.001 < victim.radius * CONSUME_RADIUS_RATIO) return false;
         const threshold = eater.radius - victim.radius * 0.22;
-        if (threshold <= 0) return false;
+        return threshold > 0 ? threshold : 0;
+      }
+
+      function canConsume(eater, victim) {
+        const threshold = consumeThreshold(eater, victim);
+        if (!threshold) return false;
         return distSq(eater.x, eater.y, victim.x, victim.y) <= threshold * threshold;
+      }
+
+      function hasSweepPath(cell) {
+        return Boolean(cell.sweepActive && cell.sweepPoints && cell.sweepPoints.length > 1);
+      }
+
+      function sweptPointDistSq(cell, x, y) {
+        const points = cell.sweepPoints;
+        if (!points || points.length < 2) return distSq(cell.x, cell.y, x, y);
+        let best = Infinity;
+        for (let i = 1; i < points.length; i += 1) {
+          const a = points[i - 1];
+          const b = points[i];
+          best = Math.min(best, segmentPointDistSq(a.x, a.y, b.x, b.y, x, y));
+        }
+        return best;
+      }
+
+      function sweptSegmentDistSq(aCell, bCell) {
+        const aPoints = aCell.sweepPoints;
+        const bPoints = bCell.sweepPoints;
+        if (!aPoints || !bPoints || aPoints.length < 2 || bPoints.length < 2) {
+          return distSq(aCell.x, aCell.y, bCell.x, bCell.y);
+        }
+        let best = Infinity;
+        for (let ai = 1; ai < aPoints.length; ai += 1) {
+          const a0 = aPoints[ai - 1];
+          const a1 = aPoints[ai];
+          for (let bi = 1; bi < bPoints.length; bi += 1) {
+            const b0 = bPoints[bi - 1];
+            const b1 = bPoints[bi];
+            best = Math.min(best, segmentSegmentDistSq(a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y));
+          }
+        }
+        return best;
+      }
+
+      function canConsumeSwept(eater, victim) {
+        const threshold = consumeThreshold(eater, victim);
+        if (!threshold) return false;
+        const thresholdSq = threshold * threshold;
+        if (distSq(eater.x, eater.y, victim.x, victim.y) <= thresholdSq) return true;
+
+        const eaterSweeps = hasSweepPath(eater);
+        const victimSweeps = hasSweepPath(victim);
+        if (eaterSweeps && victimSweeps && sweptSegmentDistSq(eater, victim) <= thresholdSq) return true;
+        if (eaterSweeps && sweptPointDistSq(eater, victim.x, victim.y) <= thresholdSq) return true;
+        if (victimSweeps && sweptPointDistSq(victim, eater.x, eater.y) <= thresholdSq) return true;
+        return false;
       }
 
       function createActor(id, name, color, isHuman = false, control = null) {
@@ -971,6 +1073,14 @@
           vy: 0,
           boostX: 0,
           boostY: 0,
+          faceX: 1,
+          faceY: 0,
+          sweepActive: false,
+          sweepPoints: null,
+          sweepFromX: x,
+          sweepFromY: y,
+          sweepToX: x,
+          sweepToY: y,
           cooldown: 0,
           mergeReadyAt: 0,
           capFramesLeft: mass > MAX_CELL_MASS ? MASS_CAP_SETTLE_FRAMES : 0,
@@ -1398,6 +1508,10 @@
         );
         child.vx = source.vx;
         child.vy = source.vy;
+        source.faceX = dirX;
+        source.faceY = dirY;
+        child.faceX = dirX;
+        child.faceY = dirY;
         const impulse = splitImpulse(child.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
@@ -1853,6 +1967,25 @@
         return clamp(1440 / Math.pow(cell.radius, 0.46), 116, 436);
       }
 
+      function turnCellFacing(cell, targetDir, dt) {
+        const current = normalized(
+          Number.isFinite(cell.faceX) ? cell.faceX : 1,
+          Number.isFinite(cell.faceY) ? cell.faceY : 0,
+          1,
+          0
+        );
+        const turnRate = cell.splitBoostAge > 0 ? 3.1 : 7.2;
+        const turn = 1 - Math.exp(-dt * turnRate);
+        const next = normalized(
+          current.x + (targetDir.x - current.x) * turn,
+          current.y + (targetDir.y - current.y) * turn,
+          targetDir.x,
+          targetDir.y
+        );
+        cell.faceX = next.x;
+        cell.faceY = next.y;
+      }
+
       function splitMotionSubsteps(dt) {
         let maxSpeed = 0;
         for (const actor of state.actors) {
@@ -1865,13 +1998,67 @@
         return clamp(Math.ceil(maxSpeed * dt / 26), 1, 4);
       }
 
+      function beginCellSweeps() {
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (cell.dead) continue;
+            const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
+            cell.sweepActive = cell.splitBoostAge > 0 || cell.fragmentAge > 0 || boostSpeed > 30;
+            cell.sweepFromX = cell.x;
+            cell.sweepFromY = cell.y;
+            cell.sweepToX = cell.x;
+            cell.sweepToY = cell.y;
+            cell.sweepPoints = cell.sweepActive ? [{ x: cell.x, y: cell.y }] : null;
+          }
+        }
+      }
+
+      function appendCellSweepPoint(cell) {
+        if (!cell.sweepActive || !cell.sweepPoints) return;
+        const last = cell.sweepPoints[cell.sweepPoints.length - 1];
+        if (distSq(last.x, last.y, cell.x, cell.y) > 0.25) {
+          cell.sweepPoints.push({ x: cell.x, y: cell.y });
+        }
+        cell.sweepToX = cell.x;
+        cell.sweepToY = cell.y;
+      }
+
+      function finishCellSweeps() {
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) {
+            if (cell.dead) continue;
+            appendCellSweepPoint(cell);
+          }
+        }
+      }
+
+      function queryAlongCellPath(grid, cell, range, out) {
+        if (!hasSweepPath(cell)) return grid.query(cell.x, cell.y, range, out);
+        let left = cell.x;
+        let right = cell.x;
+        let top = cell.y;
+        let bottom = cell.y;
+        for (const point of cell.sweepPoints) {
+          left = Math.min(left, point.x);
+          right = Math.max(right, point.x);
+          top = Math.min(top, point.y);
+          bottom = Math.max(bottom, point.y);
+        }
+        return grid.queryRect(left - range, top - range, right + range, bottom + range, out);
+      }
+
       function updateCellMotion(dt) {
+        beginCellSweeps();
         const steps = splitMotionSubsteps(dt);
         const stepDt = dt / steps;
         for (let step = 0; step < steps; step += 1) {
           moveCellsStep(stepDt);
-          if (steps > 1) resolveOwnCells();
+          if (steps > 1) {
+            resolveOwnCells();
+            finishCellSweeps();
+          }
         }
+        finishCellSweeps();
       }
 
       function moveCellsStep(dt) {
@@ -1887,8 +2074,9 @@
             const n = normalized(dx, dy, 0, 0);
             const speed = cellSpeed(cell);
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
-            const desiredX = n.x * speed * throttle;
-            const desiredY = n.y * speed * throttle;
+            if (n.length > 0.001) turnCellFacing(cell, n, dt);
+            const desiredX = (Number.isFinite(cell.faceX) ? cell.faceX : n.x) * speed * throttle;
+            const desiredY = (Number.isFinite(cell.faceY) ? cell.faceY : n.y) * speed * throttle;
             const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
 
             cell.vx += (desiredX - cell.vx) * steer;
@@ -1959,6 +2147,8 @@
               cell.boostY = Math.min(0, cell.boostY);
               cell.vy = Math.min(0, cell.vy);
             }
+
+            appendCellSweepPoint(cell);
           }
         }
       }
@@ -2153,10 +2343,10 @@
         const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
         const nearby = [];
         for (const cell of cells) {
-          foodGrid.query(cell.x, cell.y, cell.radius + 36, nearby);
+          queryAlongCellPath(foodGrid, cell, cell.radius + 36, nearby);
           for (const food of nearby) {
             if (food.dead) continue;
-            if (canConsume(cell, food)) {
+            if (canConsumeSwept(cell, food)) {
               food.dead = true;
               addMass(cell, food.mass);
             }
@@ -2198,11 +2388,11 @@
         const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
         const nearby = [];
         for (const cell of cells) {
-          feedGrid.query(cell.x, cell.y, cell.radius + 60, nearby);
+          queryAlongCellPath(feedGrid, cell, cell.radius + 60, nearby);
           for (const feed of nearby) {
             if (feed.dead || feed.age < 0.25) continue;
             if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
-            if (canConsume(cell, feed)) {
+            if (canConsumeSwept(cell, feed)) {
               feed.dead = true;
               addMass(cell, feed.mass);
             }
@@ -2263,6 +2453,32 @@
           for (const victim of nearbyCells) {
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsume(eater, victim)) continue;
+            victim.dead = true;
+            addMass(eater, victim.mass);
+          }
+        }
+        handleSweptCellEating(cells);
+      }
+
+      function handleSweptCellEating(cells) {
+        const sweptCells = cells.filter((cell) => !cell.dead && hasSweepPath(cell));
+        if (!sweptCells.length) return;
+
+        for (const eater of cells) {
+          if (eater.dead) continue;
+          for (const victim of sweptCells) {
+            if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canConsumeSwept(eater, victim)) continue;
+            victim.dead = true;
+            addMass(eater, victim.mass);
+          }
+        }
+
+        for (const eater of sweptCells) {
+          if (eater.dead) continue;
+          for (const victim of cells) {
+            if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canConsumeSwept(eater, victim)) continue;
             victim.dead = true;
             addMass(eater, victim.mass);
           }
@@ -2450,6 +2666,7 @@
 
         updateCellMotion(dt);
         resolveOwnCells();
+        finishCellSweeps();
         updateLooseMass(dt);
         rebuildSpatialHashes();
         handleFeedVirusCollisions();
@@ -2976,6 +3193,8 @@
           vy: cell.vy,
           boostX: cell.boostX,
           boostY: cell.boostY,
+          faceX: cell.faceX,
+          faceY: cell.faceY,
           mergeReadyAt: cell.mergeReadyAt,
           capFramesLeft: cell.capFramesLeft,
           birthAge: cell.birthAge,
@@ -3176,6 +3395,20 @@
         cell.vy = data.vy || 0;
         cell.boostX = data.boostX || 0;
         cell.boostY = data.boostY || 0;
+        const face = normalized(
+          data.faceX == null ? (Number.isFinite(existing?.faceX) ? existing.faceX : 1) : data.faceX,
+          data.faceY == null ? (Number.isFinite(existing?.faceY) ? existing.faceY : 0) : data.faceY,
+          1,
+          0
+        );
+        cell.faceX = face.x;
+        cell.faceY = face.y;
+        cell.sweepActive = false;
+        cell.sweepPoints = null;
+        cell.sweepFromX = cell.x;
+        cell.sweepFromY = cell.y;
+        cell.sweepToX = cell.x;
+        cell.sweepToY = cell.y;
         cell.cooldown = 0;
         cell.mergeReadyAt = data.mergeReadyAt || 0;
         cell.capFramesLeft = data.capFramesLeft || 0;
