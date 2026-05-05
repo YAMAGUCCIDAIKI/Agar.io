@@ -970,6 +970,8 @@
             keys: new Set(),
             splitQueued: false,
             splitCount: 0,
+            splitDirX: null,
+            splitDirY: null,
             ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
@@ -2665,9 +2667,13 @@
             ejectMass(actor, now, true);
           }
           if (actor.input.splitQueued) {
-            const aim = actorAimDirection(actor);
+            if (!Number.isFinite(actor.input.splitDirX) || !Number.isFinite(actor.input.splitDirY)) {
+              const aim = actorAimDirection(actor);
+              actor.input.splitDirX = aim.x;
+              actor.input.splitDirY = aim.y;
+            }
             if (actor.lastSplitFrame !== state.frameIndex) {
-              if (splitActor(actor, aim.x, aim.y, now, 0, actor.input.targetX, actor.input.targetY)) {
+              if (splitActor(actor, actor.input.splitDirX, actor.input.splitDirY, now)) {
                 actor.input.splitCount = Math.max(0, (actor.input.splitCount || 1) - 1);
               } else {
                 actor.input.splitCount = 0;
@@ -2676,6 +2682,8 @@
             if (actor.input.splitCount <= 0) {
               actor.input.splitQueued = false;
               actor.input.splitCount = 0;
+              actor.input.splitDirX = null;
+              actor.input.splitDirY = null;
             }
           }
         }
