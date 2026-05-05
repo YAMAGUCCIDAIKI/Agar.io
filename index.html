@@ -1550,7 +1550,6 @@
         if (didSplit) {
           actor.lastSplit = now;
           separateOwnCells(actor);
-          limitOwnCellSpread(actor);
           separateOwnCells(actor);
         }
         return didSplit;
@@ -2299,7 +2298,6 @@
             }
           }
           separateOwnCells(actor);
-          limitOwnCellSpread(actor);
           separateOwnCells(actor);
         }
       }
