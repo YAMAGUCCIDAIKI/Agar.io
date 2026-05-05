@@ -2197,6 +2197,7 @@
             for (let j = i + 1; j < actor.cells.length; j += 1) {
               const b = actor.cells[j];
               if (b.dead) continue;
+              if (canCellMerge(a) && canCellMerge(b)) continue;
 
               const dx = b.x - a.x;
               const dy = b.y - a.y;
