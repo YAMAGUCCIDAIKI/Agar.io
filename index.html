@@ -609,6 +609,9 @@
       const SPLIT_MAX_BOOST = 680;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
+      const SPLIT_RECOIL_SCALE = 0.35;
+      const SPLIT_RECOIL_MAX = 48;
+      const SPLIT_CHILD_SPAWN_OFFSET_MAX = 96;
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
@@ -931,6 +934,23 @@
         const velocityDamping = clamp(boostDamping + 0.1, 0.58, 0.96);
         cell.vx *= velocityDamping;
         cell.vy *= velocityDamping;
+      }
+
+      function preserveChildSplitMotion(parentCell) {
+        if (!parentCell || !parentCell.actor) return;
+        for (const cell of parentCell.actor.cells) {
+          if (cell.dead || cell.splitParentId !== parentCell.id || cell.splitBoostAge <= 0) continue;
+          const aim = normalized(cell.boostX, cell.boostY, cell.splitDirX, cell.splitDirY);
+          const minBoost = splitImpulse(cell.radius) * 0.58;
+          const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
+          if (boostSpeed < minBoost) {
+            cell.boostX = aim.x * minBoost;
+            cell.boostY = aim.y * minBoost;
+          }
+          cell.splitBoostAge = Math.max(cell.splitBoostAge, SPLIT_BOOST_DURATION * 0.45);
+          cell.faceX = aim.x;
+          cell.faceY = aim.y;
+        }
       }
 
       function normalized(dx, dy, fallbackX = 1, fallbackY = 0) {
@@ -1355,6 +1375,9 @@
           birthScale: 1,
           fragmentAge: 0,
           splitBoostAge: 0,
+          splitParentId: null,
+          splitDirX: 1,
+          splitDirY: 0,
           separationGraceUntil: 0,
           virusCooldown: 0,
           mergeVirusWindow: 0,
@@ -1842,7 +1865,7 @@
       function splitRecoilDistance(radius) {
         const recoil = state.settings.splitRecoil;
         if (recoil <= 0) return 0;
-        return Math.max(0, radius * (recoil / 100));
+        return clamp(radius * (recoil / 100) * SPLIT_RECOIL_SCALE, 0, SPLIT_RECOIL_MAX);
       }
 
       function ejectInterval() {
@@ -1871,10 +1894,16 @@
         const childRadius = radiusFromMass(childMass);
         const originX = source.x;
         const originY = source.y;
+        const recoilDistance = splitRecoilDistance(source.radius);
+        source.x = clamp(originX - dirX * recoilDistance, source.radius, WORLD_SIZE - source.radius);
+        source.y = clamp(originY - dirY * recoilDistance, source.radius, WORLD_SIZE - source.radius);
+        const childSpawnOffset = Math.min(childRadius * 0.18 + recoilDistance * 0.25, SPLIT_CHILD_SPAWN_OFFSET_MAX);
+        const childX = clamp(originX + dirX * childSpawnOffset, childRadius, WORLD_SIZE - childRadius);
+        const childY = clamp(originY + dirY * childSpawnOffset, childRadius, WORLD_SIZE - childRadius);
         const child = createCell(
           actor,
-          clamp(originX, childRadius, WORLD_SIZE - childRadius),
-          clamp(originY, childRadius, WORLD_SIZE - childRadius),
+          childX,
+          childY,
           childMass
         );
         child.vx = source.vx;
@@ -1887,6 +1916,9 @@
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
         child.splitBoostAge = SPLIT_BOOST_DURATION;
+        child.splitParentId = source.id;
+        child.splitDirX = dirX;
+        child.splitDirY = dirY;
         child.splitPriority = actor.nextSplitPriority;
         actor.nextSplitPriority += 1;
         source.separationGraceUntil = state.now + 0.14;
@@ -2607,6 +2639,7 @@
         refreshCell(big);
         capVelocity(big, cellSpeed(big) * 1.25);
         capBoost(big, 120);
+        preserveChildSplitMotion(small);
         small.dead = true;
         return true;
       }
@@ -2636,6 +2669,24 @@
               const total = a.mass + b.mass;
               const aShare = b.mass / total;
               const bShare = a.mass / total;
+              const aParentOfB = b.splitParentId === a.id && b.splitBoostAge > 0;
+              const bParentOfA = a.splitParentId === b.id && a.splitBoostAge > 0;
+              if (aParentOfB || bParentOfA) {
+                const parent = aParentOfB ? a : b;
+                const child = aParentOfB ? b : a;
+                const axis = normalized(child.boostX, child.boostY, child.splitDirX, child.splitDirY);
+                const childStep = Math.min(overlap * 0.28, 42 + child.radius * 0.03);
+                const parentStep = Math.min(overlap * 0.015, splitRecoilDistance(parent.radius) * 0.18, 3.5);
+                parent.x -= axis.x * parentStep;
+                parent.y -= axis.y * parentStep;
+                child.x += axis.x * childStep;
+                child.y += axis.y * childStep;
+                parent.x = clamp(parent.x, parent.radius, WORLD_SIZE - parent.radius);
+                parent.y = clamp(parent.y, parent.radius, WORLD_SIZE - parent.radius);
+                child.x = clamp(child.x, child.radius, WORLD_SIZE - child.radius);
+                child.y = clamp(child.y, child.radius, WORLD_SIZE - child.radius);
+                continue;
+              }
               const aMoveX = a.vx + a.boostX;
               const aMoveY = a.vy + a.boostY;
               const bMoveX = b.vx + b.boostX;
@@ -2876,6 +2927,7 @@
           for (const victim of nearbyCells) {
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsume(eater, victim)) continue;
+            preserveChildSplitMotion(victim);
             victim.dead = true;
             addConsumedMass(eater, victim.mass);
           }
@@ -2892,6 +2944,7 @@
           for (const victim of sweptCells) {
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
+            preserveChildSplitMotion(victim);
             victim.dead = true;
             addConsumedMass(eater, victim.mass);
           }
@@ -2902,6 +2955,7 @@
           for (const victim of cells) {
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
+            preserveChildSplitMotion(victim);
             victim.dead = true;
             addConsumedMass(eater, victim.mass);
           }
@@ -3719,6 +3773,9 @@
           birthScale: cell.birthScale,
           fragmentAge: cell.fragmentAge,
           splitBoostAge: cell.splitBoostAge,
+          splitParentId: cell.splitParentId,
+          splitDirX: cell.splitDirX,
+          splitDirY: cell.splitDirY,
           virusCooldown: cell.virusCooldown,
           mergeVirusWindow: cell.mergeVirusWindow,
           mergeOverflowMass: cell.mergeOverflowMass,
@@ -3984,6 +4041,9 @@
         cell.birthScale = data.birthScale == null ? 1 : data.birthScale;
         cell.fragmentAge = data.fragmentAge || 0;
         cell.splitBoostAge = data.splitBoostAge || 0;
+        cell.splitParentId = data.splitParentId || null;
+        cell.splitDirX = data.splitDirX == null ? (Number.isFinite(existing?.splitDirX) ? existing.splitDirX : cell.faceX) : data.splitDirX;
+        cell.splitDirY = data.splitDirY == null ? (Number.isFinite(existing?.splitDirY) ? existing.splitDirY : cell.faceY) : data.splitDirY;
         cell.virusCooldown = data.virusCooldown || 0;
         cell.mergeVirusWindow = data.mergeVirusWindow || 0;
         cell.mergeOverflowMass = data.mergeOverflowMass || 0;
