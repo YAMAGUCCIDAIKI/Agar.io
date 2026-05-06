@@ -413,6 +413,11 @@
       <strong id="cursorLineValue" class="toggle-value">表示</strong>
     </label>
     <label class="setting-control">
+      <span>N復活</span>
+      <input id="nRespawnToggle" class="toggle-input" type="checkbox" checked aria-label="Nキーリスタート">
+      <strong id="nRespawnValue" class="toggle-value">許可</strong>
+    </label>
+    <label class="setting-control">
       <span>ボット</span>
       <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
       <strong id="botValue">100</strong>
@@ -516,6 +521,8 @@
       const gameResetBtn = document.getElementById("gameResetBtn");
       const cursorLineToggle = document.getElementById("cursorLineToggle");
       const cursorLineValueEl = document.getElementById("cursorLineValue");
+      const nRespawnToggle = document.getElementById("nRespawnToggle");
+      const nRespawnValueEl = document.getElementById("nRespawnValue");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
       const botMaxBox = document.getElementById("botMaxBox");
@@ -648,7 +655,6 @@
         },
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
-        splitPrioritySeq: 0,
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
@@ -663,6 +669,7 @@
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
           cursorLine: true,
+          nRespawnEnabled: true,
           max: {
             bot: 200,
             virus: 500,
@@ -1037,7 +1044,8 @@
           wanderX: rand(300, WORLD_SIZE - 300),
           wanderY: rand(300, WORLD_SIZE - 300),
           respawnAt: 0,
-          respawns: 0
+          respawns: 0,
+          nextSplitPriority: 1
         };
       }
 
@@ -1516,6 +1524,22 @@
         return count;
       }
 
+      function refreshNextSplitPriority(actor) {
+        let maxPriority = 0;
+        for (const cell of actor.cells) {
+          if (Number.isFinite(cell.splitPriority)) maxPriority = Math.max(maxPriority, cell.splitPriority);
+        }
+        actor.nextSplitPriority = Math.max(actor.nextSplitPriority || 1, maxPriority + 1);
+      }
+
+      function assignSplitPriority(actor, cell) {
+        if (Number.isFinite(cell.splitPriority) && cell.splitPriority > 0) return cell.splitPriority;
+        refreshNextSplitPriority(actor);
+        cell.splitPriority = actor.nextSplitPriority;
+        actor.nextSplitPriority += 1;
+        return cell.splitPriority;
+      }
+
       function mergeAccountingMass(cell) {
         return cell.mass;
       }
@@ -1607,6 +1631,7 @@
         actor.cells.length = 0;
         actor.respawns += 1;
         actor.respawnAt = 0;
+        actor.nextSplitPriority = 1;
         actor.lastSplit = -100;
         actor.lastSplitFrame = -1;
         actor.lastEject = -100;
@@ -1614,6 +1639,8 @@
         actor.input.splitCount = 0;
         actor.input.splitLockActive = false;
         const cell = createCell(actor, pos.x, pos.y, mass);
+        cell.splitPriority = actor.nextSplitPriority;
+        actor.nextSplitPriority += 1;
         actor.cells.push(cell);
         actor.input.targetX = pos.x;
         actor.input.targetY = pos.y;
@@ -1825,12 +1852,7 @@
       function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
         if (liveCellCount(actor) >= MAX_CELLS) return null;
         if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
-
-        if (targetX != null && targetY != null) {
-          const aim = normalized(targetX - source.x, targetY - source.y, dirX, dirY);
-          dirX = aim.x;
-          dirY = aim.y;
-        }
+        assignSplitPriority(actor, source);
 
         const childMass = source.mass * 0.5;
         const remaining = source.mass - childMass;
@@ -1859,8 +1881,8 @@
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
         child.splitBoostAge = SPLIT_BOOST_DURATION;
-        child.splitPriority = state.splitPrioritySeq += 1;
-        source.splitPriority = state.splitPrioritySeq += 1;
+        child.splitPriority = actor.nextSplitPriority;
+        actor.nextSplitPriority += 1;
         source.separationGraceUntil = state.now + 0.14;
         child.separationGraceUntil = state.now + 0.14;
         source.vx *= 0.24;
@@ -1881,17 +1903,17 @@
 
       function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null) {
         if (liveCellCount(actor) >= MAX_CELLS) return false;
+        for (const cell of actor.cells) {
+          if (!cell.dead) assignSplitPriority(actor, cell);
+        }
 
+        // Split order is stable by birth number: 1 creates 2, then 1 creates 3 and 2 creates 4.
         const candidates = actor.cells
           .slice()
           .sort((a, b) => {
-            const massDiff = b.mass - a.mass;
-            if (Math.abs(massDiff) > 0.001) return massDiff;
-            const aProjection = a.x * dirX + a.y * dirY;
-            const bProjection = b.x * dirX + b.y * dirY;
-            const positionDiff = aProjection - bProjection;
-            if (Math.abs(positionDiff) > 0.001) return positionDiff;
-            return (b.splitPriority || 0) - (a.splitPriority || 0);
+            const priorityDiff = (a.splitPriority || 0) - (b.splitPriority || 0);
+            if (priorityDiff !== 0) return priorityDiff;
+            return a.id - b.id;
           });
         let didSplit = false;
         for (const cell of candidates) {
@@ -2366,7 +2388,7 @@
           1,
           0
         );
-        const turnRate = cell.splitBoostAge > 0 ? 3.1 : 7.2;
+        const turnRate = cell.splitBoostAge > 0 ? 1.1 : 7.2;
         const turn = 1 - Math.exp(-dt * turnRate);
         const next = normalized(
           current.x + (targetDir.x - current.x) * turn,
@@ -3354,7 +3376,6 @@
       function resetFreshWorld(localId, onlineMode = false) {
         WORLD_SIZE = state.settings.worldSize;
         setSpectating(false);
-        state.splitPrioritySeq = 0;
         state.localCloneIndex = 0;
         state.localActorId = localId;
         state.actors.length = 0;
@@ -3697,6 +3718,7 @@
           mergeOverflowMass: cell.mergeOverflowMass,
           mergeBurstPieces: cell.mergeBurstPieces,
           mergeBurstTotal: cell.mergeBurstTotal,
+          splitPriority: cell.splitPriority,
           targetX: cell.targetX,
           targetY: cell.targetY
         };
@@ -3741,7 +3763,8 @@
           worldSize: WORLD_SIZE,
           settings: {
             splitSpeed: state.settings.splitSpeed,
-            gameSpeed: state.settings.gameSpeed
+            gameSpeed: state.settings.gameSpeed,
+            nRespawnEnabled: state.settings.nRespawnEnabled
           },
           actors: state.actors.map(serializeActor),
           feeds: feedsForNetworkSync().map(serializeCircle)
@@ -3885,7 +3908,9 @@
           }
           const respawnSeq = Number(message.respawnSeq) || 0;
           if (respawnSeq > guest.input.lastNetRespawnSeq) {
-            spawnActor(guest, PLAYER_RESPAWN_MASS);
+            if (state.settings.nRespawnEnabled) {
+              spawnActor(guest, PLAYER_RESPAWN_MASS);
+            }
             guest.input.lastNetRespawnSeq = respawnSeq;
             urgentInput = true;
           }
@@ -3958,6 +3983,7 @@
         cell.mergeOverflowMass = data.mergeOverflowMass || 0;
         cell.mergeBurstPieces = data.mergeBurstPieces || 1;
         cell.mergeBurstTotal = data.mergeBurstTotal || data.mass;
+        cell.splitPriority = data.splitPriority || existing?.splitPriority || 0;
         cell.targetX = data.targetX == null ? data.x : data.targetX;
         cell.targetY = data.targetY == null ? data.y : data.targetY;
         cell.dead = false;
@@ -3982,6 +4008,7 @@
         actor.control = data.id === state.localActorId ? "local" : (actor.isHuman ? "remote" : "bot");
         const cellsById = new Map(actor.cells.map((cell) => [cell.id, cell]));
         actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData, cellsById.get(cellData.id)));
+        refreshNextSplitPriority(actor);
         return actor;
       }
 
@@ -4039,6 +4066,11 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.gameSpeed || nextValue !== state.settings.gameSpeed;
             state.settings.max.gameSpeed = nextMax;
             state.settings.gameSpeed = nextValue;
+          }
+          if (message.settings.nRespawnEnabled != null) {
+            const nextValue = Boolean(message.settings.nRespawnEnabled);
+            settingsChanged = settingsChanged || nextValue !== state.settings.nRespawnEnabled;
+            state.settings.nRespawnEnabled = nextValue;
           }
           if (settingsChanged) syncSettingsControls();
         }
@@ -4336,6 +4368,8 @@
       function syncSettingsControls() {
         cursorLineToggle.checked = state.settings.cursorLine;
         cursorLineValueEl.textContent = state.settings.cursorLine ? "表示" : "非表示";
+        nRespawnToggle.checked = state.settings.nRespawnEnabled;
+        nRespawnValueEl.textContent = state.settings.nRespawnEnabled ? "許可" : "禁止";
         botSlider.max = String(state.settings.max.bot);
         botSlider.value = String(state.settings.botTarget);
         botValueEl.textContent = String(state.settings.botTarget);
@@ -4441,6 +4475,7 @@
         if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
+        if (kind === "nRespawn") state.settings.nRespawnEnabled = Boolean(value);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
           clampWorldEntities();
@@ -4524,6 +4559,7 @@
 
       function respawnLocalPlayer() {
         if (!state.player) return;
+        if (!state.settings.nRespawnEnabled) return;
         if (state.net.role === "client") {
           state.input.respawnQueued = true;
           state.input.respawnSeq += 1;
@@ -4619,6 +4655,7 @@
         disconnectBtn.addEventListener("click", () => closeNetwork(false));
         gameResetBtn.addEventListener("click", resetGameToStart);
         cursorLineToggle.addEventListener("change", () => setWorldSetting("cursorLine", cursorLineToggle.checked));
+        nRespawnToggle.addEventListener("change", () => setWorldSetting("nRespawn", nRespawnToggle.checked));
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
