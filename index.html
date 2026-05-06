@@ -1652,9 +1652,9 @@
         const candidates = actor.cells
           .slice()
           .sort((a, b) => {
-            const priorityDiff = (b.splitPriority || 0) - (a.splitPriority || 0);
-            if (priorityDiff) return priorityDiff;
-            return b.mass - a.mass;
+            const massDiff = b.mass - a.mass;
+            if (Math.abs(massDiff) > 0.001) return massDiff;
+            return (b.splitPriority || 0) - (a.splitPriority || 0);
           });
         let didSplit = false;
         for (const cell of candidates) {
@@ -2780,7 +2780,7 @@
             let remaining = Math.max(1, actor.input.splitCount || 1);
             let didAnySplit = false;
             while (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
-              if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0)) {
+              if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
                 remaining = 0;
                 break;
               }
@@ -2817,7 +2817,7 @@
             const aim = target
               ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
               : actorAimDirection(bot);
-            splitActor(bot, aim.x, aim.y, now, 0);
+            splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
           }
           state.input.botSplitQueued = false;
         }
