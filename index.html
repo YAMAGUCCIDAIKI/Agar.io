@@ -604,14 +604,15 @@
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
-      const SPLIT_BOOST_DURATION = 0.34;
-      const SPLIT_BOOST_DECAY = 4.4;
-      const SPLIT_MAX_BOOST = 680;
+      const SPLIT_BOOST_DURATION = 0.58;
+      const SPLIT_BOOST_DECAY = 2.85;
+      const SPLIT_MAX_BOOST = 470;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_SCALE = 0.35;
       const SPLIT_RECOIL_MAX = 48;
       const SPLIT_CHILD_SPAWN_OFFSET_MAX = 96;
+      const SPLIT_CASCADE_INTERVAL = 0.105;
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
@@ -1047,6 +1048,7 @@
             splitLockActive: false,
             splitLockX: 1,
             splitLockY: 0,
+            nextSplitAt: -100,
             ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
@@ -1104,6 +1106,7 @@
         actor.input.splitQueued = false;
         actor.input.splitCount = 0;
         actor.input.splitLockActive = false;
+        actor.input.nextSplitAt = -100;
       }
 
       function setActiveLocalActor(actor) {
@@ -1661,6 +1664,7 @@
         actor.input.splitQueued = false;
         actor.input.splitCount = 0;
         actor.input.splitLockActive = false;
+        actor.input.nextSplitAt = -100;
         const cell = createCell(actor, pos.x, pos.y, mass);
         cell.splitPriority = actor.nextSplitPriority;
         actor.nextSplitPriority += 1;
@@ -1851,7 +1855,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(320 + radius * 0.42, 340, 500) * splitSpeedScale();
+        return clamp(250 + radius * 0.28, 270, 390) * splitSpeedScale();
       }
 
       function splitSpeedScale() {
@@ -1934,7 +1938,7 @@
           child.targetY = targetY;
         }
         setMergeCooldown(child);
-        startCellBirth(child, originX, originY, 0.24, 0.12);
+        startCellBirth(child, originX, originY, 0.36, 0.1);
         actor.cells.push(child);
         return child;
       }
@@ -3128,24 +3132,27 @@
               actor.input.splitLockX = aim.x;
               actor.input.splitLockY = aim.y;
               actor.input.splitLockActive = true;
+              actor.input.nextSplitAt = now;
             }
 
-            let remaining = Math.max(1, actor.input.splitCount || 1);
-            let didAnySplit = false;
-            while (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
+            if (now + 0.0001 >= actor.input.nextSplitAt) {
+              let remaining = Math.max(1, actor.input.splitCount || 1);
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
-                remaining = 0;
-                break;
+                actor.input.splitQueued = false;
+                actor.input.splitCount = 0;
+                actor.input.splitLockActive = false;
+                actor.input.nextSplitAt = -100;
+                continue;
               }
-              didAnySplit = true;
               remaining -= 1;
-            }
-
-            actor.input.splitCount = Math.max(0, remaining);
-            if (actor.input.splitCount <= 0 || !didAnySplit || liveCellCount(actor) >= MAX_CELLS) {
-              actor.input.splitQueued = false;
-              actor.input.splitCount = 0;
-              actor.input.splitLockActive = false;
+              actor.input.splitCount = Math.max(0, remaining);
+              actor.input.nextSplitAt = now + SPLIT_CASCADE_INTERVAL;
+              if (actor.input.splitCount <= 0 || liveCellCount(actor) >= MAX_CELLS) {
+                actor.input.splitQueued = false;
+                actor.input.splitCount = 0;
+                actor.input.splitLockActive = false;
+                actor.input.nextSplitAt = -100;
+              }
             }
           }
         }
@@ -3922,10 +3929,10 @@
         if (!Number.isFinite(entity.renderX)) entity.renderX = entity.x;
         if (!Number.isFinite(entity.renderY)) entity.renderY = entity.y;
         const speed = Math.hypot((entity.vx || 0) + (entity.boostX || 0), (entity.vy || 0) + (entity.boostY || 0));
-        const lead = entity.splitBoostAge > 0 ? Math.min(0.12, dt * 4) : Math.min(0.08, dt * 2);
+        const lead = entity.splitBoostAge > 0 ? Math.min(0.045, dt * 1.5) : Math.min(0.08, dt * 2);
         const targetX = clamp(entity.x + ((entity.vx || 0) + (entity.boostX || 0)) * lead, 0, WORLD_SIZE);
         const targetY = clamp(entity.y + ((entity.vy || 0) + (entity.boostY || 0)) * lead, 0, WORLD_SIZE);
-        if (entity.splitBoostAge > 0 && speed > 220) followRate = Math.max(followRate, 30);
+        if (entity.splitBoostAge > 0 && speed > 180) followRate = 16;
         const follow = 1 - Math.exp(-dt * followRate);
         entity.renderX += (targetX - entity.renderX) * follow;
         entity.renderY += (targetY - entity.renderY) * follow;
