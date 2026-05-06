@@ -929,14 +929,34 @@
       }
 
       function clearMergeAttempt(a, b) {
-        a.mergePartnerId = null;
-        a.mergeDominantId = null;
-        if (!b) return;
-        b.mergePartnerId = null;
-        b.mergeDominantId = null;
+        if (!b) {
+          a.mergePartnerId = null;
+          a.mergeDominantId = null;
+          return;
+        }
+        if (a.mergePartnerId === b.id) {
+          a.mergePartnerId = null;
+          a.mergeDominantId = null;
+        }
+        if (b.mergePartnerId === a.id) {
+          b.mergePartnerId = null;
+          b.mergeDominantId = null;
+        }
       }
 
-      function resetCancelledMergeAttempt(a, b, distance) {
+      function mergePairKey(a, b) {
+        return a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+      }
+
+      function mergePairCooling(actor, a, b) {
+        if (!actor.mergeCancelUntil) return false;
+        const until = actor.mergeCancelUntil.get(mergePairKey(a, b)) || 0;
+        if (until > state.now) return true;
+        if (until > 0) actor.mergeCancelUntil.delete(mergePairKey(a, b));
+        return false;
+      }
+
+      function resetCancelledMergeAttempt(actor, a, b, distance) {
         const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233) % TAU);
         const nx = distance < 0.001 ? Math.cos(fallbackAngle) : (b.x - a.x) / distance;
         const ny = distance < 0.001 ? Math.sin(fallbackAngle) : (b.y - a.y) / distance;
@@ -955,10 +975,8 @@
         b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
         b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius);
 
-        a.mergeReadyAt = state.now + MERGE_SWAP_RESET_TIME;
-        b.mergeReadyAt = state.now + MERGE_SWAP_RESET_TIME;
-        a.cooldown = MERGE_SWAP_RESET_TIME;
-        b.cooldown = MERGE_SWAP_RESET_TIME;
+        if (!actor.mergeCancelUntil) actor.mergeCancelUntil = new Map();
+        actor.mergeCancelUntil.set(mergePairKey(a, b), state.now + MERGE_SWAP_RESET_TIME);
         clearMergeAttempt(a, b);
       }
 
@@ -1100,6 +1118,7 @@
           lastSplit: -100,
           lastSplitFrame: -1,
           lastMergeFrame: -1,
+          mergeCancelUntil: new Map(),
           wanderX: rand(300, WORLD_SIZE - 300),
           wanderY: rand(300, WORLD_SIZE - 300),
           respawnAt: 0,
@@ -2665,13 +2684,14 @@
         const bigMergeMass = big === a ? aMergeMass : bMergeMass;
         const smallMergeMass = small === a ? aMergeMass : bMergeMass;
         const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (mergePairCooling(actor, a, b)) return false;
         if (centerDistance >= a.radius + b.radius) {
           if (a.mergePartnerId === b.id || b.mergePartnerId === a.id) clearMergeAttempt(a, b);
           return false;
         }
 
         if (hasMergeCancellation(a, b)) {
-          resetCancelledMergeAttempt(a, b, centerDistance);
+          resetCancelledMergeAttempt(actor, a, b, centerDistance);
           return false;
         }
         recordMergeAttempt(a, b);
