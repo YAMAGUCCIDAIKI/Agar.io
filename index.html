@@ -829,7 +829,8 @@
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
-      const BOT_MANUAL_SPLITS_PER_FRAME = 8;
+      const RENDER_SIMPLE_CELL_COUNT = 420;
+      const RENDER_FAST_CELL_COUNT = 760;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
@@ -950,9 +951,6 @@
           cloneSeq: 0,
           activeActorId: "player",
           botSplitQueued: false,
-          botSplitQueue: [],
-          botSplitBudgetFrame: -1,
-          botSplitBudgetLeft: 0,
           botEjectQueued: false,
           lastAimX: 1,
           lastAimY: 0
@@ -1047,6 +1045,8 @@
       const aiCellsScratch = [];
       const aiEntityScratch = [];
       const cellQueryScratch = [];
+      const renderCellsScratch = [];
+      const darkenCache = new Map();
 
       function nextId() {
         const id = state.nextId;
@@ -1296,12 +1296,16 @@
       }
 
       function darkenHex(hex, amount = 0.18) {
+        const key = `${hex}:${amount}`;
+        if (darkenCache.has(key)) return darkenCache.get(key);
         const clean = hex.replace("#", "");
         const n = parseInt(clean.length === 3 ? clean.replace(/(.)/g, "$1$1") : clean, 16);
         const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amount)));
         const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amount)));
         const b = Math.max(0, Math.round((n & 255) * (1 - amount)));
-        return `rgb(${r}, ${g}, ${b})`;
+        const color = `rgb(${r}, ${g}, ${b})`;
+        darkenCache.set(key, color);
+        return color;
       }
 
       function consumeThreshold(eater, victim) {
@@ -1790,7 +1794,6 @@
         state.input.ejectQueued = false;
         state.input.respawnQueued = false;
         state.input.botSplitQueued = false;
-        state.input.botSplitQueue.length = 0;
         state.input.botEjectQueued = false;
         for (const actor of localHumanActors()) clearActorControlInput(actor);
       }
@@ -1804,7 +1807,6 @@
         state.nextBotIndex += 1;
         const botName = `${botNames[index % botNames.length]} ${String(index + 1).padStart(2, "0")}`;
         const bot = createActor(`bot-${index}`, botName, botPalette[index % botPalette.length]);
-        bot.aiTimer = rand(0.02, 0.32);
         state.actors.push(bot);
         spawnActor(bot, BOT_SPAWN_MASS);
         return bot;
@@ -3662,18 +3664,24 @@
         const controllableBotMode = state.settings.botMode === "chase" || state.settings.botMode === "cursor";
         if (!controllableBotMode) {
           state.input.botSplitQueued = false;
-          state.input.botSplitQueue.length = 0;
           state.input.botEjectQueued = false;
           return;
         }
 
         if (state.input.botSplitQueued) {
-          state.input.botSplitQueue = state.actors
-            .filter((bot) => !bot.isHuman && liveCellCount(bot) < MAX_CELLS && hasSplittableCell(bot))
-            .map((bot) => bot.id);
+          for (const bot of state.actors) {
+            if (bot.isHuman) continue;
+            const center = actorCenter(bot);
+            const target = state.settings.botMode === "cursor"
+              ? { x: state.input.mouseWorldX, y: state.input.mouseWorldY }
+              : nearestHumanCell(center, bot.id);
+            const aim = target
+              ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
+              : actorAimDirection(bot);
+            splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
+          }
           state.input.botSplitQueued = false;
         }
-        processBotSplitQueue(now);
 
         if (state.input.botEjectQueued || state.input.keys.has(state.keyBindings.botEject)) {
           for (const bot of state.actors) {
@@ -3682,32 +3690,6 @@
           }
           state.input.botEjectQueued = false;
         }
-      }
-
-      function hasSplittableCell(actor) {
-        return actor.cells.some((cell) => !cell.dead && cell.mass >= MIN_SPLIT_SOURCE_MASS);
-      }
-
-      function processBotSplitQueue(now) {
-        if (state.input.botSplitBudgetFrame !== state.frameIndex) {
-          state.input.botSplitBudgetFrame = state.frameIndex;
-          state.input.botSplitBudgetLeft = BOT_MANUAL_SPLITS_PER_FRAME;
-        }
-        let budget = state.input.botSplitBudgetLeft;
-        while (budget > 0 && state.input.botSplitQueue.length) {
-          const bot = actorById(state.input.botSplitQueue.shift());
-          if (!bot || bot.isHuman || liveCellCount(bot) >= MAX_CELLS || !hasSplittableCell(bot)) continue;
-          const center = actorCenter(bot);
-          const target = state.settings.botMode === "cursor"
-            ? { x: state.input.mouseWorldX, y: state.input.mouseWorldY }
-            : nearestHumanCell(center, bot.id);
-          const aim = target
-            ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
-            : actorAimDirection(bot);
-          splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
-          budget -= 1;
-        }
-        state.input.botSplitBudgetLeft = budget;
       }
 
       function update(dt, now, realNow = now) {
@@ -3978,7 +3960,6 @@
         state.input.cloneQueued = false;
         state.input.cloneSeq = 0;
         state.input.botSplitQueued = false;
-        state.input.botSplitQueue.length = 0;
         state.actors.length = 0;
         state.foods.length = 0;
         state.foodGridDirty = true;
@@ -4766,23 +4747,25 @@
           y - item.radius - pad <= bounds.bottom;
       }
 
-      function drawGrid(bounds) {
+      function drawGrid(bounds, renderMode = 0) {
         ctx.lineWidth = 1 / state.camera.zoom;
         ctx.strokeStyle = "#e6ebf2";
-        ctx.beginPath();
-        const startSmallX = Math.floor(bounds.left / GRID_SMALL) * GRID_SMALL;
-        const endSmallX = Math.ceil(bounds.right / GRID_SMALL) * GRID_SMALL;
-        const startSmallY = Math.floor(bounds.top / GRID_SMALL) * GRID_SMALL;
-        const endSmallY = Math.ceil(bounds.bottom / GRID_SMALL) * GRID_SMALL;
-        for (let x = startSmallX; x <= endSmallX; x += GRID_SMALL) {
-          ctx.moveTo(x, bounds.top);
-          ctx.lineTo(x, bounds.bottom);
+        if (renderMode < 2) {
+          ctx.beginPath();
+          const startSmallX = Math.floor(bounds.left / GRID_SMALL) * GRID_SMALL;
+          const endSmallX = Math.ceil(bounds.right / GRID_SMALL) * GRID_SMALL;
+          const startSmallY = Math.floor(bounds.top / GRID_SMALL) * GRID_SMALL;
+          const endSmallY = Math.ceil(bounds.bottom / GRID_SMALL) * GRID_SMALL;
+          for (let x = startSmallX; x <= endSmallX; x += GRID_SMALL) {
+            ctx.moveTo(x, bounds.top);
+            ctx.lineTo(x, bounds.bottom);
+          }
+          for (let y = startSmallY; y <= endSmallY; y += GRID_SMALL) {
+            ctx.moveTo(bounds.left, y);
+            ctx.lineTo(bounds.right, y);
+          }
+          ctx.stroke();
         }
-        for (let y = startSmallY; y <= endSmallY; y += GRID_SMALL) {
-          ctx.moveTo(bounds.left, y);
-          ctx.lineTo(bounds.right, y);
-        }
-        ctx.stroke();
 
         ctx.lineWidth = 1.4 / state.camera.zoom;
         ctx.strokeStyle = "#cfd8e3";
@@ -4809,8 +4792,8 @@
         ctx.fill();
       }
 
-      function drawVirus(virus) {
-        const spikes = 30;
+      function drawVirus(virus, renderMode = 0) {
+        const spikes = renderMode >= 2 ? 14 : (renderMode === 1 ? 22 : 30);
         const centerX = entityRenderX(virus);
         const centerY = entityRenderY(virus);
         ctx.beginPath();
@@ -4825,13 +4808,16 @@
         ctx.closePath();
         ctx.fillStyle = "#12e05a";
         ctx.fill();
-        ctx.lineWidth = Math.max(3 / state.camera.zoom, virus.radius * 0.09);
-        ctx.strokeStyle = "#0d9940";
-        ctx.stroke();
+        if (renderMode < 2) {
+          ctx.lineWidth = Math.max(3 / state.camera.zoom, virus.radius * 0.09);
+          ctx.strokeStyle = "#0d9940";
+          ctx.stroke();
+        }
       }
 
-      function drawCell(cell) {
+      function drawCell(cell, renderMode = 0) {
         const actor = cell.actor;
+        const localControlled = actor.control === "local";
         let progress = 1;
         if (cell.birthDuration > 0 && cell.birthAge < cell.birthDuration) {
           progress = clamp(cell.birthAge / cell.birthDuration, 0, 1);
@@ -4847,11 +4833,13 @@
         ctx.arc(drawX, drawY, r, 0, TAU);
         ctx.fillStyle = actor.color;
         ctx.fill();
-        ctx.lineWidth = Math.max(3 / state.camera.zoom, r * 0.045);
-        ctx.strokeStyle = isLocalActor(actor) ? "#07529e" : darkenHex(actor.color, 0.24);
-        ctx.stroke();
+        if (renderMode < 2 || localControlled || r * state.camera.zoom > 28) {
+          ctx.lineWidth = Math.max(3 / state.camera.zoom, r * 0.045);
+          ctx.strokeStyle = isLocalActor(actor) ? "#07529e" : darkenHex(actor.color, 0.24);
+          ctx.stroke();
+        }
 
-        if (scale > 0.72 && r * state.camera.zoom > 14) {
+        if (scale > 0.72 && r * state.camera.zoom > 14 && (renderMode === 0 || localControlled)) {
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           const nameSize = clamp(r * 0.34, 13, 42);
@@ -4904,6 +4892,12 @@
         ctx.restore();
       }
 
+      function renderModeForVisibleCells(count) {
+        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 38) return 2;
+        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 50) return 1;
+        return 0;
+      }
+
       function draw() {
         ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
         ctx.fillStyle = "#f7f9fc";
@@ -4915,7 +4909,13 @@
         ctx.translate(-state.camera.x, -state.camera.y);
 
         const bounds = visibleWorldBounds();
-        drawGrid(bounds);
+        renderCellsScratch.length = 0;
+        const allLiveCells = allCells(scratch);
+        for (const cell of allLiveCells) {
+          if (isVisible(cell, bounds, 80)) renderCellsScratch.push(cell);
+        }
+        const renderMode = renderModeForVisibleCells(renderCellsScratch.length);
+        drawGrid(bounds, renderMode);
 
         ctx.lineWidth = 3 / state.camera.zoom;
         ctx.strokeStyle = "rgba(128, 139, 154, 0.55)";
@@ -4933,18 +4933,20 @@
           ctx.arc(entityRenderX(feed), entityRenderY(feed), feed.radius, 0, TAU);
           ctx.fillStyle = feed.color;
           ctx.fill();
-          ctx.lineWidth = 1.5 / state.camera.zoom;
-          ctx.strokeStyle = "rgba(20,32,51,0.22)";
-          ctx.stroke();
+          if (renderMode === 0) {
+            ctx.lineWidth = 1.5 / state.camera.zoom;
+            ctx.strokeStyle = "rgba(20,32,51,0.22)";
+            ctx.stroke();
+          }
         }
 
         for (const virus of state.viruses) {
-          if (isVisible(virus, bounds, 90)) drawVirus(virus);
+          if (isVisible(virus, bounds, 90)) drawVirus(virus, renderMode);
         }
 
-        const cells = allCells(scratch).sort((a, b) => a.radius - b.radius);
-        for (const cell of cells) {
-          if (isVisible(cell, bounds, 80)) drawCell(cell);
+        renderCellsScratch.sort((a, b) => a.radius - b.radius);
+        for (const cell of renderCellsScratch) {
+          drawCell(cell, renderMode);
         }
         drawCursorLine();
 
@@ -5255,7 +5257,6 @@
           state.input.ejectQueued = false;
           state.input.respawnQueued = false;
           state.input.botSplitQueued = false;
-          state.input.botSplitQueue.length = 0;
           state.input.botEjectQueued = false;
         });
         menuBtn.addEventListener("click", () => setMenuOpen(true));
