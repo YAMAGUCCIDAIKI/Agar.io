@@ -1854,6 +1854,12 @@
         if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
         assignSplitPriority(actor, source);
 
+        if (targetX != null && targetY != null) {
+          const aim = normalized(targetX - source.x, targetY - source.y, dirX, dirY);
+          dirX = aim.x;
+          dirY = aim.y;
+        }
+
         const childMass = source.mass * 0.5;
         const remaining = source.mass - childMass;
         if (childMass < MIN_CELL_MASS || remaining < MIN_CELL_MASS) return null;
@@ -1907,7 +1913,7 @@
           if (!cell.dead) assignSplitPriority(actor, cell);
         }
 
-        // Split order is stable by birth number: 1 creates 2, then 1 creates 3 and 2 creates 4.
+        // Split order is stable by birth number; each source still aims along its own cursor line.
         const candidates = actor.cells
           .slice()
           .sort((a, b) => {
