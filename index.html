@@ -1013,6 +1013,37 @@
         return actor && (actor.control === "local" || actor.control === "remote");
       }
 
+      function localHumanActors() {
+        return state.actors.filter((actor) => actor.control === "local" && actor.isHuman);
+      }
+
+      function primaryLocalActor() {
+        return localHumanActors().find((actor) => !actor.localClone) || actorById(state.localActorId) || null;
+      }
+
+      function localCloneActor() {
+        return localHumanActors().find((actor) => actor.localClone) || null;
+      }
+
+      function clearActorControlInput(actor) {
+        if (!actor || !actor.input) return;
+        actor.input.keys.clear();
+        actor.input.ejectQueued = false;
+        actor.input.splitQueued = false;
+        actor.input.splitCount = 0;
+        actor.input.splitLockActive = false;
+      }
+
+      function setActiveLocalActor(actor) {
+        if (!actor) return;
+        for (const localActor of localHumanActors()) {
+          if (localActor !== actor) clearActorControlInput(localActor);
+        }
+        state.player = actor;
+        actor.input.targetX = state.input.mouseWorldX;
+        actor.input.targetY = state.input.mouseWorldY;
+      }
+
       function displayActorName(actor) {
         if (actor && actor.control === "local") return actor.localClone ? actor.name : "自分";
         if (actor && actor.isHuman) return "P2";
@@ -1084,9 +1115,20 @@
 
       function updateLocalActorInput() {
         if (state.spectating) return;
-        const localActors = state.actors.filter((actor) => actor.control === "local" && actor.isHuman);
+        const localActors = localHumanActors();
         if (!localActors.length) return;
+        let actor = state.player && state.player.control === "local" && state.player.isHuman
+          ? state.player
+          : localActors[0];
+        if (!actor.cells.length) {
+          actor = localActors.find((candidate) => candidate.cells.length > 0) || actor;
+          setActiveLocalActor(actor);
+        }
         for (const actor of localActors) {
+          if (actor !== state.player) {
+            clearActorControlInput(actor);
+            continue;
+          }
           actor.input.targetX = state.input.mouseWorldX;
           actor.input.targetY = state.input.mouseWorldY;
           if (state.input.keys.has("KeyE")) actor.input.keys.add("KeyE");
@@ -1104,26 +1146,28 @@
         }
       }
 
-      function spawnLocalCloneActor() {
+      function toggleLocalCloneControl() {
         if (state.net.role === "client") {
           setStatus("NO HOST");
           return;
         }
-        const baseActor = state.player || state.actors.find((actor) => actor.control === "local") || state.actors[0];
-        if (!baseActor) return;
-        const center = actorCenter(baseActor);
-        state.localCloneIndex += 1;
-        const index = state.localCloneIndex;
-        const actor = createActor(`local-clone-${index}`, `自分${index + 1}`, botPalette[index % botPalette.length], true, "local");
-        actor.localClone = true;
-        state.actors.push(actor);
-        const angle = (index * 2.399963229728653) % TAU;
-        const distance = 180 + (index % 4) * 36;
-        const x = clamp(center.x + Math.cos(angle) * distance, 120, WORLD_SIZE - 120);
-        const y = clamp(center.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120);
-        spawnActor(actor, PLAYER_RESPAWN_MASS, x, y);
-        actor.input.targetX = state.input.mouseWorldX;
-        actor.input.targetY = state.input.mouseWorldY;
+        const main = primaryLocalActor();
+        if (!main) return;
+        let clone = localCloneActor();
+        if (!clone) {
+          const center = actorCenter(main);
+          state.localCloneIndex = 1;
+          clone = createActor("local-clone-1", "自分2", botPalette[1 % botPalette.length], true, "local");
+          clone.localClone = true;
+          state.actors.push(clone);
+          const angle = 2.399963229728653;
+          const distance = 216;
+          const x = clamp(center.x + Math.cos(angle) * distance, 120, WORLD_SIZE - 120);
+          const y = clamp(center.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120);
+          spawnActor(clone, PLAYER_RESPAWN_MASS, x, y);
+        }
+        const nextActor = state.player === clone ? main : clone;
+        setActiveLocalActor(nextActor.cells.length ? nextActor : main);
         state.net.lastSnapshotSend = -100;
       }
 
@@ -1138,13 +1182,7 @@
         state.input.respawnQueued = false;
         state.input.botSplitQueued = false;
         state.input.botEjectQueued = false;
-        if (state.player && state.player.input) {
-          state.player.input.keys.clear();
-          state.player.input.splitQueued = false;
-          state.player.input.splitCount = 0;
-          state.player.input.splitLockActive = false;
-          state.player.input.ejectQueued = false;
-        }
+        for (const actor of localHumanActors()) clearActorControlInput(actor);
       }
 
       function toggleSpectating() {
@@ -2704,6 +2742,29 @@
       function cleanupAndRespawn() {
         for (const actor of state.actors) {
           actor.cells = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_CELL_MASS);
+        }
+
+        const localActors = localHumanActors();
+        if (localActors.length) {
+          const liveLocalActors = localActors.filter((actor) => actor.cells.length > 0);
+          if (!liveLocalActors.length) {
+            const main = primaryLocalActor() || localActors[0];
+            for (let i = state.actors.length - 1; i >= 0; i -= 1) {
+              if (state.actors[i].localClone) state.actors.splice(i, 1);
+            }
+            if (main) {
+              main.localClone = false;
+              spawnActor(main, PLAYER_RESPAWN_MASS);
+              setActiveLocalActor(main);
+              state.flashUntil = state.now + 1.25;
+            }
+          } else if (!state.player || state.player.control !== "local" || state.player.cells.length === 0) {
+            setActiveLocalActor(liveLocalActors[0]);
+          }
+        }
+
+        for (const actor of state.actors) {
+          if (actor.control === "local" && actor.isHuman) continue;
           if (actor.cells.length === 0) {
             if (actor.isHuman) {
               spawnActor(actor, PLAYER_RESPAWN_MASS);
@@ -4331,7 +4392,7 @@
             if (event.code === "KeyZ" && !event.repeat) state.input.botSplitQueued = true;
             if (event.code === "KeyX" && !event.repeat) state.input.botEjectQueued = true;
             if (event.code === "KeyN" && !event.repeat) respawnLocalPlayer();
-            if (event.code === "Tab" && !event.repeat) spawnLocalCloneActor();
+            if (event.code === "Tab" && !event.repeat) toggleLocalCloneControl();
           }
         });
         window.addEventListener("keyup", (event) => {
