@@ -693,8 +693,8 @@
         </label>
         <label class="setting-control">
           <span>分裂速度</span>
-          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="分裂速度">
-          <strong id="splitSpeedValue">100</strong>
+          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="200" aria-label="分裂速度">
+          <strong id="splitSpeedValue">200</strong>
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
@@ -705,14 +705,14 @@
         </label>
         <label class="setting-control">
           <span>合体</span>
-          <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="合体までの時間">
-          <strong id="mergeCooldownValue">10</strong>
+          <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="30" aria-label="合体までの時間">
+          <strong id="mergeCooldownValue">30</strong>
           <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="合体時間上限">
         </label>
         <label class="setting-control">
           <span>広さ</span>
-          <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="4800" aria-label="サーバーの広さ">
-          <strong id="worldSizeValue">4800</strong>
+          <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="サーバーの広さ">
+          <strong id="worldSizeValue">5000</strong>
           <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
         </label>
       </section>
@@ -787,7 +787,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      let WORLD_SIZE = 4800;
+      let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
       const MAX_CELLS = 16;
@@ -807,9 +807,9 @@
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 8;
-      const DEFAULT_SPLIT_SPEED = 100;
+      const DEFAULT_SPLIT_SPEED = 200;
       const DEFAULT_GAME_SPEED = 1;
-      const DEFAULT_MERGE_COOLDOWN = 10;
+      const DEFAULT_MERGE_COOLDOWN = 30;
       const BOT_SPAWN_MASS = 700;
       const CONSUME_MASS_RATIO = 1.325;
       const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_MASS_RATIO);
@@ -5150,6 +5150,11 @@
               event.preventDefault();
               setMenuOpen(false);
             }
+            return;
+          }
+          if (event.code === "Escape") {
+            event.preventDefault();
+            setMenuOpen(true);
             return;
           }
           if (isTextEditingTarget(event.target)) return;
