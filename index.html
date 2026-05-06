@@ -596,6 +596,7 @@
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
+      const CELL_MOVE_SPEED_SCALE = 0.6;
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
@@ -2335,7 +2336,7 @@
       }
 
       function cellSpeed(cell) {
-        return clamp(1440 / Math.pow(cell.radius, 0.46), 116, 436);
+        return clamp(1440 / Math.pow(cell.radius, 0.46), 116, 436) * CELL_MOVE_SPEED_SCALE;
       }
 
       function turnCellFacing(cell, targetDir, dt) {
@@ -4194,10 +4195,10 @@
       function drawCursorLine() {
         if (!state.settings.cursorLine || state.spectating) return;
         const sourceCells = [];
-        for (const actor of liveLocalHumanActors()) {
-          for (const cell of actor.cells) {
-            if (!cell.dead) sourceCells.push(cell);
-          }
+        const actor = state.player && state.player.control === "local" ? state.player : null;
+        if (!actor) return;
+        for (const cell of actor.cells) {
+          if (!cell.dead) sourceCells.push(cell);
         }
         if (!sourceCells.length) return;
         const endX = state.input.mouseWorldX;
