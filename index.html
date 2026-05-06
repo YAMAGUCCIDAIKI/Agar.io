@@ -1646,29 +1646,19 @@
         return child;
       }
 
-      function splitCandidates(actor) {
-        return actor.cells
-          .filter((cell) => !cell.dead && cell.mass >= MIN_SPLIT_SOURCE_MASS)
+      function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null) {
+        if (liveCellCount(actor) >= MAX_CELLS) return false;
+
+        const candidates = actor.cells
+          .slice()
           .sort((a, b) => {
             const priorityDiff = (b.splitPriority || 0) - (a.splitPriority || 0);
             if (priorityDiff) return priorityDiff;
             return b.mass - a.mass;
           });
-      }
-
-      function bestSplitSource(actor) {
-        return splitCandidates(actor)[0] || null;
-      }
-
-      function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null) {
-        if (liveCellCount(actor) >= MAX_CELLS) return false;
-
-        const splitLimit = splitCandidates(actor).length;
         let didSplit = false;
-        for (let index = 0; index < splitLimit; index += 1) {
+        for (const cell of candidates) {
           if (liveCellCount(actor) >= MAX_CELLS) break;
-          const cell = bestSplitSource(actor);
-          if (!cell) break;
           const child = splitCell(actor, cell, dirX, dirY, targetX, targetY);
           if (child) didSplit = true;
         }
@@ -2781,14 +2771,9 @@
           }
           if (actor.input.splitQueued) {
             if (!actor.input.splitLockActive) {
-              const source = bestSplitSource(actor);
-              const aim = source
-                ? normalized(actor.input.targetX - source.x, actor.input.targetY - source.y, actor.input.lastAimX, actor.input.lastAimY)
-                : actorAimDirection(actor);
+              const aim = actorAimDirection(actor);
               actor.input.splitLockX = aim.x;
               actor.input.splitLockY = aim.y;
-              actor.input.lastAimX = aim.x;
-              actor.input.lastAimY = aim.y;
               actor.input.splitLockActive = true;
             }
 
@@ -2829,12 +2814,9 @@
             const target = state.settings.botMode === "cursor"
               ? { x: state.input.mouseWorldX, y: state.input.mouseWorldY }
               : nearestHumanCell(center, bot.id);
-            const source = bestSplitSource(bot);
             const aim = target
-              ? normalized(target.x - (source ? source.x : center.x), target.y - (source ? source.y : center.y), bot.input.lastAimX, bot.input.lastAimY)
+              ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
               : actorAimDirection(bot);
-            bot.input.lastAimX = aim.x;
-            bot.input.lastAimY = aim.y;
             splitActor(bot, aim.x, aim.y, now, 0);
           }
           state.input.botSplitQueued = false;
