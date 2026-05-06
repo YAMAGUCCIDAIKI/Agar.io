@@ -604,15 +604,14 @@
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
-      const SPLIT_BOOST_DURATION = 0.58;
-      const SPLIT_BOOST_DECAY = 2.85;
-      const SPLIT_MAX_BOOST = 470;
+      const SPLIT_BOOST_DURATION = 0.72;
+      const SPLIT_BOOST_DECAY = 2.15;
+      const SPLIT_MAX_BOOST = 330;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_SCALE = 0.35;
       const SPLIT_RECOIL_MAX = 48;
       const SPLIT_CHILD_SPAWN_OFFSET_MAX = 96;
-      const SPLIT_CASCADE_INTERVAL = 0.105;
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
@@ -1048,7 +1047,6 @@
             splitLockActive: false,
             splitLockX: 1,
             splitLockY: 0,
-            nextSplitAt: -100,
             ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
@@ -1106,7 +1104,6 @@
         actor.input.splitQueued = false;
         actor.input.splitCount = 0;
         actor.input.splitLockActive = false;
-        actor.input.nextSplitAt = -100;
       }
 
       function setActiveLocalActor(actor) {
@@ -1664,7 +1661,6 @@
         actor.input.splitQueued = false;
         actor.input.splitCount = 0;
         actor.input.splitLockActive = false;
-        actor.input.nextSplitAt = -100;
         const cell = createCell(actor, pos.x, pos.y, mass);
         cell.splitPriority = actor.nextSplitPriority;
         actor.nextSplitPriority += 1;
@@ -1855,7 +1851,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(250 + radius * 0.28, 270, 390) * splitSpeedScale();
+        return clamp(180 + radius * 0.18, 190, 280) * splitSpeedScale();
       }
 
       function splitSpeedScale() {
@@ -3132,27 +3128,24 @@
               actor.input.splitLockX = aim.x;
               actor.input.splitLockY = aim.y;
               actor.input.splitLockActive = true;
-              actor.input.nextSplitAt = now;
             }
 
-            if (now + 0.0001 >= actor.input.nextSplitAt) {
-              let remaining = Math.max(1, actor.input.splitCount || 1);
+            let remaining = Math.max(1, actor.input.splitCount || 1);
+            let didAnySplit = false;
+            while (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
-                actor.input.splitQueued = false;
-                actor.input.splitCount = 0;
-                actor.input.splitLockActive = false;
-                actor.input.nextSplitAt = -100;
-                continue;
+                remaining = 0;
+                break;
               }
+              didAnySplit = true;
               remaining -= 1;
-              actor.input.splitCount = Math.max(0, remaining);
-              actor.input.nextSplitAt = now + SPLIT_CASCADE_INTERVAL;
-              if (actor.input.splitCount <= 0 || liveCellCount(actor) >= MAX_CELLS) {
-                actor.input.splitQueued = false;
-                actor.input.splitCount = 0;
-                actor.input.splitLockActive = false;
-                actor.input.nextSplitAt = -100;
-              }
+            }
+
+            actor.input.splitCount = Math.max(0, remaining);
+            if (actor.input.splitCount <= 0 || !didAnySplit || liveCellCount(actor) >= MAX_CELLS) {
+              actor.input.splitQueued = false;
+              actor.input.splitCount = 0;
+              actor.input.splitLockActive = false;
             }
           }
         }
