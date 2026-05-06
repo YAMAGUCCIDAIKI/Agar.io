@@ -623,6 +623,7 @@
         },
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
+        splitPrioritySeq: 0,
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
@@ -975,6 +976,9 @@
             keys: new Set(),
             splitQueued: false,
             splitCount: 0,
+            splitLockActive: false,
+            splitLockX: 1,
+            splitLockY: 0,
             ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
@@ -1112,6 +1116,7 @@
           state.player.input.keys.clear();
           state.player.input.splitQueued = false;
           state.player.input.splitCount = 0;
+          state.player.input.splitLockActive = false;
           state.player.input.ejectQueued = false;
         }
       }
@@ -1184,6 +1189,7 @@
           mergeOverflowMass: Math.max(0, mass - MAX_CELL_MASS),
           mergeBurstPieces: 1,
           mergeBurstTotal: mass,
+          splitPriority: 0,
           targetX: x,
           targetY: y,
           dead: false
@@ -1401,6 +1407,9 @@
         actor.lastSplit = -100;
         actor.lastSplitFrame = -1;
         actor.lastEject = -100;
+        actor.input.splitQueued = false;
+        actor.input.splitCount = 0;
+        actor.input.splitLockActive = false;
         const cell = createCell(actor, pos.x, pos.y, mass);
         actor.cells.push(cell);
         actor.input.targetX = pos.x;
@@ -1617,6 +1626,8 @@
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
         child.splitBoostAge = 0.22;
+        child.splitPriority = state.splitPrioritySeq += 1;
+        source.splitPriority = state.splitPrioritySeq += 1;
         source.separationGraceUntil = state.now + 0.14;
         child.separationGraceUntil = state.now + 0.14;
         source.vx *= 0.24;
@@ -1640,7 +1651,11 @@
 
         const candidates = actor.cells
           .slice()
-          .sort((a, b) => b.mass - a.mass);
+          .sort((a, b) => {
+            const priorityDiff = (b.splitPriority || 0) - (a.splitPriority || 0);
+            if (priorityDiff) return priorityDiff;
+            return b.mass - a.mass;
+          });
         let didSplit = false;
         for (const cell of candidates) {
           if (liveCellCount(actor) >= MAX_CELLS) break;
@@ -2755,17 +2770,29 @@
             ejectMass(actor, now, true);
           }
           if (actor.input.splitQueued) {
-            const aim = actorAimDirection(actor);
-            if (actor.lastSplitFrame !== state.frameIndex) {
-              if (splitActor(actor, aim.x, aim.y, now, 0, actor.input.targetX, actor.input.targetY)) {
-                actor.input.splitCount = Math.max(0, (actor.input.splitCount || 1) - 1);
-              } else {
-                actor.input.splitCount = 0;
-              }
+            if (!actor.input.splitLockActive) {
+              const aim = actorAimDirection(actor);
+              actor.input.splitLockX = aim.x;
+              actor.input.splitLockY = aim.y;
+              actor.input.splitLockActive = true;
             }
-            if (actor.input.splitCount <= 0) {
+
+            let remaining = Math.max(1, actor.input.splitCount || 1);
+            let didAnySplit = false;
+            while (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
+              if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0)) {
+                remaining = 0;
+                break;
+              }
+              didAnySplit = true;
+              remaining -= 1;
+            }
+
+            actor.input.splitCount = Math.max(0, remaining);
+            if (actor.input.splitCount <= 0 || !didAnySplit || liveCellCount(actor) >= MAX_CELLS) {
               actor.input.splitQueued = false;
               actor.input.splitCount = 0;
+              actor.input.splitLockActive = false;
             }
           }
         }
@@ -2773,7 +2800,8 @@
       }
 
       function processBotManualControls(now) {
-        if (state.settings.botMode !== "chase") {
+        const controllableBotMode = state.settings.botMode === "chase" || state.settings.botMode === "cursor";
+        if (!controllableBotMode) {
           state.input.botSplitQueued = false;
           state.input.botEjectQueued = false;
           return;
@@ -2782,16 +2810,19 @@
         if (state.input.botSplitQueued) {
           for (const bot of state.actors) {
             if (bot.isHuman) continue;
-            const target = nearestHumanCell(actorCenter(bot), bot.id);
+            const center = actorCenter(bot);
+            const target = state.settings.botMode === "cursor"
+              ? { x: state.input.mouseWorldX, y: state.input.mouseWorldY }
+              : nearestHumanCell(center, bot.id);
             const aim = target
-              ? normalized(target.x - actorCenter(bot).x, target.y - actorCenter(bot).y, bot.input.lastAimX, bot.input.lastAimY)
+              ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
               : actorAimDirection(bot);
-            splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
+            splitActor(bot, aim.x, aim.y, now, 0);
           }
           state.input.botSplitQueued = false;
         }
 
-        if (state.input.botEjectQueued) {
+        if (state.input.botEjectQueued || state.input.keys.has("KeyX")) {
           for (const bot of state.actors) {
             if (bot.isHuman) continue;
             ejectMass(bot, now, true);
@@ -3052,6 +3083,7 @@
       function resetFreshWorld(localId, onlineMode = false) {
         WORLD_SIZE = state.settings.worldSize;
         setSpectating(false);
+        state.splitPrioritySeq = 0;
         state.localActorId = localId;
         state.actors.length = 0;
         state.foods.length = 0;
