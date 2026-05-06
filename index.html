@@ -137,6 +137,102 @@
       opacity: 1;
     }
 
+    .menu-button {
+      position: fixed;
+      inset: 14px auto auto 14px;
+      min-width: 72px;
+      min-height: 34px;
+      border: 1px solid rgba(23, 125, 220, 0.32);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #0b5cab;
+      font: 700 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      cursor: pointer;
+      z-index: 6;
+    }
+
+    .menu-button:hover {
+      background: rgba(23, 125, 220, 0.08);
+    }
+
+    .menu-screen {
+      position: fixed;
+      inset: 0;
+      display: none;
+      overflow-y: auto;
+      place-items: start center;
+      padding: 56px 14px 18px;
+      background: rgba(18, 32, 70, 0.2);
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    body.menu-open .menu-screen {
+      display: grid;
+    }
+
+    body.menu-open .menu-button {
+      display: none;
+    }
+
+    .menu-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(620px, calc(100vw - 28px));
+      min-height: 56px;
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid rgba(0, 220, 255, 0.85);
+      border-bottom: 0;
+      border-radius: 4px 4px 0 0;
+      background:
+        linear-gradient(128deg, rgba(0, 25, 64, 0.9), rgba(0, 116, 158, 0.72)),
+        repeating-linear-gradient(117deg, rgba(0, 241, 255, 0.14) 0 8px, transparent 8px 18px);
+      box-shadow: 0 18px 34px rgba(7, 18, 38, 0.28);
+      pointer-events: auto;
+    }
+
+    .menu-head strong {
+      color: #13f6ff;
+      font-size: 27px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-shadow: 0 0 14px rgba(19, 246, 255, 0.42);
+    }
+
+    .menu-head button {
+      min-width: 100px;
+      min-height: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.62);
+      border-radius: 3px;
+      background: #ff1694;
+      color: #ffffff;
+      font: 800 13px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    }
+
+    .menu-layout {
+      display: grid;
+      grid-template-columns: minmax(190px, 0.8fr) minmax(310px, 1.2fr);
+      align-items: start;
+      gap: 6px;
+      width: min(620px, calc(100vw - 28px));
+      max-height: calc(100vh - 126px);
+      margin: 0;
+      padding: 6px;
+      border: 1px solid rgba(0, 220, 255, 0.85);
+      border-radius: 0 0 4px 4px;
+      background:
+        linear-gradient(135deg, rgba(0, 17, 48, 0.92), rgba(0, 110, 150, 0.66)),
+        repeating-linear-gradient(126deg, rgba(20, 240, 255, 0.13) 0 7px, transparent 7px 17px);
+      box-shadow: 0 18px 34px rgba(7, 18, 38, 0.28);
+      overflow: hidden;
+      pointer-events: auto;
+    }
+
     .online-panel {
       position: fixed;
       inset: 14px auto auto 14px;
@@ -338,6 +434,90 @@
       background: rgba(23, 125, 220, 0.08);
     }
 
+    .keybind-title {
+      margin: 10px 0 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .keybind-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .keybind-control {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 74px;
+      align-items: center;
+      gap: 6px;
+      min-height: 30px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .keybind-control button {
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.92);
+      color: #0b5cab;
+      font: 700 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .menu-screen .online-panel,
+    .menu-screen .view-panel {
+      position: static;
+      width: 100%;
+      max-height: calc(100vh - 146px);
+      overflow-y: auto;
+      border-color: rgba(0, 220, 255, 0.72);
+      border-radius: 3px;
+      background: rgba(0, 18, 52, 0.62);
+      color: #dffbff;
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+
+    .menu-screen .online-title,
+    .menu-screen .view-row,
+    .menu-screen .setting-control,
+    .menu-screen .keybind-title,
+    .menu-screen .keybind-control {
+      color: #8feeff;
+    }
+
+    .menu-screen .view-row strong,
+    .menu-screen .setting-control strong,
+    .menu-screen .online-status {
+      color: #17f5ff;
+    }
+
+    .menu-screen input:not([type="range"]):not([type="checkbox"]),
+    .menu-screen textarea,
+    .menu-screen select,
+    .menu-screen .keybind-control button,
+    .menu-screen .online-controls button,
+    .menu-screen .view-controls button {
+      border-color: rgba(0, 220, 255, 0.54);
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .menu-screen .online-controls button,
+    .menu-screen .view-controls button {
+      color: #006bb6;
+    }
+
+    .menu-screen .online-controls button:hover,
+    .menu-screen .view-controls button:hover,
+    .menu-screen .keybind-control button:hover {
+      background: #e7fbff;
+    }
+
     @media (max-width: 640px) {
       .hud {
         inset: auto auto 10px 10px;
@@ -358,8 +538,30 @@
       }
 
       .view-panel {
-        inset: auto 10px 10px auto;
         width: min(270px, calc(100vw - 158px));
+      }
+
+      .menu-screen {
+        padding: 46px 10px 10px;
+      }
+
+      .menu-head,
+      .menu-layout {
+        width: calc(100vw - 20px);
+      }
+
+      .menu-head strong {
+        font-size: 21px;
+      }
+
+      .menu-layout {
+        grid-template-columns: 1fr;
+        max-height: calc(100vh - 104px);
+        overflow-y: auto;
+      }
+
+      .keybind-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -380,118 +582,141 @@
 
   <div id="flash" class="flash">復活</div>
 
-  <section class="online-panel" aria-label="オンライン">
-    <div class="online-title">
-      <span>オンライン2人</span>
-      <span id="onlineStatus" class="online-status">オフライン</span>
-    </div>
-    <div class="online-controls">
-      <button id="hostBtn" type="button">部屋を作る</button>
-      <button id="joinBtn" type="button">部屋に入る</button>
-      <button id="applyAnswerBtn" type="button">回答反映</button>
-      <button id="disconnectBtn" type="button">切断</button>
-      <button id="relayHostBtn" type="button">リレー作成</button>
-      <button id="relayJoinBtn" type="button">リレー参加</button>
-      <button id="spectateBtn" type="button">観戦</button>
-    </div>
-    <div class="online-fields">
-      <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
-      <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
-    </div>
-    <textarea id="offerBox" spellcheck="false" placeholder="オファー"></textarea>
-    <textarea id="answerBox" spellcheck="false" placeholder="回答"></textarea>
-  </section>
+  <button id="menuBtn" class="menu-button" type="button">設定</button>
 
-  <section class="view-panel" aria-label="設定">
-    <div class="view-row"><span>表示</span><strong id="viewValue">100%</strong></div>
-    <div class="view-controls">
-      <button id="gameResetBtn" type="button">リセット</button>
+  <section id="menuScreen" class="menu-screen" aria-label="メニュー">
+    <div class="menu-head">
+      <strong>AGAR CANVAS</strong>
+      <button id="playBtn" type="button">PLAY</button>
     </div>
-    <label class="setting-control">
-      <span>カーソル線</span>
-      <input id="cursorLineToggle" class="toggle-input" type="checkbox" checked aria-label="カーソルライン">
-      <strong id="cursorLineValue" class="toggle-value">表示</strong>
-    </label>
-    <label class="setting-control">
-      <span>N復活</span>
-      <input id="nRespawnToggle" class="toggle-input" type="checkbox" checked aria-label="Nキーリスタート">
-      <strong id="nRespawnValue" class="toggle-value">許可</strong>
-    </label>
-    <label class="setting-control">
-      <span>ボット</span>
-      <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
-      <strong id="botValue">100</strong>
-      <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="ボット上限">
-    </label>
-    <label class="setting-control">
-      <span>行動</span>
-      <select id="botModeSelect" class="mode-select" aria-label="ボット行動">
-        <option value="hunt">小さい相手を狙う</option>
-        <option value="chase">プレイヤーを追う</option>
-        <option value="virus">とげを狙う</option>
-        <option value="cursor">カーソルへ向かう</option>
-      </select>
-    </label>
-    <label class="setting-control">
-      <span>自然とげ</span>
-      <input id="virusSlider" type="range" min="0" max="500" step="1" value="36" aria-label="自然発生とげ数">
-      <strong id="virusValue">36</strong>
-      <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="自然発生とげ上限">
-    </label>
-    <label class="setting-control">
-      <span>ペレット</span>
-      <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="ペレット数">
-      <strong id="foodValue">1200</strong>
-      <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="ペレット上限">
-    </label>
-    <label class="setting-control">
-      <span>吐く量</span>
-      <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="21" aria-label="吐く粒の大きさ">
-      <strong id="ejectMassValue">21</strong>
-      <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="吐く量上限">
-    </label>
-    <label class="setting-control">
-      <span>粒速度</span>
-      <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="吐く粒の速度">
-      <strong id="ejectSpeedValue">710</strong>
-      <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="粒速度上限">
-    </label>
-    <label class="setting-control">
-      <span>連射</span>
-      <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="粒の連射速度">
-      <strong id="ejectRateValue">11</strong>
-      <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="連射上限">
-    </label>
-    <label class="setting-control">
-      <span>反動</span>
-      <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="8" aria-label="分裂反動の大きさ">
-      <strong id="splitRecoilValue">8</strong>
-      <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
-    </label>
-    <label class="setting-control">
-      <span>分裂速度</span>
-      <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="分裂速度">
-      <strong id="splitSpeedValue">100</strong>
-      <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
-    </label>
-    <label class="setting-control">
-      <span>ゲーム速度</span>
-      <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
-      <strong id="gameSpeedValue">1x</strong>
-      <input id="gameSpeedMaxBox" class="max-input" type="number" min="0.1" step="0.1" value="3" aria-label="ゲーム速度上限">
-    </label>
-    <label class="setting-control">
-      <span>合体</span>
-      <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="合体までの時間">
-      <strong id="mergeCooldownValue">10</strong>
-      <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="合体時間上限">
-    </label>
-    <label class="setting-control">
-      <span>広さ</span>
-      <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="4800" aria-label="サーバーの広さ">
-      <strong id="worldSizeValue">4800</strong>
-      <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
-    </label>
+    <div class="menu-layout">
+      <section class="online-panel" aria-label="オンライン">
+        <div class="online-title">
+          <span>オンライン2人</span>
+          <span id="onlineStatus" class="online-status">オフライン</span>
+        </div>
+        <div class="online-controls">
+          <button id="hostBtn" type="button">部屋を作る</button>
+          <button id="joinBtn" type="button">部屋に入る</button>
+          <button id="applyAnswerBtn" type="button">回答反映</button>
+          <button id="disconnectBtn" type="button">切断</button>
+          <button id="relayHostBtn" type="button">リレー作成</button>
+          <button id="relayJoinBtn" type="button">リレー参加</button>
+          <button id="spectateBtn" type="button">観戦</button>
+        </div>
+        <div class="online-fields">
+          <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
+          <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
+        </div>
+        <textarea id="offerBox" spellcheck="false" placeholder="オファー"></textarea>
+        <textarea id="answerBox" spellcheck="false" placeholder="回答"></textarea>
+      </section>
+
+      <section class="view-panel" aria-label="設定">
+        <div class="view-row"><span>表示</span><strong id="viewValue">100%</strong></div>
+        <div class="view-controls">
+          <button id="gameResetBtn" type="button">リセット</button>
+        </div>
+        <label class="setting-control">
+          <span>カーソル線</span>
+          <input id="cursorLineToggle" class="toggle-input" type="checkbox" checked aria-label="カーソルライン">
+          <strong id="cursorLineValue" class="toggle-value">表示</strong>
+        </label>
+        <label class="setting-control">
+          <span>N復活</span>
+          <input id="nRespawnToggle" class="toggle-input" type="checkbox" checked aria-label="Nキーリスタート">
+          <strong id="nRespawnValue" class="toggle-value">許可</strong>
+        </label>
+        <div class="keybind-title">キー</div>
+        <div class="keybind-grid">
+          <label class="keybind-control"><span>分裂</span><button type="button" data-keybind="split1"></button></label>
+          <label class="keybind-control"><span>2分裂</span><button type="button" data-keybind="split2"></button></label>
+          <label class="keybind-control"><span>3分裂</span><button type="button" data-keybind="split3"></button></label>
+          <label class="keybind-control"><span>4分裂</span><button type="button" data-keybind="split4"></button></label>
+          <label class="keybind-control"><span>粒</span><button type="button" data-keybind="eject"></button></label>
+          <label class="keybind-control"><span>連射</span><button type="button" data-keybind="autoEject"></button></label>
+          <label class="keybind-control"><span>別個体</span><button type="button" data-keybind="clone"></button></label>
+          <label class="keybind-control"><span>復活</span><button type="button" data-keybind="respawn"></button></label>
+          <label class="keybind-control"><span>Bot分裂</span><button type="button" data-keybind="botSplit"></button></label>
+          <label class="keybind-control"><span>Bot粒</span><button type="button" data-keybind="botEject"></button></label>
+        </div>
+        <label class="setting-control">
+          <span>ボット</span>
+          <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
+          <strong id="botValue">100</strong>
+          <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="ボット上限">
+        </label>
+        <label class="setting-control">
+          <span>行動</span>
+          <select id="botModeSelect" class="mode-select" aria-label="ボット行動">
+            <option value="hunt">小さい相手を狙う</option>
+            <option value="chase">プレイヤーを追う</option>
+            <option value="virus">とげを狙う</option>
+            <option value="cursor">カーソルへ向かう</option>
+          </select>
+        </label>
+        <label class="setting-control">
+          <span>自然とげ</span>
+          <input id="virusSlider" type="range" min="0" max="500" step="1" value="36" aria-label="自然発生とげ数">
+          <strong id="virusValue">36</strong>
+          <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="自然発生とげ上限">
+        </label>
+        <label class="setting-control">
+          <span>ペレット</span>
+          <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="ペレット数">
+          <strong id="foodValue">1200</strong>
+          <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="ペレット上限">
+        </label>
+        <label class="setting-control">
+          <span>吐く量</span>
+          <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="21" aria-label="吐く粒の大きさ">
+          <strong id="ejectMassValue">21</strong>
+          <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="吐く量上限">
+        </label>
+        <label class="setting-control">
+          <span>粒速度</span>
+          <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="吐く粒の速度">
+          <strong id="ejectSpeedValue">710</strong>
+          <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="粒速度上限">
+        </label>
+        <label class="setting-control">
+          <span>連射</span>
+          <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="粒の連射速度">
+          <strong id="ejectRateValue">11</strong>
+          <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="連射上限">
+        </label>
+        <label class="setting-control">
+          <span>反動</span>
+          <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="8" aria-label="分裂反動の大きさ">
+          <strong id="splitRecoilValue">8</strong>
+          <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
+        </label>
+        <label class="setting-control">
+          <span>分裂速度</span>
+          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="分裂速度">
+          <strong id="splitSpeedValue">100</strong>
+          <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
+        </label>
+        <label class="setting-control">
+          <span>ゲーム速度</span>
+          <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
+          <strong id="gameSpeedValue">1x</strong>
+          <input id="gameSpeedMaxBox" class="max-input" type="number" min="0.1" step="0.1" value="3" aria-label="ゲーム速度上限">
+        </label>
+        <label class="setting-control">
+          <span>合体</span>
+          <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="10" aria-label="合体までの時間">
+          <strong id="mergeCooldownValue">10</strong>
+          <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="合体時間上限">
+        </label>
+        <label class="setting-control">
+          <span>広さ</span>
+          <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="4800" aria-label="サーバーの広さ">
+          <strong id="worldSizeValue">4800</strong>
+          <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
+        </label>
+      </section>
+    </div>
   </section>
 
   <script>
@@ -505,6 +730,8 @@
       const fpsEl = document.getElementById("fps");
       const scoreboardEl = document.getElementById("scoreboard");
       const flashEl = document.getElementById("flash");
+      const menuBtn = document.getElementById("menuBtn");
+      const playBtn = document.getElementById("playBtn");
       const onlineStatusEl = document.getElementById("onlineStatus");
       const hostBtn = document.getElementById("hostBtn");
       const joinBtn = document.getElementById("joinBtn");
@@ -557,6 +784,7 @@
       const worldSizeSlider = document.getElementById("worldSizeSlider");
       const worldSizeValueEl = document.getElementById("worldSizeValue");
       const worldSizeMaxBox = document.getElementById("worldSizeMaxBox");
+      const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
       let WORLD_SIZE = 4800;
@@ -628,6 +856,21 @@
         "Comet", "Vector", "Kite", "Mint", "Echo", "Zinc"
       ];
 
+      const defaultKeyBindings = {
+        split1: "Space",
+        split2: "KeyG",
+        split3: "KeyR",
+        split4: "KeyT",
+        eject: "KeyW",
+        autoEject: "KeyE",
+        clone: "Tab",
+        respawn: "KeyN",
+        botSplit: "KeyZ",
+        botEject: "KeyX"
+      };
+
+      const remoteAutoEjectKey = "__remoteAutoEject";
+
       const state = {
         width: 1,
         height: 1,
@@ -645,6 +888,9 @@
         player: null,
         localActorId: "player",
         localCloneIndex: 0,
+        menuOpen: true,
+        keyCaptureAction: null,
+        keyBindings: { ...defaultKeyBindings },
         actors: [],
         foods: [],
         feeds: [],
@@ -1149,7 +1395,11 @@
       }
 
       function isLocalViewActor(actor) {
-        return actor && actor.isHuman && (actor.control === "local" || isLocalControlledActorId(actor.id));
+        return actor && actor.isHuman && (
+          actor.control === "local" ||
+          isLocalControlledActorId(actor.id) ||
+          (actor.localClone && isLocalCloneActorId(actor.id))
+        );
       }
 
       function localHumanActors() {
@@ -1168,8 +1418,12 @@
         return `${baseId}-clone-1`;
       }
 
+      function isLocalCloneActorId(id) {
+        return id === localCloneId() || (id === "local-clone-1" && state.net.role !== "client");
+      }
+
       function isLocalControlledActorId(id) {
-        return id === state.localActorId || id === localCloneId();
+        return id === state.localActorId || isLocalCloneActorId(id);
       }
 
       function remoteCloneActor(baseId = "guest") {
@@ -1358,6 +1612,76 @@
         roomBox.value = "agar";
       }
 
+      function setMenuOpen(open) {
+        state.menuOpen = Boolean(open);
+        if (state.menuOpen) {
+          state.input.keys.clear();
+        } else {
+          state.keyCaptureAction = null;
+          if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        }
+        document.body.classList.toggle("menu-open", state.menuOpen);
+        syncKeyBindControls();
+      }
+
+      function keyLabel(code) {
+        if (!code) return "";
+        if (code === "Space") return "Space";
+        if (code === "Tab") return "Tab";
+        if (code === "Escape") return "Esc";
+        if (code.startsWith("Key")) return code.slice(3);
+        if (code.startsWith("Digit")) return code.slice(5);
+        if (code.startsWith("Numpad")) return `Num ${code.slice(6)}`;
+        if (code.startsWith("Arrow")) return code.replace("Arrow", "");
+        return code;
+      }
+
+      function syncKeyBindControls() {
+        for (const button of keyBindButtons) {
+          const action = button.dataset.keybind;
+          button.textContent = state.keyCaptureAction === action ? "入力中" : keyLabel(state.keyBindings[action]);
+        }
+      }
+
+      function beginKeyCapture(action) {
+        if (!Object.prototype.hasOwnProperty.call(state.keyBindings, action)) return;
+        state.keyCaptureAction = action;
+        syncKeyBindControls();
+      }
+
+      function captureKeyBinding(code) {
+        if (!state.keyCaptureAction) return false;
+        if (code === "Escape") {
+          state.keyCaptureAction = null;
+          syncKeyBindControls();
+          return true;
+        }
+        for (const action of Object.keys(state.keyBindings)) {
+          if (action !== state.keyCaptureAction && state.keyBindings[action] === code) {
+            state.keyBindings[action] = "";
+          }
+        }
+        state.keyBindings[state.keyCaptureAction] = code;
+        state.keyCaptureAction = null;
+        syncKeyBindControls();
+        return true;
+      }
+
+      function actionForKey(code) {
+        for (const [action, keyCode] of Object.entries(state.keyBindings)) {
+          if (keyCode && keyCode === code) return action;
+        }
+        return null;
+      }
+
+      function isTextEditingTarget(target) {
+        return Boolean(target && target.closest && target.closest("input, textarea, select"));
+      }
+
+      function actorAutoEjectHeld(actor) {
+        return Boolean(actor?.input?.keys?.has(state.keyBindings.autoEject) || actor?.input?.keys?.has(remoteAutoEjectKey));
+      }
+
       function updateLocalActorInput() {
         if (state.spectating) return;
         const localActors = localHumanActors();
@@ -1376,8 +1700,8 @@
           }
           actor.input.targetX = state.input.mouseWorldX;
           actor.input.targetY = state.input.mouseWorldY;
-          if (state.input.keys.has("KeyE")) actor.input.keys.add("KeyE");
-          else actor.input.keys.delete("KeyE");
+          actor.input.keys.clear();
+          if (state.input.keys.has(state.keyBindings.autoEject)) actor.input.keys.add(state.keyBindings.autoEject);
           if (state.input.ejectQueued) actor.input.ejectQueued = true;
           if (state.input.splitQueued) {
             actor.input.splitQueued = true;
@@ -3258,7 +3582,7 @@
             if (ejectMass(actor, now) || now - actor.lastEject >= ejectInterval()) {
               actor.input.ejectQueued = false;
             }
-          } else if (actor.input.keys.has("KeyE")) {
+          } else if (actorAutoEjectHeld(actor)) {
             ejectMass(actor, now, true);
           }
           if (actor.input.splitQueued) {
@@ -3314,7 +3638,7 @@
           state.input.botSplitQueued = false;
         }
 
-        if (state.input.botEjectQueued || state.input.keys.has("KeyX")) {
+        if (state.input.botEjectQueued || state.input.keys.has(state.keyBindings.botEject)) {
           for (const bot of state.actors) {
             if (bot.isHuman) continue;
             ejectMass(bot, now, true);
@@ -4045,7 +4369,7 @@
           activeActorId: state.input.activeActorId || state.player.id,
           targetX: state.player.input.targetX,
           targetY: state.player.input.targetY,
-          e: state.player.input.keys.has("KeyE"),
+          e: actorAutoEjectHeld(state.player),
           ejectSeq: state.input.ejectSeq,
           splitSeq: state.input.splitSeq,
           respawnSeq: state.input.respawnSeq,
@@ -4123,8 +4447,8 @@
 
           activeGuest.input.targetX = clamp(Number(message.targetX) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
           activeGuest.input.targetY = clamp(Number(message.targetY) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
-          if (message.e) activeGuest.input.keys.add("KeyE");
-          else activeGuest.input.keys.delete("KeyE");
+          if (message.e) activeGuest.input.keys.add(remoteAutoEjectKey);
+          else activeGuest.input.keys.delete(remoteAutoEjectKey);
           const ejectSeq = Number(message.ejectSeq) || 0;
           if (ejectSeq > guest.input.lastNetEjectSeq) {
             activeGuest.input.ejectQueued = true;
@@ -4816,55 +5140,40 @@
         window.addEventListener("touchmove", onTouch, { passive: false });
         window.addEventListener("wheel", onWheel, { passive: false });
         window.addEventListener("keydown", (event) => {
-          if (
-            event.code === "Space" ||
-            event.code === "KeyG" ||
-            event.code === "KeyR" ||
-            event.code === "KeyT" ||
-            event.code === "KeyW" ||
-            event.code === "KeyE" ||
-            event.code === "KeyZ" ||
-            event.code === "KeyX" ||
-            event.code === "KeyN" ||
-            event.code === "Tab"
-          ) {
+          if (state.keyCaptureAction) {
             event.preventDefault();
-            state.input.keys.add(event.code);
-            if (event.code === "Space" && !event.repeat) {
-              queuePlayerSplits(1);
-            }
-            if (event.code === "KeyG" && !event.repeat) {
-              queuePlayerSplits(2);
-            }
-            if (event.code === "KeyR" && !event.repeat) {
-              queuePlayerSplits(3);
-            }
-            if (event.code === "KeyT" && !event.repeat) {
-              queuePlayerSplits(4);
-            }
-            if (event.code === "KeyW" && !event.repeat) {
-              state.input.ejectQueued = true;
-              state.input.ejectSeq += 1;
-            }
-            if (event.code === "KeyZ" && !event.repeat) state.input.botSplitQueued = true;
-            if (event.code === "KeyX" && !event.repeat) state.input.botEjectQueued = true;
-            if (event.code === "KeyN" && !event.repeat) respawnLocalPlayer();
-            if (event.code === "Tab" && !event.repeat) toggleLocalCloneControl();
+            captureKeyBinding(event.code);
+            return;
           }
+          if (state.menuOpen) {
+            if (event.code === "Escape") {
+              event.preventDefault();
+              setMenuOpen(false);
+            }
+            return;
+          }
+          if (isTextEditingTarget(event.target)) return;
+          const action = actionForKey(event.code);
+          if (!action) return;
+          event.preventDefault();
+          state.input.keys.add(event.code);
+          if (event.repeat) return;
+          if (action === "split1") queuePlayerSplits(1);
+          if (action === "split2") queuePlayerSplits(2);
+          if (action === "split3") queuePlayerSplits(3);
+          if (action === "split4") queuePlayerSplits(4);
+          if (action === "eject") {
+            state.input.ejectQueued = true;
+            state.input.ejectSeq += 1;
+          }
+          if (action === "botSplit") state.input.botSplitQueued = true;
+          if (action === "botEject") state.input.botEjectQueued = true;
+          if (action === "respawn") respawnLocalPlayer();
+          if (action === "clone") toggleLocalCloneControl();
         });
         window.addEventListener("keyup", (event) => {
-          if (
-            event.code === "Space" ||
-            event.code === "KeyG" ||
-            event.code === "KeyR" ||
-            event.code === "KeyT" ||
-            event.code === "KeyW" ||
-            event.code === "KeyE" ||
-            event.code === "KeyZ" ||
-            event.code === "KeyX" ||
-            event.code === "KeyN" ||
-            event.code === "Tab"
-          ) {
+          const action = actionForKey(event.code);
+          if (action || state.input.keys.has(event.code)) {
             event.preventDefault();
             state.input.keys.delete(event.code);
           }
@@ -4878,6 +5187,11 @@
           state.input.botSplitQueued = false;
           state.input.botEjectQueued = false;
         });
+        menuBtn.addEventListener("click", () => setMenuOpen(true));
+        playBtn.addEventListener("click", () => setMenuOpen(false));
+        for (const button of keyBindButtons) {
+          button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
+        }
         hostBtn.addEventListener("click", () => {
           startRoomHost();
         });
@@ -4977,6 +5291,8 @@
         ensureRelayDefaults();
         setViewScalePercent(DEFAULT_VIEW_SCALE * 100);
         syncSettingsControls();
+        syncKeyBindControls();
+        setMenuOpen(true);
 
         resetFreshWorld("player", false);
 
