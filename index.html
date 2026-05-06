@@ -919,24 +919,28 @@
         cell.mergeDominantId = null;
       }
 
-      function hasMergeCancellation(a, b) {
-        return (a.mergePartnerId != null && a.mergePartnerId !== b.id) ||
-          (b.mergePartnerId != null && b.mergePartnerId !== a.id);
+      function hasMergeCancellation(actor, a, b, dominantId) {
+        if (!actor.mergeDominantByPair) return false;
+        const previousDominantId = actor.mergeDominantByPair.get(mergePairKey(a, b));
+        return previousDominantId != null && previousDominantId !== dominantId;
       }
 
-      function recordMergeAttempt(a, b) {
+      function recordMergeAttempt(actor, a, b, dominantId) {
+        if (!actor.mergeDominantByPair) actor.mergeDominantByPair = new Map();
+        actor.mergeDominantByPair.set(mergePairKey(a, b), dominantId);
         a.mergePartnerId = b.id;
         b.mergePartnerId = a.id;
-        a.mergeDominantId = null;
-        b.mergeDominantId = null;
+        a.mergeDominantId = dominantId;
+        b.mergeDominantId = dominantId;
       }
 
-      function clearMergeAttempt(a, b) {
+      function clearMergeAttempt(actor, a, b) {
         if (!b) {
           a.mergePartnerId = null;
           a.mergeDominantId = null;
           return;
         }
+        if (actor?.mergeDominantByPair) actor.mergeDominantByPair.delete(mergePairKey(a, b));
         if (a.mergePartnerId === b.id) {
           a.mergePartnerId = null;
           a.mergeDominantId = null;
@@ -980,7 +984,7 @@
 
         if (!actor.mergeCancelUntil) actor.mergeCancelUntil = new Map();
         actor.mergeCancelUntil.set(mergePairKey(a, b), state.now + MERGE_SWAP_RESET_TIME);
-        clearMergeAttempt(a, b);
+        clearMergeAttempt(actor, a, b);
       }
 
       function addMass(cell, amount) {
@@ -1123,6 +1127,7 @@
           lastSplitFrame: -1,
           lastMergeFrame: -1,
           mergeCancelUntil: new Map(),
+          mergeDominantByPair: new Map(),
           wanderX: rand(300, WORLD_SIZE - 300),
           wanderY: rand(300, WORLD_SIZE - 300),
           respawnAt: 0,
@@ -1143,8 +1148,12 @@
         return actor && (actor.control === "local" || actor.control === "remote");
       }
 
+      function isLocalViewActor(actor) {
+        return actor && actor.isHuman && (actor.control === "local" || isLocalControlledActorId(actor.id));
+      }
+
       function localHumanActors() {
-        return state.actors.filter((actor) => actor.control === "local" && actor.isHuman);
+        return state.actors.filter(isLocalViewActor);
       }
 
       function primaryLocalActor() {
@@ -2741,15 +2750,15 @@
         const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
         if (mergePairCooling(actor, a, b)) return false;
         if (centerDistance >= a.radius + b.radius) {
-          if (a.mergePartnerId === b.id || b.mergePartnerId === a.id) clearMergeAttempt(a, b);
+          if (a.mergePartnerId === b.id || b.mergePartnerId === a.id) clearMergeAttempt(actor, a, b);
           return false;
         }
 
-        if (hasMergeCancellation(a, b)) {
+        if (hasMergeCancellation(actor, a, b, big.id)) {
           resetCancelledMergeAttempt(actor, a, b, centerDistance);
           return false;
         }
-        recordMergeAttempt(a, b);
+        recordMergeAttempt(actor, a, b, big.id);
 
         if (!hasHalfAreaOverlap(a, b, centerDistance)) return false;
 
@@ -2773,7 +2782,7 @@
         refreshCell(big);
         capVelocity(big, cellSpeed(big) * 1.25);
         capBoost(big, 120);
-        clearMergeAttempt(big, small);
+        clearMergeAttempt(actor, big, small);
         small.dead = true;
         return true;
       }
