@@ -3500,6 +3500,7 @@
           }
         };
         channel.onclose = () => {
+          if (state.net.channel === channel) state.net.channel = null;
           state.net.connected = false;
           if (state.net.role === "client") {
             continueOfflineAfterHostLoss();
@@ -3508,6 +3509,7 @@
           setStatus("CLOSED");
         };
         channel.onerror = () => {
+          if (state.net.channel === channel) state.net.channel = null;
           if (state.net.role === "client") {
             continueOfflineAfterHostLoss();
             return;
@@ -3519,9 +3521,14 @@
 
       function setupPeerJsConnection(conn) {
         if (state.net.peerConn && state.net.peerConn !== conn) {
-          try { conn.close(); } catch (error) {}
-          setStatus("ROOM FULL");
-          return;
+          if (state.net.connected && state.net.peerConn.open !== false) {
+            try { conn.close(); } catch (error) {}
+            setStatus("ROOM FULL");
+            return;
+          }
+          try { state.net.peerConn.close(); } catch (error) {}
+          state.net.peerConn = null;
+          state.net.connected = false;
         }
 
         state.net.transport = "peerjs";
@@ -3543,6 +3550,7 @@
           handleNetMessage(typeof data === "string" ? data : JSON.stringify(data));
         });
         conn.on("close", () => {
+          if (state.net.peerConn === conn) state.net.peerConn = null;
           state.net.connected = false;
           if (state.net.role === "client") {
             continueOfflineAfterHostLoss();
@@ -3551,6 +3559,8 @@
           setStatus("CLOSED");
         });
         conn.on("error", () => {
+          if (state.net.peerConn === conn) state.net.peerConn = null;
+          state.net.connected = false;
           if (state.net.role === "client" && !state.net.connected) {
             setStatus("NO ROOM");
             setTimeout(() => {
