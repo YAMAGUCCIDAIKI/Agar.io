@@ -611,6 +611,7 @@
         nextBotIndex: 0,
         player: null,
         localActorId: "player",
+        localCloneIndex: 0,
         actors: [],
         foods: [],
         feeds: [],
@@ -1013,7 +1014,7 @@
       }
 
       function displayActorName(actor) {
-        if (isLocalActor(actor)) return "自分";
+        if (actor && actor.control === "local") return actor.localClone ? actor.name : "自分";
         if (actor && actor.isHuman) return "P2";
         return actor ? actor.name : "";
       }
@@ -1082,23 +1083,48 @@
       }
 
       function updateLocalActorInput() {
-        const actor = state.player;
-        if (!actor || actor.control !== "local") return;
         if (state.spectating) return;
-        actor.input.targetX = state.input.mouseWorldX;
-        actor.input.targetY = state.input.mouseWorldY;
-        if (state.input.keys.has("KeyE")) actor.input.keys.add("KeyE");
-        else actor.input.keys.delete("KeyE");
-        if (state.input.ejectQueued) {
-          actor.input.ejectQueued = true;
-          state.input.ejectQueued = false;
+        const localActors = state.actors.filter((actor) => actor.control === "local" && actor.isHuman);
+        if (!localActors.length) return;
+        for (const actor of localActors) {
+          actor.input.targetX = state.input.mouseWorldX;
+          actor.input.targetY = state.input.mouseWorldY;
+          if (state.input.keys.has("KeyE")) actor.input.keys.add("KeyE");
+          else actor.input.keys.delete("KeyE");
+          if (state.input.ejectQueued) actor.input.ejectQueued = true;
+          if (state.input.splitQueued) {
+            actor.input.splitQueued = true;
+            actor.input.splitCount += Math.max(1, state.input.splitCount || 1);
+          }
         }
+        if (state.input.ejectQueued) state.input.ejectQueued = false;
         if (state.input.splitQueued) {
-          actor.input.splitQueued = true;
-          actor.input.splitCount += Math.max(1, state.input.splitCount || 1);
           state.input.splitQueued = false;
           state.input.splitCount = 0;
         }
+      }
+
+      function spawnLocalCloneActor() {
+        if (state.net.role === "client") {
+          setStatus("NO HOST");
+          return;
+        }
+        const baseActor = state.player || state.actors.find((actor) => actor.control === "local") || state.actors[0];
+        if (!baseActor) return;
+        const center = actorCenter(baseActor);
+        state.localCloneIndex += 1;
+        const index = state.localCloneIndex;
+        const actor = createActor(`local-clone-${index}`, `自分${index + 1}`, botPalette[index % botPalette.length], true, "local");
+        actor.localClone = true;
+        state.actors.push(actor);
+        const angle = (index * 2.399963229728653) % TAU;
+        const distance = 180 + (index % 4) * 36;
+        const x = clamp(center.x + Math.cos(angle) * distance, 120, WORLD_SIZE - 120);
+        const y = clamp(center.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120);
+        spawnActor(actor, PLAYER_RESPAWN_MASS, x, y);
+        actor.input.targetX = state.input.mouseWorldX;
+        actor.input.targetY = state.input.mouseWorldY;
+        state.net.lastSnapshotSend = -100;
       }
 
       function setSpectating(enabled) {
@@ -1502,16 +1528,16 @@
         return virus.natural !== false;
       }
 
-      function liveNaturalVirusCount() {
+      function liveVirusCount() {
         let count = 0;
         for (const virus of state.viruses) {
-          if (!virus.dead && isNaturalVirus(virus)) count += 1;
+          if (!virus.dead) count += 1;
         }
         return count;
       }
 
       function trimNaturalViruses(limit) {
-        let naturalCount = 0;
+        let totalCount = liveVirusCount();
         let changed = false;
         state.viruses = state.viruses.filter((virus) => {
           if (virus.dead) {
@@ -1519,9 +1545,9 @@
             return false;
           }
           if (!isNaturalVirus(virus)) return true;
-          naturalCount += 1;
-          if (naturalCount <= limit) return true;
+          if (totalCount <= limit) return true;
           changed = true;
+          totalCount -= 1;
           return false;
         });
         return changed;
@@ -2405,21 +2431,29 @@
               const total = a.mass + b.mass;
               const aShare = b.mass / total;
               const bShare = a.mass / total;
-              a.x -= nx * overlap * aShare;
-              a.y -= ny * overlap * aShare;
-              b.x += nx * overlap * bShare;
-              b.y += ny * overlap * bShare;
-
               const aMoveX = a.vx + a.boostX;
               const aMoveY = a.vy + a.boostY;
               const bMoveX = b.vx + b.boostX;
               const bMoveY = b.vy + b.boostY;
-              const relativeClosing = (bMoveX - aMoveX) * nx + (bMoveY - aMoveY) * ny;
               const aMoveSpeed = Math.hypot(aMoveX, aMoveY);
               const bMoveSpeed = Math.hypot(bMoveX, bMoveY);
               const sameSplitDirection = a.splitBoostAge > 0 && b.splitBoostAge > 0 &&
                 aMoveSpeed > 1 && bMoveSpeed > 1 &&
                 (aMoveX * bMoveX + aMoveY * bMoveY) / (aMoveSpeed * bMoveSpeed) > 0.88;
+              let separateX = nx;
+              let separateY = ny;
+              if (sameSplitDirection) {
+                const axis = normalized(aMoveX + bMoveX, aMoveY + bMoveY, aMoveX, aMoveY);
+                const sign = (nx * axis.x + ny * axis.y) < 0 ? -1 : 1;
+                separateX = axis.x * sign;
+                separateY = axis.y * sign;
+              }
+              a.x -= separateX * overlap * aShare;
+              a.y -= separateY * overlap * aShare;
+              b.x += separateX * overlap * bShare;
+              b.y += separateY * overlap * bShare;
+
+              const relativeClosing = (bMoveX - aMoveX) * nx + (bMoveY - aMoveY) * ny;
               if (relativeClosing < 0 && !sameSplitDirection) {
                 const correction = -relativeClosing * (a.splitBoostAge > 0 || b.splitBoostAge > 0 ? 0.62 : 0.28);
                 a.boostX -= nx * correction * aShare;
@@ -2695,8 +2729,8 @@
           state.foodGridDirty = true;
         }
         trimNaturalViruses(virusTarget);
-        let naturalVirusCount = liveNaturalVirusCount();
-        const maxQueuedViruses = Math.max(0, virusTarget - naturalVirusCount);
+        let liveVirusTotal = liveVirusCount();
+        const maxQueuedViruses = Math.max(0, virusTarget - liveVirusTotal);
         if (state.virusRespawnQueue.length > maxQueuedViruses) {
           state.virusRespawnQueue.length = maxQueuedViruses;
         }
@@ -2706,11 +2740,11 @@
         for (const spawnAt of state.virusRespawnQueue) {
           if (
             spawnAt <= state.now &&
-            naturalVirusCount < virusTarget &&
+            liveVirusTotal < virusTarget &&
             spawnedViruses < MAX_VIRUS_SPAWNS_PER_FRAME
           ) {
             state.viruses.push(spawnVirusSafely());
-            naturalVirusCount += 1;
+            liveVirusTotal += 1;
             spawnedViruses += 1;
           } else {
             nextVirusRespawnQueue.push(spawnAt);
@@ -2720,7 +2754,7 @@
 
         const foodSpawnBudget = Math.min(MAX_FOOD_SPAWNS_PER_FRAME, foodTarget - state.foods.length);
         for (let i = 0; i < foodSpawnBudget; i += 1) addFood();
-        while (naturalVirusCount + state.virusRespawnQueue.length < virusTarget) {
+        while (liveVirusTotal + state.virusRespawnQueue.length < virusTarget) {
           state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
         }
         ensureBotPopulation();
@@ -2789,7 +2823,7 @@
       function processPlayerControls(now) {
         for (const actor of state.actors) {
           if (!isPlayerControlled(actor)) continue;
-          if (state.spectating && isLocalActor(actor)) continue;
+          if (state.spectating && actor.control === "local") continue;
           if (actor.input.ejectQueued) {
             if (ejectMass(actor, now) || now - actor.lastEject >= ejectInterval()) {
               actor.input.ejectQueued = false;
@@ -3112,6 +3146,7 @@
         WORLD_SIZE = state.settings.worldSize;
         setSpectating(false);
         state.splitPrioritySeq = 0;
+        state.localCloneIndex = 0;
         state.localActorId = localId;
         state.actors.length = 0;
         state.foods.length = 0;
@@ -4111,7 +4146,7 @@
           state.foodGridDirty = true;
         }
         trimNaturalViruses(state.settings.virusTarget);
-        const maxQueue = Math.max(0, state.settings.virusTarget - liveNaturalVirusCount());
+        const maxQueue = Math.max(0, state.settings.virusTarget - liveVirusCount());
         if (state.virusRespawnQueue.length > maxQueue) state.virusRespawnQueue.length = maxQueue;
         ensureBotPopulation();
       }
@@ -4272,7 +4307,8 @@
             event.code === "KeyE" ||
             event.code === "KeyZ" ||
             event.code === "KeyX" ||
-            event.code === "KeyN"
+            event.code === "KeyN" ||
+            event.code === "Tab"
           ) {
             event.preventDefault();
             state.input.keys.add(event.code);
@@ -4295,6 +4331,7 @@
             if (event.code === "KeyZ" && !event.repeat) state.input.botSplitQueued = true;
             if (event.code === "KeyX" && !event.repeat) state.input.botEjectQueued = true;
             if (event.code === "KeyN" && !event.repeat) respawnLocalPlayer();
+            if (event.code === "Tab" && !event.repeat) spawnLocalCloneActor();
           }
         });
         window.addEventListener("keyup", (event) => {
@@ -4307,7 +4344,8 @@
             event.code === "KeyE" ||
             event.code === "KeyZ" ||
             event.code === "KeyX" ||
-            event.code === "KeyN"
+            event.code === "KeyN" ||
+            event.code === "Tab"
           ) {
             event.preventDefault();
             state.input.keys.delete(event.code);
