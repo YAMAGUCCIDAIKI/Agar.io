@@ -307,6 +307,17 @@
       font: 700 11px/1 Inter, ui-sans-serif, system-ui, sans-serif;
     }
 
+    .toggle-input {
+      justify-self: start;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+    }
+
+    .toggle-value {
+      grid-column: 3 / 5;
+    }
+
     .view-panel input[type="range"] {
       width: 100%;
       accent-color: var(--accent);
@@ -396,6 +407,11 @@
     <div class="view-controls">
       <button id="gameResetBtn" type="button">リセット</button>
     </div>
+    <label class="setting-control">
+      <span>カーソル線</span>
+      <input id="cursorLineToggle" class="toggle-input" type="checkbox" checked aria-label="カーソルライン">
+      <strong id="cursorLineValue" class="toggle-value">表示</strong>
+    </label>
     <label class="setting-control">
       <span>ボット</span>
       <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
@@ -498,6 +514,8 @@
       const answerBox = document.getElementById("answerBox");
       const viewValueEl = document.getElementById("viewValue");
       const gameResetBtn = document.getElementById("gameResetBtn");
+      const cursorLineToggle = document.getElementById("cursorLineToggle");
+      const cursorLineValueEl = document.getElementById("cursorLineValue");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
       const botMaxBox = document.getElementById("botMaxBox");
@@ -638,6 +656,7 @@
           gameSpeed: DEFAULT_GAME_SPEED,
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
+          cursorLine: true,
           max: {
             bot: 200,
             virus: 500,
@@ -1025,6 +1044,10 @@
         return localHumanActors().find((actor) => actor.localClone) || null;
       }
 
+      function liveLocalHumanActors() {
+        return localHumanActors().filter((actor) => actor.cells.some((cell) => !cell.dead));
+      }
+
       function clearActorControlInput(actor) {
         if (!actor || !actor.input) return;
         actor.input.keys.clear();
@@ -1042,6 +1065,22 @@
         state.player = actor;
         actor.input.targetX = state.input.mouseWorldX;
         actor.input.targetY = state.input.mouseWorldY;
+      }
+
+      function spawnLocalActorBeside(actor, anchorActor) {
+        const anchor = anchorActor && liveCellCount(anchorActor) > 0 ? actorCenter(anchorActor) : null;
+        const angle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
+        const distance = 216;
+        const x = anchor
+          ? clamp(anchor.x + Math.cos(angle) * distance, 120, WORLD_SIZE - 120)
+          : null;
+        const y = anchor
+          ? clamp(anchor.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120)
+          : null;
+        spawnActor(actor, PLAYER_RESPAWN_MASS, x, y);
+        state.flashUntil = state.now + 1.0;
+        state.net.lastSnapshotSend = -100;
+        rebuildSpatialHashes();
       }
 
       function displayActorName(actor) {
@@ -1153,6 +1192,11 @@
         }
         const main = primaryLocalActor();
         if (!main) return;
+        if (liveCellCount(main) <= 0) {
+          spawnLocalActorBeside(main, localCloneActor());
+          setActiveLocalActor(main);
+          return;
+        }
         let clone = localCloneActor();
         if (!clone) {
           const center = actorCenter(main);
@@ -1166,8 +1210,13 @@
           const y = clamp(center.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120);
           spawnActor(clone, PLAYER_RESPAWN_MASS, x, y);
         }
+        if (liveCellCount(clone) <= 0) {
+          spawnLocalActorBeside(clone, main);
+          setActiveLocalActor(clone);
+          return;
+        }
         const nextActor = state.player === clone ? main : clone;
-        setActiveLocalActor(nextActor.cells.length ? nextActor : main);
+        setActiveLocalActor(nextActor);
         state.net.lastSnapshotSend = -100;
       }
 
@@ -1357,6 +1406,45 @@
         }
         if (mass <= 0) return { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 0 };
         return { x: x / mass, y: y / mass, mass };
+      }
+
+      function sharedLocalViewCenter(useRender = false) {
+        const actors = liveLocalHumanActors();
+        if (!actors.length) {
+          return { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 0, cellCount: 0, spread: 0 };
+        }
+        if (actors.length === 1) {
+          const center = actorCenter(actors[0], useRender);
+          center.cellCount = liveCellCount(actors[0]);
+          center.spread = 0;
+          return center;
+        }
+
+        const samples = [];
+        let mass = 0;
+        let x = 0;
+        let y = 0;
+        for (const actor of actors) {
+          for (const cell of actor.cells) {
+            if (cell.dead) continue;
+            const cellX = useRender && Number.isFinite(cell.renderX) ? cell.renderX : cell.x;
+            const cellY = useRender && Number.isFinite(cell.renderY) ? cell.renderY : cell.y;
+            samples.push({ x: cellX, y: cellY, radius: cell.radius });
+            mass += cell.mass;
+            x += cellX * cell.mass;
+            y += cellY * cell.mass;
+          }
+        }
+        if (mass <= 0) {
+          return { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 0, cellCount: 0, spread: 0 };
+        }
+        const centerX = x / mass;
+        const centerY = y / mass;
+        let spread = 0;
+        for (const sample of samples) {
+          spread = Math.max(spread, Math.hypot(sample.x - centerX, sample.y - centerY) + sample.radius);
+        }
+        return { x: centerX, y: centerY, mass, cellCount: samples.length, spread };
       }
 
       function allCells(out = []) {
@@ -2824,10 +2912,17 @@
       function updateCamera(dt) {
         const center = state.spectating
           ? spectatorCenter()
-          : actorCenter(state.player, state.net.role === "client");
+          : sharedLocalViewCenter(state.net.role === "client");
         const total = Math.max(1, center.mass);
-        const cellCount = state.spectating ? 1 : state.player.cells.length;
-        const targetZoom = mobileTargetZoom(total, cellCount);
+        const cellCount = state.spectating ? 1 : Math.max(1, center.cellCount || state.player?.cells.length || 1);
+        let targetZoom = mobileTargetZoom(total, cellCount);
+        if (!state.spectating && center.spread > 0) {
+          const fitZoom = Math.min(
+            (state.width * 0.44) / center.spread,
+            (state.height * 0.44) / center.spread
+          );
+          targetZoom = Math.min(targetZoom, clamp(fitZoom, 0.08, 1.28));
+        }
         const follow = 1 - Math.exp(-dt * 5.3);
         state.camera.x += (center.x - state.camera.x) * follow;
         state.camera.y += (center.y - state.camera.y) * follow;
@@ -4066,6 +4161,33 @@
         }
       }
 
+      function drawCursorLine() {
+        if (!state.settings.cursorLine || state.spectating) return;
+        const useRender = state.net.role === "client";
+        const activeActor = state.player && state.player.control === "local" && liveCellCount(state.player) > 0
+          ? state.player
+          : null;
+        const center = activeActor ? actorCenter(activeActor, useRender) : sharedLocalViewCenter(useRender);
+        if (center.mass <= 0) return;
+
+        const endX = state.input.mouseWorldX;
+        const endY = state.input.mouseWorldY;
+        ctx.save();
+        ctx.lineWidth = Math.max(2 / state.camera.zoom, 1.2);
+        ctx.strokeStyle = "rgba(23, 125, 220, 0.5)";
+        ctx.setLineDash([18 / state.camera.zoom, 12 / state.camera.zoom]);
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(23, 125, 220, 0.72)";
+        ctx.beginPath();
+        ctx.arc(endX, endY, Math.max(5 / state.camera.zoom, 3), 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+
       function draw() {
         ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
         ctx.fillStyle = "#f7f9fc";
@@ -4108,6 +4230,7 @@
         for (const cell of cells) {
           if (isVisible(cell, bounds, 80)) drawCell(cell);
         }
+        drawCursorLine();
 
         ctx.restore();
       }
@@ -4154,6 +4277,8 @@
       }
 
       function syncSettingsControls() {
+        cursorLineToggle.checked = state.settings.cursorLine;
+        cursorLineValueEl.textContent = state.settings.cursorLine ? "表示" : "非表示";
         botSlider.max = String(state.settings.max.bot);
         botSlider.value = String(state.settings.botTarget);
         botValueEl.textContent = String(state.settings.botTarget);
@@ -4258,6 +4383,7 @@
         if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
         if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
+        if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
           clampWorldEntities();
@@ -4435,6 +4561,7 @@
         spectateBtn.addEventListener("click", toggleSpectating);
         disconnectBtn.addEventListener("click", () => closeNetwork(false));
         gameResetBtn.addEventListener("click", resetGameToStart);
+        cursorLineToggle.addEventListener("change", () => setWorldSetting("cursorLine", cursorLineToggle.checked));
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
