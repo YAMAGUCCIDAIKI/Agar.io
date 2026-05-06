@@ -604,8 +604,8 @@
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
-      const MERGE_SWAP_MASS_RATIO = 0.08;
       const MERGE_SWAP_RESET_TIME = 0.22;
+      const MERGE_CAP_OVERSIZE_RATIO = 1.12;
       const SPLIT_BOOST_DURATION = 0.34;
       const SPLIT_BOOST_DECAY = 4.4;
       const SPLIT_MAX_BOOST = 680;
@@ -914,10 +914,6 @@
         cell.cooldown = seconds;
         cell.mergePartnerId = null;
         cell.mergeDominantId = null;
-      }
-
-      function mergeMassesAreClose(aMass, bMass) {
-        return Math.abs(aMass - bMass) / Math.max(aMass, bMass, 1) <= MERGE_SWAP_MASS_RATIO;
       }
 
       function previousMergeDominantId(a, b) {
@@ -2657,8 +2653,7 @@
         const previousDominantId = previousMergeDominantId(a, b);
         if (
           previousDominantId &&
-          previousDominantId !== big.id &&
-          mergeMassesAreClose(aMergeMass, bMergeMass)
+          previousDominantId !== big.id
         ) {
           resetSwappedMergeAttempt(a, b, centerDistance);
           return false;
@@ -2675,11 +2670,13 @@
         big.vy = (big.vy * bigMergeMass + small.vy * smallMergeMass) * inv;
         big.boostX = (big.boostX * bigMergeMass + small.boostX * smallMergeMass) * inv;
         big.boostY = (big.boostY * bigMergeMass + small.boostY * smallMergeMass) * inv;
-        big.mass = total;
+        big.mass = total > MAX_CELL_MASS
+          ? Math.min(total, MAX_CELL_MASS * MERGE_CAP_OVERSIZE_RATIO)
+          : total;
         big.virusCooldown = 0;
-        big.mergeOverflowMass = Math.max(0, big.mass - MAX_CELL_MASS);
+        big.mergeOverflowMass = Math.max(0, total - MAX_CELL_MASS);
         big.mergeBurstPieces = 1;
-        big.mergeBurstTotal = big.mass;
+        big.mergeBurstTotal = total;
         big.mergeVirusWindow = total > MAX_CELL_MASS ? 4.0 : 0.28;
         if (big.mass > MAX_CELL_MASS) big.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
         refreshCell(big);
