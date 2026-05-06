@@ -412,10 +412,10 @@
       </select>
     </label>
     <label class="setting-control">
-      <span>とげ</span>
-      <input id="virusSlider" type="range" min="0" max="500" step="1" value="0" aria-label="とげ数">
-      <strong id="virusValue">0</strong>
-      <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="とげ上限">
+      <span>自然とげ</span>
+      <input id="virusSlider" type="range" min="0" max="500" step="1" value="36" aria-label="自然発生とげ数">
+      <strong id="virusValue">36</strong>
+      <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="自然発生とげ上限">
     </label>
     <label class="setting-control">
       <span>ペレット</span>
@@ -551,7 +551,7 @@
       const PLAYER_START_MASS = 22500;
       const PLAYER_RESPAWN_MASS = 22500;
       const DEFAULT_FOOD_TARGET = 1200;
-      const DEFAULT_VIRUS_TARGET = 0;
+      const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 8;
       const DEFAULT_SPLIT_SPEED = 100;
@@ -1461,7 +1461,7 @@
         return food;
       }
 
-      function createVirus(x = null, y = null) {
+      function createVirus(x = null, y = null, natural = true) {
         const radius = radiusFromMass(VIRUS_MASS);
         const pos = x == null
           ? findOpenSpawnPosition(radius, 180, 16, {
@@ -1480,6 +1480,7 @@
           vx: 0,
           vy: 0,
           feedCount: 0,
+          natural,
           dead: false
         };
       }
@@ -1495,6 +1496,35 @@
           cellPadding: 130
         });
         return createVirus(pos.x, pos.y);
+      }
+
+      function isNaturalVirus(virus) {
+        return virus.natural !== false;
+      }
+
+      function liveNaturalVirusCount() {
+        let count = 0;
+        for (const virus of state.viruses) {
+          if (!virus.dead && isNaturalVirus(virus)) count += 1;
+        }
+        return count;
+      }
+
+      function trimNaturalViruses(limit) {
+        let naturalCount = 0;
+        let changed = false;
+        state.viruses = state.viruses.filter((virus) => {
+          if (virus.dead) {
+            changed = true;
+            return false;
+          }
+          if (!isNaturalVirus(virus)) return true;
+          naturalCount += 1;
+          if (naturalCount <= limit) return true;
+          changed = true;
+          return false;
+        });
+        return changed;
       }
 
       function createFeed(x, y, dirX, dirY, color, ownerId, speed = DEFAULT_EJECT_SPEED, mass = DEFAULT_EJECT_MASS) {
@@ -1654,6 +1684,10 @@
           .sort((a, b) => {
             const massDiff = b.mass - a.mass;
             if (Math.abs(massDiff) > 0.001) return massDiff;
+            const aProjection = a.x * dirX + a.y * dirY;
+            const bProjection = b.x * dirX + b.y * dirY;
+            const positionDiff = aProjection - bProjection;
+            if (Math.abs(positionDiff) > 0.001) return positionDiff;
             return (b.splitPriority || 0) - (a.splitPriority || 0);
           });
         let didSplit = false;
@@ -2534,7 +2568,7 @@
                 virus.feedCount = 0;
                 const spawnX = clamp(virus.x + n.x * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
                 const spawnY = clamp(virus.y + n.y * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
-                const newVirus = createVirus(spawnX, spawnY);
+                const newVirus = createVirus(spawnX, spawnY, false);
                 newVirus.vx = n.x * 540;
                 newVirus.vy = n.y * 540;
                 state.viruses.push(newVirus);
@@ -2660,18 +2694,11 @@
           state.foods.length = foodTarget;
           state.foodGridDirty = true;
         }
-        const liveVirusesBeforeCleanup = state.viruses.length;
-        state.viruses = state.viruses.filter((virus) => !virus.dead);
-        if (state.viruses.length > virusTarget) state.viruses.length = virusTarget;
-        const maxQueuedViruses = Math.max(0, virusTarget - state.viruses.length);
+        trimNaturalViruses(virusTarget);
+        let naturalVirusCount = liveNaturalVirusCount();
+        const maxQueuedViruses = Math.max(0, virusTarget - naturalVirusCount);
         if (state.virusRespawnQueue.length > maxQueuedViruses) {
           state.virusRespawnQueue.length = maxQueuedViruses;
-        }
-        const removedViruses = liveVirusesBeforeCleanup - state.viruses.length;
-        const missingViruses = Math.max(0, virusTarget - state.viruses.length - state.virusRespawnQueue.length);
-        const queuedVirusRespawns = Math.min(removedViruses, missingViruses);
-        for (let i = 0; i < queuedVirusRespawns; i += 1) {
-          state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
         }
 
         const nextVirusRespawnQueue = [];
@@ -2679,10 +2706,11 @@
         for (const spawnAt of state.virusRespawnQueue) {
           if (
             spawnAt <= state.now &&
-            state.viruses.length < virusTarget &&
+            naturalVirusCount < virusTarget &&
             spawnedViruses < MAX_VIRUS_SPAWNS_PER_FRAME
           ) {
             state.viruses.push(spawnVirusSafely());
+            naturalVirusCount += 1;
             spawnedViruses += 1;
           } else {
             nextVirusRespawnQueue.push(spawnAt);
@@ -2692,7 +2720,7 @@
 
         const foodSpawnBudget = Math.min(MAX_FOOD_SPAWNS_PER_FRAME, foodTarget - state.foods.length);
         for (let i = 0; i < foodSpawnBudget; i += 1) addFood();
-        while (state.viruses.length + state.virusRespawnQueue.length < virusTarget) {
+        while (naturalVirusCount + state.virusRespawnQueue.length < virusTarget) {
           state.virusRespawnQueue.push(state.now + VIRUS_RESPAWN_DELAY);
         }
         ensureBotPopulation();
@@ -3452,7 +3480,8 @@
           vy: entity.vy || 0,
           age: entity.age || 0,
           feedCount: entity.feedCount || 0,
-          ownerId: entity.ownerId || ""
+          ownerId: entity.ownerId || "",
+          natural: entity.natural !== false
         };
       }
 
@@ -3726,6 +3755,7 @@
           age: data.age || 0,
           feedCount: data.feedCount || 0,
           ownerId: data.ownerId || "",
+          natural: type === "virus" ? data.natural !== false : false,
           renderX: Number.isFinite(existing?.renderX) ? existing.renderX : clamp(data.x, 0, WORLD_SIZE),
           renderY: Number.isFinite(existing?.renderY) ? existing.renderY : clamp(data.y, 0, WORLD_SIZE),
           dead: false
@@ -4080,8 +4110,8 @@
           state.foods.length = state.settings.foodTarget;
           state.foodGridDirty = true;
         }
-        if (state.viruses.length > state.settings.virusTarget) state.viruses.length = state.settings.virusTarget;
-        const maxQueue = Math.max(0, state.settings.virusTarget - state.viruses.length);
+        trimNaturalViruses(state.settings.virusTarget);
+        const maxQueue = Math.max(0, state.settings.virusTarget - liveNaturalVirusCount());
         if (state.virusRespawnQueue.length > maxQueue) state.virusRespawnQueue.length = maxQueue;
         ensureBotPopulation();
       }
