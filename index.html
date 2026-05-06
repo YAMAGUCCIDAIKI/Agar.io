@@ -833,7 +833,7 @@
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
       const MERGE_SWAP_RESET_TIME = 0.22;
-      const MERGE_CAP_OVERSIZE_RATIO = 1.12;
+      const MERGE_CAP_OVERSIZE_RATIO = 1.04;
       const SPLIT_BOOST_DURATION = 0.34;
       const SPLIT_BOOST_DECAY = 4.4;
       const SPLIT_MAX_BOOST = 680;
@@ -1165,19 +1165,50 @@
         cell.mergeDominantId = null;
       }
 
+      function mergeDominantId(a, b, aMass = mergeAccountingMass(a), bMass = mergeAccountingMass(b)) {
+        if (aMass === bMass) return null;
+        return aMass > bMass ? a.id : b.id;
+      }
+
       function hasMergeCancellation(actor, a, b, dominantId) {
+        if (dominantId == null) return false;
         if (!actor.mergeDominantByPair) return false;
         const previousDominantId = actor.mergeDominantByPair.get(mergePairKey(a, b));
         return previousDominantId != null && previousDominantId !== dominantId;
       }
 
       function recordMergeAttempt(actor, a, b, dominantId) {
+        if (dominantId == null) return;
         if (!actor.mergeDominantByPair) actor.mergeDominantByPair = new Map();
         actor.mergeDominantByPair.set(mergePairKey(a, b), dominantId);
         a.mergePartnerId = b.id;
         b.mergePartnerId = a.id;
         a.mergeDominantId = dominantId;
         b.mergeDominantId = dominantId;
+      }
+
+      function recordMergeObservation(actor, a, b, dominantId) {
+        if (dominantId == null) return;
+        if (!actor.mergeDominantByPair) actor.mergeDominantByPair = new Map();
+        const key = mergePairKey(a, b);
+        if (!actor.mergeDominantByPair.has(key)) {
+          actor.mergeDominantByPair.set(key, dominantId);
+        }
+        const storedDominantId = actor.mergeDominantByPair.get(key);
+        a.mergePartnerId = b.id;
+        b.mergePartnerId = a.id;
+        a.mergeDominantId = storedDominantId;
+        b.mergeDominantId = storedDominantId;
+      }
+
+      function observeMergeCandidate(actor, a, b, distance, allowCancellation = false) {
+        const dominantId = mergeDominantId(a, b);
+        if (allowCancellation && hasMergeCancellation(actor, a, b, dominantId)) {
+          resetCancelledMergeAttempt(actor, a, b, distance);
+          return true;
+        }
+        recordMergeObservation(actor, a, b, dominantId);
+        return false;
       }
 
       function clearMergeAttempt(actor, a, b) {
@@ -3071,6 +3102,7 @@
         let small = big === a ? b : a;
         const bigMergeMass = big === a ? aMergeMass : bMergeMass;
         const smallMergeMass = small === a ? aMergeMass : bMergeMass;
+        const dominantId = mergeDominantId(a, b, aMergeMass, bMergeMass);
         const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
         if (mergePairCooling(actor, a, b)) return false;
         if (centerDistance >= a.radius + b.radius) {
@@ -3078,11 +3110,11 @@
           return false;
         }
 
-        if (hasMergeCancellation(actor, a, b, big.id)) {
+        if (hasMergeCancellation(actor, a, b, dominantId)) {
           resetCancelledMergeAttempt(actor, a, b, centerDistance);
           return false;
         }
-        recordMergeAttempt(actor, a, b, big.id);
+        recordMergeAttempt(actor, a, b, dominantId || big.id);
 
         if (!hasHalfAreaOverlap(a, b, centerDistance)) return false;
 
@@ -3121,14 +3153,19 @@
               const b = actor.cells[j];
               if (b.dead) continue;
               const pairCooling = mergePairCooling(actor, a, b);
-              if (canCellMerge(a) && canCellMerge(b) && !pairCooling) continue;
-              if (!pairCooling && (a.separationGraceUntil > state.now || b.separationGraceUntil > state.now)) continue;
+              const canMergePair = canCellMerge(a) && canCellMerge(b);
 
               const dx = b.x - a.x;
               const dy = b.y - a.y;
               const d = Math.hypot(dx, dy);
               const touch = a.radius + b.radius;
-              if (d >= touch) continue;
+              if (d >= touch) {
+                if (a.mergePartnerId === b.id || b.mergePartnerId === a.id) clearMergeAttempt(actor, a, b);
+                continue;
+              }
+              if (!pairCooling && observeMergeCandidate(actor, a, b, d, canMergePair)) continue;
+              if (canMergePair && !pairCooling) continue;
+              if (!pairCooling && (a.separationGraceUntil > state.now || b.separationGraceUntil > state.now)) continue;
 
               const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233 + pass * 37.719) % TAU);
               const nx = d < 0.001 ? Math.cos(fallbackAngle) : dx / d;
