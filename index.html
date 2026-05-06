@@ -597,6 +597,11 @@
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
+      const SPLIT_BOOST_DURATION = 0.34;
+      const SPLIT_BOOST_DECAY = 4.4;
+      const SPLIT_MAX_BOOST = 680;
+      const SPLIT_SPREAD_ALLOWANCE = 900;
+      const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
@@ -904,6 +909,21 @@
         cell.mass += amount;
         if (cell.mass > MAX_CELL_MASS) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
         refreshCell(cell);
+      }
+
+      function addConsumedMass(cell, amount) {
+        const previousMass = cell.mass;
+        addMass(cell, amount);
+        const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
+        if (amount < MIN_CELL_MASS || (cell.splitBoostAge <= 0 && boostSpeed < 90)) return;
+
+        const massDamping = Math.sqrt(Math.max(MIN_CELL_MASS, previousMass) / Math.max(previousMass, cell.mass));
+        const boostDamping = clamp(massDamping * SPLIT_CATCH_MOMENTUM_SCALE, 0.42, 0.92);
+        cell.boostX *= boostDamping;
+        cell.boostY *= boostDamping;
+        const velocityDamping = clamp(boostDamping + 0.1, 0.58, 0.96);
+        cell.vx *= velocityDamping;
+        cell.vy *= velocityDamping;
       }
 
       function normalized(dx, dy, fallbackX = 1, fallbackY = 0) {
@@ -1781,7 +1801,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(410 + radius * 0.55, 460, 660) * splitSpeedScale();
+        return clamp(320 + radius * 0.42, 340, 500) * splitSpeedScale();
       }
 
       function splitSpeedScale() {
@@ -1838,7 +1858,7 @@
         const impulse = splitImpulse(child.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
-        child.splitBoostAge = 0.22;
+        child.splitBoostAge = SPLIT_BOOST_DURATION;
         child.splitPriority = state.splitPrioritySeq += 1;
         source.splitPriority = state.splitPrioritySeq += 1;
         source.separationGraceUntil = state.now + 0.14;
@@ -2455,13 +2475,13 @@
             cell.vy += (desiredY - cell.vy) * steer;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? 920 * splitSpeedScale() : 720);
+              : (cell.splitBoostAge > 0 ? SPLIT_MAX_BOOST * splitSpeedScale() : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
 
-            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? 6.2 : 3.7);
+            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? SPLIT_BOOST_DECAY : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
@@ -2643,7 +2663,9 @@
           const dx = cell.x - center.x;
           const dy = cell.y - center.y;
           const d = Math.hypot(dx, dy);
-          const splitAllowance = cell.splitBoostAge > 0 ? 900 * Math.min(1, cell.splitBoostAge / 0.22) : 0;
+          const splitAllowance = cell.splitBoostAge > 0
+            ? SPLIT_SPREAD_ALLOWANCE * Math.min(1, cell.splitBoostAge / SPLIT_BOOST_DURATION)
+            : 0;
           const allowed = maxDistance + cell.radius * 0.35 + splitAllowance;
           if (d <= allowed || d < 0.001) continue;
 
@@ -2734,7 +2756,7 @@
             if (food.dead) continue;
             if (canConsumeSwept(cell, food)) {
               food.dead = true;
-              addMass(cell, food.mass);
+              addConsumedMass(cell, food.mass);
             }
           }
         }
@@ -2780,7 +2802,7 @@
             if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
             if (canConsumeSwept(cell, feed)) {
               feed.dead = true;
-              addMass(cell, feed.mass);
+              addConsumedMass(cell, feed.mass);
             }
           }
         }
@@ -2801,7 +2823,7 @@
             if (liveCells >= MAX_CELLS) {
               if (eatsVirus) {
                 virus.dead = true;
-                addMass(cell, virus.mass);
+                addConsumedMass(cell, virus.mass);
                 break;
               }
               continue;
@@ -2827,7 +2849,7 @@
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsume(eater, victim)) continue;
             victim.dead = true;
-            addMass(eater, victim.mass);
+            addConsumedMass(eater, victim.mass);
           }
         }
         handleSweptCellEating(cells);
@@ -2843,7 +2865,7 @@
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             victim.dead = true;
-            addMass(eater, victim.mass);
+            addConsumedMass(eater, victim.mass);
           }
         }
 
@@ -2853,7 +2875,7 @@
             if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             victim.dead = true;
-            addMass(eater, victim.mass);
+            addConsumedMass(eater, victim.mass);
           }
         }
       }
@@ -4201,8 +4223,9 @@
           if (!cell.dead) sourceCells.push(cell);
         }
         if (!sourceCells.length) return;
-        const endX = state.input.mouseWorldX;
-        const endY = state.input.mouseWorldY;
+        const cursorWorld = screenToWorld(state.input.mouseX, state.input.mouseY);
+        const endX = cursorWorld.x;
+        const endY = cursorWorld.y;
 
         ctx.save();
         ctx.lineWidth = Math.max(2 / state.camera.zoom, 1.2);
