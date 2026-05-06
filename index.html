@@ -829,6 +829,7 @@
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
+      const BOT_MANUAL_SPLITS_PER_FRAME = 8;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
@@ -949,6 +950,9 @@
           cloneSeq: 0,
           activeActorId: "player",
           botSplitQueued: false,
+          botSplitQueue: [],
+          botSplitBudgetFrame: -1,
+          botSplitBudgetLeft: 0,
           botEjectQueued: false,
           lastAimX: 1,
           lastAimY: 0
@@ -1786,6 +1790,7 @@
         state.input.ejectQueued = false;
         state.input.respawnQueued = false;
         state.input.botSplitQueued = false;
+        state.input.botSplitQueue.length = 0;
         state.input.botEjectQueued = false;
         for (const actor of localHumanActors()) clearActorControlInput(actor);
       }
@@ -1799,6 +1804,7 @@
         state.nextBotIndex += 1;
         const botName = `${botNames[index % botNames.length]} ${String(index + 1).padStart(2, "0")}`;
         const bot = createActor(`bot-${index}`, botName, botPalette[index % botPalette.length]);
+        bot.aiTimer = rand(0.02, 0.32);
         state.actors.push(bot);
         spawnActor(bot, BOT_SPAWN_MASS);
         return bot;
@@ -3656,24 +3662,18 @@
         const controllableBotMode = state.settings.botMode === "chase" || state.settings.botMode === "cursor";
         if (!controllableBotMode) {
           state.input.botSplitQueued = false;
+          state.input.botSplitQueue.length = 0;
           state.input.botEjectQueued = false;
           return;
         }
 
         if (state.input.botSplitQueued) {
-          for (const bot of state.actors) {
-            if (bot.isHuman) continue;
-            const center = actorCenter(bot);
-            const target = state.settings.botMode === "cursor"
-              ? { x: state.input.mouseWorldX, y: state.input.mouseWorldY }
-              : nearestHumanCell(center, bot.id);
-            const aim = target
-              ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
-              : actorAimDirection(bot);
-            splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
-          }
+          state.input.botSplitQueue = state.actors
+            .filter((bot) => !bot.isHuman && liveCellCount(bot) < MAX_CELLS && hasSplittableCell(bot))
+            .map((bot) => bot.id);
           state.input.botSplitQueued = false;
         }
+        processBotSplitQueue(now);
 
         if (state.input.botEjectQueued || state.input.keys.has(state.keyBindings.botEject)) {
           for (const bot of state.actors) {
@@ -3682,6 +3682,32 @@
           }
           state.input.botEjectQueued = false;
         }
+      }
+
+      function hasSplittableCell(actor) {
+        return actor.cells.some((cell) => !cell.dead && cell.mass >= MIN_SPLIT_SOURCE_MASS);
+      }
+
+      function processBotSplitQueue(now) {
+        if (state.input.botSplitBudgetFrame !== state.frameIndex) {
+          state.input.botSplitBudgetFrame = state.frameIndex;
+          state.input.botSplitBudgetLeft = BOT_MANUAL_SPLITS_PER_FRAME;
+        }
+        let budget = state.input.botSplitBudgetLeft;
+        while (budget > 0 && state.input.botSplitQueue.length) {
+          const bot = actorById(state.input.botSplitQueue.shift());
+          if (!bot || bot.isHuman || liveCellCount(bot) >= MAX_CELLS || !hasSplittableCell(bot)) continue;
+          const center = actorCenter(bot);
+          const target = state.settings.botMode === "cursor"
+            ? { x: state.input.mouseWorldX, y: state.input.mouseWorldY }
+            : nearestHumanCell(center, bot.id);
+          const aim = target
+            ? normalized(target.x - center.x, target.y - center.y, bot.input.lastAimX, bot.input.lastAimY)
+            : actorAimDirection(bot);
+          splitActor(bot, aim.x, aim.y, now, 0, target?.x ?? bot.input.targetX, target?.y ?? bot.input.targetY);
+          budget -= 1;
+        }
+        state.input.botSplitBudgetLeft = budget;
       }
 
       function update(dt, now, realNow = now) {
@@ -3951,6 +3977,8 @@
         state.input.activeActorId = localId;
         state.input.cloneQueued = false;
         state.input.cloneSeq = 0;
+        state.input.botSplitQueued = false;
+        state.input.botSplitQueue.length = 0;
         state.actors.length = 0;
         state.foods.length = 0;
         state.foodGridDirty = true;
@@ -5227,6 +5255,7 @@
           state.input.ejectQueued = false;
           state.input.respawnQueued = false;
           state.input.botSplitQueued = false;
+          state.input.botSplitQueue.length = 0;
           state.input.botEjectQueued = false;
         });
         menuBtn.addEventListener("click", () => setMenuOpen(true));
