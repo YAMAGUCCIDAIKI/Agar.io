@@ -916,15 +916,11 @@
         cell.mergeDominantId = null;
       }
 
-      function previousMergeDominantId(a, b) {
-        if (
-          a.mergePartnerId === b.id &&
-          b.mergePartnerId === a.id &&
-          a.mergeDominantId === b.mergeDominantId
-        ) {
-          return a.mergeDominantId;
-        }
-        return null;
+      function hasMergeDominantSwap(a, b, dominant) {
+        const previousDominants = [];
+        if (a.mergePartnerId != null && a.mergeDominantId != null) previousDominants.push(a.mergeDominantId);
+        if (b.mergePartnerId != null && b.mergeDominantId != null) previousDominants.push(b.mergeDominantId);
+        return previousDominants.some((id) => id !== dominant.id);
       }
 
       function recordMergeAttempt(a, b, dominant) {
@@ -1009,6 +1005,15 @@
         if (eater.mass + 0.001 < victim.mass * CONSUME_MASS_RATIO) return false;
         if (eater.radius + 0.001 < victim.radius * CONSUME_RADIUS_RATIO) return false;
         const threshold = eater.radius - victim.radius * 0.22;
+        return threshold > 0 ? threshold : 0;
+      }
+
+      function consumeThresholdWithMass(eater, victim, eaterMass) {
+        const eaterRadius = radiusFromMass(eaterMass);
+        if (victim.ownerId && victim.mass >= UNCONSUMABLE_CELL_MASS) return false;
+        if (eaterMass + 0.001 < victim.mass * CONSUME_MASS_RATIO) return false;
+        if (eaterRadius + 0.001 < victim.radius * CONSUME_RADIUS_RATIO) return false;
+        const threshold = eaterRadius - victim.radius * 0.22;
         return threshold > 0 ? threshold : 0;
       }
 
@@ -1603,12 +1608,21 @@
       }
 
       function mergeVirusHitRadius(cell) {
-        const hitMass = clamp(
-          cell.mass,
-          MAX_CELL_MASS,
-          MAX_MERGE_VIRUS_HIT_MASS
-        );
-        return radiusFromMass(hitMass);
+        return radiusFromMass(mergeVirusHitMass(cell));
+      }
+
+      function mergeVirusHitMass(cell) {
+        const burstMass = cell.mergeVirusWindow > 0 ? Math.max(cell.mergeBurstTotal || 0, cell.mass) : cell.mass;
+        return clamp(burstMass, cell.mass, MAX_MERGE_VIRUS_HIT_MASS);
+      }
+
+      function canConsumeVirus(cell, virus) {
+        const hitMass = mergeVirusHitMass(cell);
+        const threshold = consumeThresholdWithMass(cell, virus, hitMass);
+        if (!threshold) return false;
+        const thresholdSq = threshold * threshold;
+        if (distSq(cell.x, cell.y, virus.x, virus.y) <= thresholdSq) return true;
+        return hasSweepPath(cell) && sweptPointDistSq(cell, virus.x, virus.y) <= thresholdSq;
       }
 
       function virusCollisionPriority(cell) {
@@ -2086,7 +2100,7 @@
           return;
         }
 
-        const originalMass = cell.mass;
+        const originalMass = mergeVirusHitMass(cell);
         const total = originalMass + virus.mass;
         const slots = MAX_CELLS - liveCells + 1;
         const originX = cell.x;
@@ -2585,6 +2599,9 @@
             cell.cooldown = mergeTimeLeft(cell);
             let cappedThisFrame = false;
             if (cell.mass > MAX_CELL_MASS) {
+              const preservedMergeTotal = cell.mergeVirusWindow > 0
+                ? Math.max(cell.mergeBurstTotal || 0, cell.mass)
+                : cell.mass;
               if (cell.capFramesLeft <= 0) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
               const frameStep = Math.min(cell.capFramesLeft, dt * 60);
               const reduceRatio = frameStep / Math.max(1, cell.capFramesLeft);
@@ -2594,16 +2611,21 @@
                 cell.mass = MAX_CELL_MASS;
                 cell.capFramesLeft = 0;
               }
-              cell.mergeOverflowMass = Math.max(0, Math.min(cell.mergeOverflowMass, cell.mass - MAX_CELL_MASS));
+              cell.mergeOverflowMass = Math.max(0, preservedMergeTotal - MAX_CELL_MASS);
               cell.mergeBurstPieces = 1;
-              cell.mergeBurstTotal = cell.mass;
+              cell.mergeBurstTotal = preservedMergeTotal;
               refreshCell(cell);
               cappedThisFrame = true;
             } else {
               cell.capFramesLeft = 0;
-              cell.mergeOverflowMass = 0;
-              cell.mergeBurstPieces = 1;
-              cell.mergeBurstTotal = cell.mass;
+              if (cell.mergeVirusWindow > 0 && (cell.mergeBurstTotal || 0) > MAX_CELL_MASS) {
+                cell.mergeOverflowMass = Math.max(0, cell.mergeBurstTotal - MAX_CELL_MASS);
+                cell.mergeBurstPieces = 1;
+              } else {
+                cell.mergeOverflowMass = 0;
+                cell.mergeBurstPieces = 1;
+                cell.mergeBurstTotal = cell.mass;
+              }
             }
             if (cell.mass > 100 && !cappedThisFrame) {
               cell.mass = Math.max(MIN_CELL_MASS, cell.mass - cell.mass * MASS_DECAY_PER_SECOND * dt);
@@ -2650,11 +2672,7 @@
           return false;
         }
 
-        const previousDominantId = previousMergeDominantId(a, b);
-        if (
-          previousDominantId &&
-          previousDominantId !== big.id
-        ) {
+        if (hasMergeDominantSwap(a, b, big)) {
           resetSwappedMergeAttempt(a, b, centerDistance);
           return false;
         }
@@ -2918,11 +2936,11 @@
         const nearby = [];
         for (const cell of cells) {
           if (cell.dead) continue;
-          queryAlongCellPath(virusGrid, cell, cell.radius + 360, nearby);
+          queryAlongCellPath(virusGrid, cell, mergeVirusHitRadius(cell) + 360, nearby);
           for (const virus of nearby) {
             if (virus.dead) continue;
             const liveCells = liveCellCount(cell.actor);
-            const eatsVirus = canConsumeSwept(cell, virus);
+            const eatsVirus = canConsumeVirus(cell, virus);
 
             if (liveCells >= MAX_CELLS) {
               if (eatsVirus) {
@@ -2934,7 +2952,7 @@
             }
 
             if (cell.virusCooldown > 0) continue;
-            if (cell.mass < VIRUS_EXPLODE_MASS) continue;
+            if (mergeVirusHitMass(cell) < VIRUS_EXPLODE_MASS) continue;
             if (eatsVirus) {
               explodeCellOnVirus(cell.actor, cell, virus);
               virus.dead = true;
