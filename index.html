@@ -604,6 +604,8 @@
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
+      const MERGE_SWAP_MASS_RATIO = 0.08;
+      const MERGE_SWAP_RESET_TIME = 0.22;
       const SPLIT_BOOST_DURATION = 0.34;
       const SPLIT_BOOST_DECAY = 4.4;
       const SPLIT_MAX_BOOST = 680;
@@ -910,6 +912,64 @@
       function setMergeCooldown(cell, seconds = mergeCooldown(cell.mass)) {
         cell.mergeReadyAt = state.now + seconds;
         cell.cooldown = seconds;
+        cell.mergePartnerId = null;
+        cell.mergeDominantId = null;
+      }
+
+      function mergeMassesAreClose(aMass, bMass) {
+        return Math.abs(aMass - bMass) / Math.max(aMass, bMass, 1) <= MERGE_SWAP_MASS_RATIO;
+      }
+
+      function previousMergeDominantId(a, b) {
+        if (
+          a.mergePartnerId === b.id &&
+          b.mergePartnerId === a.id &&
+          a.mergeDominantId === b.mergeDominantId
+        ) {
+          return a.mergeDominantId;
+        }
+        return null;
+      }
+
+      function recordMergeAttempt(a, b, dominant) {
+        a.mergePartnerId = b.id;
+        b.mergePartnerId = a.id;
+        a.mergeDominantId = dominant.id;
+        b.mergeDominantId = dominant.id;
+      }
+
+      function clearMergeAttempt(a, b) {
+        a.mergePartnerId = null;
+        a.mergeDominantId = null;
+        if (!b) return;
+        b.mergePartnerId = null;
+        b.mergeDominantId = null;
+      }
+
+      function resetSwappedMergeAttempt(a, b, distance) {
+        const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233) % TAU);
+        const nx = distance < 0.001 ? Math.cos(fallbackAngle) : (b.x - a.x) / distance;
+        const ny = distance < 0.001 ? Math.sin(fallbackAngle) : (b.y - a.y) / distance;
+        const targetDistance = a.radius + b.radius + 2;
+        const overlap = Math.max(0, targetDistance - distance);
+        const total = a.mass + b.mass;
+        const aShare = b.mass / total;
+        const bShare = a.mass / total;
+
+        a.x -= nx * overlap * aShare;
+        a.y -= ny * overlap * aShare;
+        b.x += nx * overlap * bShare;
+        b.y += ny * overlap * bShare;
+        a.x = clamp(a.x, a.radius, WORLD_SIZE - a.radius);
+        a.y = clamp(a.y, a.radius, WORLD_SIZE - a.radius);
+        b.x = clamp(b.x, b.radius, WORLD_SIZE - b.radius);
+        b.y = clamp(b.y, b.radius, WORLD_SIZE - b.radius);
+
+        a.mergeReadyAt = state.now + MERGE_SWAP_RESET_TIME;
+        b.mergeReadyAt = state.now + MERGE_SWAP_RESET_TIME;
+        a.cooldown = MERGE_SWAP_RESET_TIME;
+        b.cooldown = MERGE_SWAP_RESET_TIME;
+        clearMergeAttempt(a, b);
       }
 
       function addMass(cell, amount) {
@@ -1356,6 +1416,8 @@
           fragmentAge: 0,
           splitBoostAge: 0,
           separationGraceUntil: 0,
+          mergePartnerId: null,
+          mergeDominantId: null,
           virusCooldown: 0,
           mergeVirusWindow: 0,
           mergeOverflowMass: Math.max(0, mass - MAX_CELL_MASS),
@@ -2587,6 +2649,22 @@
         const bigMergeMass = big === a ? aMergeMass : bMergeMass;
         const smallMergeMass = small === a ? aMergeMass : bMergeMass;
         const centerDistance = Math.hypot(a.x - b.x, a.y - b.y);
+        if (centerDistance >= a.radius + b.radius) {
+          if (a.mergePartnerId === b.id || b.mergePartnerId === a.id) clearMergeAttempt(a, b);
+          return false;
+        }
+
+        const previousDominantId = previousMergeDominantId(a, b);
+        if (
+          previousDominantId &&
+          previousDominantId !== big.id &&
+          mergeMassesAreClose(aMergeMass, bMergeMass)
+        ) {
+          resetSwappedMergeAttempt(a, b, centerDistance);
+          return false;
+        }
+        recordMergeAttempt(a, b, big);
+
         if (!hasHalfAreaOverlap(a, b, centerDistance)) return false;
 
         const total = bigMergeMass + smallMergeMass;
@@ -2607,6 +2685,7 @@
         refreshCell(big);
         capVelocity(big, cellSpeed(big) * 1.25);
         capBoost(big, 120);
+        clearMergeAttempt(big, small);
         small.dead = true;
         return true;
       }
