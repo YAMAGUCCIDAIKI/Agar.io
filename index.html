@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>アガーキャンバス</title>
-  <meta name="description" content="HTML5 Canvasで遊べるAgar.io風のブラウザゲーム">
+  <title>Tain.io</title>
+  <meta name="description" content="HTML5 Canvasで遊べるTain.ioブラウザゲーム">
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -381,6 +381,7 @@
       <button id="disconnectBtn" type="button">切断</button>
       <button id="relayHostBtn" type="button">リレー作成</button>
       <button id="relayJoinBtn" type="button">リレー参加</button>
+      <button id="spectateBtn" type="button">観戦</button>
     </div>
     <div class="online-fields">
       <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
@@ -406,6 +407,8 @@
       <select id="botModeSelect" class="mode-select" aria-label="ボット行動">
         <option value="hunt">小さい相手を狙う</option>
         <option value="chase">プレイヤーを追う</option>
+        <option value="virus">とげを狙う</option>
+        <option value="cursor">カーソルへ向かう</option>
       </select>
     </label>
     <label class="setting-control">
@@ -488,6 +491,7 @@
       const disconnectBtn = document.getElementById("disconnectBtn");
       const relayHostBtn = document.getElementById("relayHostBtn");
       const relayJoinBtn = document.getElementById("relayJoinBtn");
+      const spectateBtn = document.getElementById("spectateBtn");
       const serverUrlBox = document.getElementById("serverUrlBox");
       const roomBox = document.getElementById("roomBox");
       const offerBox = document.getElementById("offerBox");
@@ -618,6 +622,7 @@
           zoom: 0.86
         },
         viewScale: DEFAULT_VIEW_SCALE,
+        spectating: false,
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
@@ -970,8 +975,6 @@
             keys: new Set(),
             splitQueued: false,
             splitCount: 0,
-            splitDirX: null,
-            splitDirY: null,
             ejectQueued: false,
             lastAimX: 1,
             lastAimY: 0,
@@ -1014,6 +1017,7 @@
       function statusLabel(text) {
         const direct = {
           "OFFLINE": "オフライン",
+          "OFFLINE PLAY": "オフライン継続",
           "CONNECTED": "接続済み",
           "CONNECTING": "接続中",
           "CHECKING": "確認中",
@@ -1070,14 +1074,13 @@
 
       function ensureRelayDefaults() {
         if (!serverUrlBox.value.trim()) serverUrlBox.value = defaultRelayUrl();
-        if (!roomBox.value.trim()) {
-          roomBox.value = `agar-${Math.random().toString(36).slice(2, 7)}`;
-        }
+        roomBox.value = "agar";
       }
 
       function updateLocalActorInput() {
         const actor = state.player;
         if (!actor || actor.control !== "local") return;
+        if (state.spectating) return;
         actor.input.targetX = state.input.mouseWorldX;
         actor.input.targetY = state.input.mouseWorldY;
         if (state.input.keys.has("KeyE")) actor.input.keys.add("KeyE");
@@ -1092,6 +1095,29 @@
           state.input.splitQueued = false;
           state.input.splitCount = 0;
         }
+      }
+
+      function setSpectating(enabled) {
+        state.spectating = Boolean(enabled);
+        spectateBtn.textContent = state.spectating ? "復帰" : "観戦";
+        if (!state.spectating) return;
+        state.input.keys.clear();
+        state.input.splitQueued = false;
+        state.input.splitCount = 0;
+        state.input.ejectQueued = false;
+        state.input.respawnQueued = false;
+        state.input.botSplitQueued = false;
+        state.input.botEjectQueued = false;
+        if (state.player && state.player.input) {
+          state.player.input.keys.clear();
+          state.player.input.splitQueued = false;
+          state.player.input.splitCount = 0;
+          state.player.input.ejectQueued = false;
+        }
+      }
+
+      function toggleSpectating() {
+        setSpectating(!state.spectating);
       }
 
       function createBotActor() {
@@ -1136,8 +1162,6 @@
           boostY: 0,
           faceX: 1,
           faceY: 0,
-          splitDirX: null,
-          splitDirY: null,
           sweepActive: false,
           sweepPoints: null,
           sweepFromX: x,
@@ -1238,6 +1262,15 @@
       function totalMass(actor) {
         let total = 0;
         for (const cell of actor.cells) total += cell.mass;
+        return total;
+      }
+
+      function totalServerNutrients() {
+        let total = 0;
+        for (const actor of state.actors) total += totalMass(actor);
+        for (const food of state.foods) if (!food.dead) total += food.mass;
+        for (const feed of state.feeds) if (!feed.dead) total += feed.mass;
+        for (const virus of state.viruses) if (!virus.dead) total += virus.mass;
         return total;
       }
 
@@ -1578,12 +1611,8 @@
         child.vy = source.vy;
         source.faceX = dirX;
         source.faceY = dirY;
-        source.splitDirX = dirX;
-        source.splitDirY = dirY;
         child.faceX = dirX;
         child.faceY = dirY;
-        child.splitDirX = dirX;
-        child.splitDirY = dirY;
         const impulse = splitImpulse(child.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
@@ -1594,9 +1623,6 @@
         source.vy *= 0.24;
         source.boostX *= 0.02;
         source.boostY *= 0.02;
-        const recoilDistance = splitRecoilDistance(source.radius);
-        source.x = clamp(source.x - dirX * recoilDistance, source.radius, WORLD_SIZE - source.radius);
-        source.y = clamp(source.y - dirY * recoilDistance, source.radius, WORLD_SIZE - source.radius);
         if (targetX != null && targetY != null) {
           source.targetX = targetX;
           source.targetY = targetY;
@@ -1901,6 +1927,12 @@
         }
 
         for (const cell of bot.cells) {
+          if (state.settings.botMode === "cursor") {
+            cell.targetX = state.input.mouseWorldX;
+            cell.targetY = state.input.mouseWorldY;
+            continue;
+          }
+
           if (state.settings.botMode === "chase") {
             const target = nearestHumanCell(cell, bot.id);
             if (target) {
@@ -1911,6 +1943,15 @@
               cell.targetY = bot.wanderY;
             }
             continue;
+          }
+
+          if (state.settings.botMode === "virus") {
+            const virus = nearestEdibleVirus(cell);
+            if (virus) {
+              cell.targetX = virus.x;
+              cell.targetY = virus.y;
+              continue;
+            }
           }
 
           let bestPrey = null;
@@ -2009,7 +2050,8 @@
 
           const nearbyFeeds = feedGrid.query(cell.x, cell.y, 760, aiEntityScratch);
           for (const feed of nearbyFeeds) {
-            if (feed.dead || feed.age < 0.25) continue;
+            if (feed.dead) continue;
+            if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
             const d2 = distSq(cell.x, cell.y, feed.x, feed.y) * 0.45;
             if (d2 < bestFoodD2 && cell.radius >= feed.radius * CONSUME_RADIUS_RATIO) {
               bestFoodD2 = d2;
@@ -2044,22 +2086,28 @@
         return nearest;
       }
 
+      function nearestEdibleVirus(cell) {
+        let nearest = null;
+        let nearestD2 = Infinity;
+        const nearby = virusGrid.query(cell.x, cell.y, 1600, aiEntityScratch);
+        for (const virus of nearby) {
+          if (virus.dead) continue;
+          if (cell.mass + 0.001 < virus.mass * CONSUME_MASS_RATIO) continue;
+          if (cell.radius + 0.001 < virus.radius * CONSUME_RADIUS_RATIO) continue;
+          const d2 = distSq(cell.x, cell.y, virus.x, virus.y);
+          if (d2 < nearestD2) {
+            nearestD2 = d2;
+            nearest = virus;
+          }
+        }
+        return nearest;
+      }
+
       function cellSpeed(cell) {
         return clamp(1440 / Math.pow(cell.radius, 0.46), 116, 436);
       }
 
       function turnCellFacing(cell, targetDir, dt) {
-        if (cell.splitBoostAge > 0) {
-          const fixed = normalized(
-            Number.isFinite(cell.splitDirX) ? cell.splitDirX : cell.faceX,
-            Number.isFinite(cell.splitDirY) ? cell.splitDirY : cell.faceY,
-            cell.faceX || 1,
-            cell.faceY || 0
-          );
-          cell.faceX = fixed.x;
-          cell.faceY = fixed.y;
-          return;
-        }
         const current = normalized(
           Number.isFinite(cell.faceX) ? cell.faceX : 1,
           Number.isFinite(cell.faceY) ? cell.faceY : 0,
@@ -2167,16 +2215,8 @@
             const speed = cellSpeed(cell);
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
             if (n.length > 0.001) turnCellFacing(cell, n, dt);
-            const moveDir = cell.splitBoostAge > 0
-              ? normalized(
-                  Number.isFinite(cell.splitDirX) ? cell.splitDirX : cell.faceX,
-                  Number.isFinite(cell.splitDirY) ? cell.splitDirY : cell.faceY,
-                  cell.faceX || n.x,
-                  cell.faceY || n.y
-                )
-              : { x: Number.isFinite(cell.faceX) ? cell.faceX : n.x, y: Number.isFinite(cell.faceY) ? cell.faceY : n.y };
-            const desiredX = moveDir.x * speed * throttle;
-            const desiredY = moveDir.y * speed * throttle;
+            const desiredX = (Number.isFinite(cell.faceX) ? cell.faceX : n.x) * speed * throttle;
+            const desiredY = (Number.isFinite(cell.faceY) ? cell.faceY : n.y) * speed * throttle;
             const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
 
             cell.vx += (desiredX - cell.vx) * steer;
@@ -2326,7 +2366,12 @@
               const bMoveX = b.vx + b.boostX;
               const bMoveY = b.vy + b.boostY;
               const relativeClosing = (bMoveX - aMoveX) * nx + (bMoveY - aMoveY) * ny;
-              if (relativeClosing < 0) {
+              const aMoveSpeed = Math.hypot(aMoveX, aMoveY);
+              const bMoveSpeed = Math.hypot(bMoveX, bMoveY);
+              const sameSplitDirection = a.splitBoostAge > 0 && b.splitBoostAge > 0 &&
+                aMoveSpeed > 1 && bMoveSpeed > 1 &&
+                (aMoveX * bMoveX + aMoveY * bMoveY) / (aMoveSpeed * bMoveSpeed) > 0.88;
+              if (relativeClosing < 0 && !sameSplitDirection) {
                 const correction = -relativeClosing * (a.splitBoostAge > 0 || b.splitBoostAge > 0 ? 0.62 : 0.28);
                 a.boostX -= nx * correction * aShare;
                 a.boostY -= ny * correction * aShare;
@@ -2491,7 +2536,7 @@
         for (const cell of cells) {
           queryAlongCellPath(feedGrid, cell, cell.radius + 60, nearby);
           for (const feed of nearby) {
-            if (feed.dead || feed.age < 0.25) continue;
+            if (feed.dead) continue;
             if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
             if (canConsumeSwept(cell, feed)) {
               feed.dead = true;
@@ -2639,13 +2684,29 @@
       }
 
       function updateCamera(dt) {
-        const center = actorCenter(state.player, state.net.role === "client");
+        const center = state.spectating
+          ? spectatorCenter()
+          : actorCenter(state.player, state.net.role === "client");
         const total = Math.max(1, center.mass);
-        const targetZoom = mobileTargetZoom(total, state.player.cells.length);
+        const cellCount = state.spectating ? 1 : state.player.cells.length;
+        const targetZoom = mobileTargetZoom(total, cellCount);
         const follow = 1 - Math.exp(-dt * 5.3);
         state.camera.x += (center.x - state.camera.x) * follow;
         state.camera.y += (center.y - state.camera.y) * follow;
         state.camera.zoom += (targetZoom - state.camera.zoom) * (1 - Math.exp(-dt * 3.8));
+      }
+
+      function spectatorCenter() {
+        let best = null;
+        let bestMass = -1;
+        for (const actor of state.actors) {
+          const center = actorCenter(actor, state.net.role === "client");
+          if (center.mass > bestMass) {
+            bestMass = center.mass;
+            best = center;
+          }
+        }
+        return best || { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 1 };
       }
 
       function mobileTargetZoom(total, cellCount) {
@@ -2663,15 +2724,16 @@
         state.hudTimer = 0.12;
 
         const playerMass = totalMass(state.player);
-        massEl.textContent = String(Math.round(playerMass));
-        cellsEl.textContent = `${state.player.cells.length}/${MAX_CELLS}`;
+        massEl.textContent = state.spectating ? "観戦" : String(Math.round(playerMass));
+        cellsEl.textContent = state.spectating ? "-" : `${state.player.cells.length}/${MAX_CELLS}`;
         fpsEl.textContent = String(Math.round(state.fps));
 
         const ranked = state.actors
           .map((actor) => ({ actor, mass: totalMass(actor) }))
           .sort((a, b) => b.mass - a.mass)
           .slice(0, 10);
-        scoreboardEl.innerHTML = ranked
+        const nutrientRow = `<div class="rank"><span>Σ</span><span>全体養分</span><b>${Math.round(totalServerNutrients())}</b></div>`;
+        scoreboardEl.innerHTML = nutrientRow + ranked
           .map((entry, index) => {
             const cls = isLocalActor(entry.actor) ? "rank you" : "rank";
             return `<div class="${cls}"><span>${index + 1}</span><span>${displayActorName(entry.actor)}</span><b>${Math.round(entry.mass)}</b></div>`;
@@ -2684,6 +2746,7 @@
       function processPlayerControls(now) {
         for (const actor of state.actors) {
           if (!isPlayerControlled(actor)) continue;
+          if (state.spectating && isLocalActor(actor)) continue;
           if (actor.input.ejectQueued) {
             if (ejectMass(actor, now) || now - actor.lastEject >= ejectInterval()) {
               actor.input.ejectQueued = false;
@@ -2692,13 +2755,9 @@
             ejectMass(actor, now, true);
           }
           if (actor.input.splitQueued) {
-            if (!Number.isFinite(actor.input.splitDirX) || !Number.isFinite(actor.input.splitDirY)) {
-              const aim = actorAimDirection(actor);
-              actor.input.splitDirX = aim.x;
-              actor.input.splitDirY = aim.y;
-            }
+            const aim = actorAimDirection(actor);
             if (actor.lastSplitFrame !== state.frameIndex) {
-              if (splitActor(actor, actor.input.splitDirX, actor.input.splitDirY, now)) {
+              if (splitActor(actor, aim.x, aim.y, now, 0, actor.input.targetX, actor.input.targetY)) {
                 actor.input.splitCount = Math.max(0, (actor.input.splitCount || 1) - 1);
               } else {
                 actor.input.splitCount = 0;
@@ -2707,8 +2766,6 @@
             if (actor.input.splitCount <= 0) {
               actor.input.splitQueued = false;
               actor.input.splitCount = 0;
-              actor.input.splitDirX = null;
-              actor.input.splitDirY = null;
             }
           }
         }
@@ -2931,9 +2988,19 @@
         };
         channel.onclose = () => {
           state.net.connected = false;
+          if (state.net.role === "client") {
+            continueOfflineAfterHostLoss();
+            return;
+          }
           setStatus("CLOSED");
         };
-        channel.onerror = () => setStatus("CHANNEL NG");
+        channel.onerror = () => {
+          if (state.net.role === "client") {
+            continueOfflineAfterHostLoss();
+            return;
+          }
+          setStatus("CHANNEL NG");
+        };
         channel.onmessage = (event) => handleNetMessage(event.data);
       }
 
@@ -2964,13 +3031,17 @@
         });
         conn.on("close", () => {
           state.net.connected = false;
+          if (state.net.role === "client") {
+            continueOfflineAfterHostLoss();
+            return;
+          }
           setStatus("CLOSED");
         });
         conn.on("error", () => {
           if (state.net.role === "client" && !state.net.connected) {
             setStatus("NO ROOM");
             setTimeout(() => {
-              if (state.net.transport === "peerjs" && !state.net.connected) closeNetwork(false);
+              if (state.net.transport === "peerjs" && !state.net.connected) continueOfflineAfterHostLoss();
             }, 900);
             return;
           }
@@ -2980,6 +3051,7 @@
 
       function resetFreshWorld(localId, onlineMode = false) {
         WORLD_SIZE = state.settings.worldSize;
+        setSpectating(false);
         state.localActorId = localId;
         state.actors.length = 0;
         state.foods.length = 0;
@@ -3074,6 +3146,12 @@
         if (!keepWorld) resetFreshWorld("player", false);
       }
 
+      function continueOfflineAfterHostLoss() {
+        if (state.net.role !== "client") return;
+        closeNetwork(false);
+        setStatus("OFFLINE PLAY");
+      }
+
       async function startHostOnline() {
         if (!networkSupported()) {
           setStatus("NO WEBRTC");
@@ -3161,12 +3239,12 @@
             if (state.net.transport !== "peerjs" || state.net.connected) return;
             setStatus("NO ROOM");
             setTimeout(() => {
-              if (state.net.transport === "peerjs" && !state.net.connected) closeNetwork(false);
+              if (state.net.transport === "peerjs" && !state.net.connected) continueOfflineAfterHostLoss();
             }, 900);
-          }, 9000);
+          }, 3500);
         });
-        peer.on("error", () => setStatus("ROOM NG"));
-        peer.on("disconnected", () => setStatus("ROOM LOST"));
+        peer.on("error", () => continueOfflineAfterHostLoss());
+        peer.on("disconnected", () => continueOfflineAfterHostLoss());
       }
 
       async function createGuestAnswer() {
@@ -3251,7 +3329,12 @@
         socket.onerror = () => setStatus("RELAY NG");
         socket.onclose = () => {
           state.net.connected = false;
-          if (state.net.transport === "relay") setStatus("RELAY CLOSED");
+          if (state.net.transport !== "relay") return;
+          if (state.net.role === "client") {
+            continueOfflineAfterHostLoss();
+            return;
+          }
+          setStatus("RELAY CLOSED");
         };
       }
 
@@ -3296,8 +3379,6 @@
           boostY: cell.boostY,
           faceX: cell.faceX,
           faceY: cell.faceY,
-          splitDirX: cell.splitDirX,
-          splitDirY: cell.splitDirY,
           mergeReadyAt: cell.mergeReadyAt,
           capFramesLeft: cell.capFramesLeft,
           birthAge: cell.birthAge,
@@ -3549,8 +3630,6 @@
         );
         cell.faceX = face.x;
         cell.faceY = face.y;
-        cell.splitDirX = data.splitDirX == null ? (existing?.splitDirX ?? null) : data.splitDirX;
-        cell.splitDirY = data.splitDirY == null ? (existing?.splitDirY ?? null) : data.splitDirY;
         cell.sweepActive = false;
         cell.sweepPoints = null;
         cell.sweepFromX = cell.x;
@@ -4011,7 +4090,7 @@
         const rawNumber = Number(value) || 0;
         const number = Math.round(rawNumber);
         if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
-        if (kind === "botMode") state.settings.botMode = value === "chase" ? "chase" : "hunt";
+        if (kind === "botMode") state.settings.botMode = ["hunt", "chase", "virus", "cursor"].includes(value) ? value : "hunt";
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
         if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
@@ -4192,6 +4271,7 @@
         });
         relayHostBtn.addEventListener("click", () => startRelayOnline("host"));
         relayJoinBtn.addEventListener("click", () => startRelayOnline("client"));
+        spectateBtn.addEventListener("click", toggleSpectating);
         disconnectBtn.addEventListener("click", () => closeNetwork(false));
         gameResetBtn.addEventListener("click", resetGameToStart);
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
