@@ -967,7 +967,7 @@
         const fallbackAngle = ((a.id * 12.9898 + b.id * 78.233) % TAU);
         const nx = distance < 0.001 ? Math.cos(fallbackAngle) : (b.x - a.x) / distance;
         const ny = distance < 0.001 ? Math.sin(fallbackAngle) : (b.y - a.y) / distance;
-        const targetDistance = a.radius + b.radius + 2;
+        const targetDistance = a.radius + b.radius + clamp((a.radius + b.radius) * 0.05, 12, 48);
         const overlap = Math.max(0, targetDistance - distance);
         const total = a.mass + b.mass;
         const aShare = b.mass / total;
@@ -2796,8 +2796,9 @@
             for (let j = i + 1; j < actor.cells.length; j += 1) {
               const b = actor.cells[j];
               if (b.dead) continue;
-              if (canCellMerge(a) && canCellMerge(b)) continue;
-              if (a.separationGraceUntil > state.now || b.separationGraceUntil > state.now) continue;
+              const pairCooling = mergePairCooling(actor, a, b);
+              if (canCellMerge(a) && canCellMerge(b) && !pairCooling) continue;
+              if (!pairCooling && (a.separationGraceUntil > state.now || b.separationGraceUntil > state.now)) continue;
 
               const dx = b.x - a.x;
               const dy = b.y - a.y;
