@@ -699,6 +699,9 @@
           ejectSeq: 0,
           respawnQueued: false,
           respawnSeq: 0,
+          cloneQueued: false,
+          cloneSeq: 0,
+          activeActorId: "player",
           botSplitQueued: false,
           botEjectQueued: false,
           lastAimX: 1,
@@ -1109,7 +1112,8 @@
             lastAimY: 0,
             lastNetSplitSeq: 0,
             lastNetEjectSeq: 0,
-            lastNetRespawnSeq: 0
+            lastNetRespawnSeq: 0,
+            lastNetCloneSeq: 0
           },
           cells: [],
           aiTimer: 0,
@@ -1151,6 +1155,18 @@
         return localHumanActors().find((actor) => actor.localClone) || null;
       }
 
+      function localCloneId(baseId = state.localActorId) {
+        return `${baseId}-clone-1`;
+      }
+
+      function isLocalControlledActorId(id) {
+        return id === state.localActorId || id === localCloneId();
+      }
+
+      function remoteCloneActor(baseId = "guest") {
+        return state.actors.find((actor) => actor.id === localCloneId(baseId) && actor.localClone) || null;
+      }
+
       function liveLocalHumanActors() {
         return localHumanActors().filter((actor) => actor.cells.some((cell) => !cell.dead));
       }
@@ -1170,6 +1186,7 @@
           if (localActor !== actor) clearActorControlInput(localActor);
         }
         state.player = actor;
+        state.input.activeActorId = actor.id;
         actor.input.targetX = state.input.mouseWorldX;
         actor.input.targetY = state.input.mouseWorldY;
       }
@@ -1223,6 +1240,44 @@
         state.flashUntil = state.now + 1.0;
         state.net.lastSnapshotSend = -100;
         rebuildSpatialHashes();
+      }
+
+      function requestRemoteCloneToggle() {
+        const main = primaryLocalActor() || actorById(state.localActorId);
+        const clone = localCloneActor();
+        const nextId = state.player === clone ? state.localActorId : localCloneId();
+        const nextActor = actorById(nextId);
+        if (nextActor && nextActor.control === "local") {
+          setActiveLocalActor(nextActor);
+        } else if (main) {
+          state.input.activeActorId = nextId;
+          setActiveLocalActor(main);
+          state.input.activeActorId = nextId;
+        }
+        state.input.cloneQueued = true;
+        state.input.cloneSeq += 1;
+        state.net.lastInputSend = -100;
+      }
+
+      function ensureRemoteClone(main) {
+        let clone = remoteCloneActor(main.id);
+        if (!clone) {
+          clone = createActor(localCloneId(main.id), `${main.name}2`, main.color, true, "remote");
+          clone.localClone = true;
+          state.actors.push(clone);
+          spawnLocalActorBeside(clone, main);
+        }
+        return clone;
+      }
+
+      function handleRemoteCloneToggle(main) {
+        const clone = ensureRemoteClone(main);
+        if (liveCellCount(main) <= 0) {
+          spawnLocalActorBeside(main, clone);
+        } else if (liveCellCount(clone) <= 0) {
+          spawnLocalActorBeside(clone, main);
+        }
+        return clone;
       }
 
       function displayActorName(actor) {
@@ -1329,7 +1384,7 @@
 
       function toggleLocalCloneControl() {
         if (state.net.role === "client") {
-          setStatus("NO HOST");
+          requestRemoteCloneToggle();
           return;
         }
         const main = primaryLocalActor();
@@ -3025,6 +3080,21 @@
           actor.cells = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_CELL_MASS);
         }
 
+        const guest = actorById("guest");
+        const guestClone = remoteCloneActor("guest");
+        if (guest || guestClone) {
+          const guestActors = [guest, guestClone].filter(Boolean);
+          const liveGuestActors = guestActors.filter((actor) => actor.cells.length > 0);
+          if (!liveGuestActors.length && guest) {
+            for (let i = state.actors.length - 1; i >= 0; i -= 1) {
+              if (state.actors[i].id === localCloneId("guest")) state.actors.splice(i, 1);
+            }
+            guest.localClone = false;
+            spawnActor(guest, PLAYER_RESPAWN_MASS);
+            state.flashUntil = state.now + 1.25;
+          }
+        }
+
         const localActors = localHumanActors();
         if (localActors.length) {
           const liveLocalActors = localActors.filter((actor) => actor.cells.length > 0);
@@ -3046,6 +3116,7 @@
 
         for (const actor of state.actors) {
           if (actor.control === "local" && actor.isHuman) continue;
+          if (actor.id === "guest" || actor.id === localCloneId("guest")) continue;
           if (actor.cells.length === 0) {
             if (actor.isHuman) {
               spawnActor(actor, PLAYER_RESPAWN_MASS);
@@ -3496,6 +3567,9 @@
         setSpectating(false);
         state.localCloneIndex = 0;
         state.localActorId = localId;
+        state.input.activeActorId = localId;
+        state.input.cloneQueued = false;
+        state.input.cloneSeq = 0;
         state.actors.length = 0;
         state.foods.length = 0;
         state.foodGridDirty = true;
@@ -3848,6 +3922,7 @@
           name: actor.name,
           color: actor.color,
           isHuman: actor.isHuman,
+          localClone: Boolean(actor.localClone),
           cells: actor.cells.filter((cell) => !cell.dead).map(serializeCell)
         };
       }
@@ -3943,21 +4018,24 @@
 
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
-        const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued;
+        const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued || state.input.cloneQueued;
         if (!urgent && now - state.net.lastInputSend < 1 / 30) return;
         netSend({
           t: "input",
+          activeActorId: state.input.activeActorId || state.player.id,
           targetX: state.player.input.targetX,
           targetY: state.player.input.targetY,
           e: state.player.input.keys.has("KeyE"),
           ejectSeq: state.input.ejectSeq,
           splitSeq: state.input.splitSeq,
-          respawnSeq: state.input.respawnSeq
+          respawnSeq: state.input.respawnSeq,
+          cloneSeq: state.input.cloneSeq
         });
         state.player.input.ejectQueued = false;
         state.player.input.splitQueued = false;
         state.player.input.splitCount = 0;
         state.input.respawnQueued = false;
+        state.input.cloneQueued = false;
         state.net.lastInputSend = now;
       }
 
@@ -4005,29 +4083,46 @@
         if (state.net.role === "host" && message.t === "input") {
           const guest = actorById("guest");
           if (!guest) return;
-          guest.input.targetX = clamp(Number(message.targetX) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
-          guest.input.targetY = clamp(Number(message.targetY) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
-          if (message.e) guest.input.keys.add("KeyE");
-          else guest.input.keys.delete("KeyE");
-          const ejectSeq = Number(message.ejectSeq) || 0;
           let urgentInput = false;
+          const cloneSeq = Number(message.cloneSeq) || 0;
+          let guestClone = remoteCloneActor("guest");
+          if (cloneSeq > guest.input.lastNetCloneSeq) {
+            guestClone = handleRemoteCloneToggle(guest);
+            guest.input.lastNetCloneSeq = cloneSeq;
+            urgentInput = true;
+          }
+
+          const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : "guest";
+          guestClone = remoteCloneActor("guest");
+          let activeGuest = requestedActorId === localCloneId("guest") && guestClone ? guestClone : guest;
+          if (activeGuest.cells.length === 0 && guest.cells.length > 0) activeGuest = guest;
+          if (activeGuest.cells.length === 0 && guestClone && guestClone.cells.length > 0) activeGuest = guestClone;
+          for (const actor of [guest, guestClone]) {
+            if (actor && actor !== activeGuest) clearActorControlInput(actor);
+          }
+
+          activeGuest.input.targetX = clamp(Number(message.targetX) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
+          activeGuest.input.targetY = clamp(Number(message.targetY) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
+          if (message.e) activeGuest.input.keys.add("KeyE");
+          else activeGuest.input.keys.delete("KeyE");
+          const ejectSeq = Number(message.ejectSeq) || 0;
           if (ejectSeq > guest.input.lastNetEjectSeq) {
-            guest.input.ejectQueued = true;
+            activeGuest.input.ejectQueued = true;
             guest.input.lastNetEjectSeq = ejectSeq;
             urgentInput = true;
           }
           const splitSeq = Number(message.splitSeq) || 0;
           if (splitSeq > guest.input.lastNetSplitSeq) {
             const splitCount = Math.min(4, splitSeq - guest.input.lastNetSplitSeq);
-            guest.input.splitQueued = true;
-            guest.input.splitCount += splitCount;
+            activeGuest.input.splitQueued = true;
+            activeGuest.input.splitCount += splitCount;
             guest.input.lastNetSplitSeq = splitSeq;
             urgentInput = true;
           }
           const respawnSeq = Number(message.respawnSeq) || 0;
           if (respawnSeq > guest.input.lastNetRespawnSeq) {
             if (state.settings.nRespawnEnabled) {
-              spawnActor(guest, PLAYER_RESPAWN_MASS);
+              spawnActor(activeGuest, PLAYER_RESPAWN_MASS);
             }
             guest.input.lastNetRespawnSeq = respawnSeq;
             urgentInput = true;
@@ -4039,7 +4134,7 @@
         if (state.net.role === "client" && message.t === "splitEvent" && message.actor) {
           const actor = applyActorSnapshot(message.actor);
           if (!state.actors.includes(actor)) state.actors.push(actor);
-          if (actor.id === state.localActorId) state.player = actor;
+          if (isLocalControlledActorId(actor.id) && actor.id === state.input.activeActorId) state.player = actor;
           updateClientRenderState(1 / 60);
           return;
         }
@@ -4110,6 +4205,7 @@
       }
 
       function applyActorSnapshot(data) {
+        const isLocalControlled = isLocalControlledActorId(data.id);
         let actor = actorById(data.id);
         if (!actor) {
           actor = createActor(
@@ -4117,13 +4213,14 @@
             data.name || data.id,
             data.color || "#2e90fa",
             Boolean(data.isHuman),
-            data.id === state.localActorId ? "local" : (data.isHuman ? "remote" : "bot")
+            isLocalControlled ? "local" : (data.isHuman ? "remote" : "bot")
           );
         }
         actor.name = data.name || actor.name;
         actor.color = data.color || actor.color;
         actor.isHuman = Boolean(data.isHuman);
-        actor.control = data.id === state.localActorId ? "local" : (actor.isHuman ? "remote" : "bot");
+        actor.localClone = Boolean(data.localClone);
+        actor.control = isLocalControlled ? "local" : (actor.isHuman ? "remote" : "bot");
         const cellsById = new Map(actor.cells.map((cell) => [cell.id, cell]));
         actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData, cellsById.get(cellData.id)));
         refreshNextSplitPriority(actor);
@@ -4194,7 +4291,10 @@
         }
         const actors = (message.actors || []).map(applyActorSnapshot);
         state.actors = actors;
-        state.player = actorById(state.localActorId) || actors[0] || state.player;
+        const activeActor = actorById(state.input.activeActorId);
+        state.player = activeActor && activeActor.control === "local"
+          ? activeActor
+          : actorById(state.localActorId) || actors[0] || state.player;
 
         state.feeds = applyEntityListSnapshot(message.feeds, "feed", state.feeds);
       }
