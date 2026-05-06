@@ -1067,17 +1067,52 @@
         actor.input.targetY = state.input.mouseWorldY;
       }
 
+      function findLocalActorSpawnPosition(actor, anchorActor, mass) {
+        const radius = radiusFromMass(mass);
+        const margin = Math.min(Math.max(radius + 24, 80), WORLD_SIZE * 0.5 - 1);
+        const options = {
+          avoidViruses: true,
+          virusPadding: 130,
+          cellPadding: 96
+        };
+        let best = null;
+        let bestScore = -Infinity;
+
+        const consider = (x, y) => {
+          const clampedX = clamp(x, margin, WORLD_SIZE - margin);
+          const clampedY = clamp(y, margin, WORLD_SIZE - margin);
+          const score = spawnClearanceScore(clampedX, clampedY, radius, options);
+          if (score > bestScore) {
+            bestScore = score;
+            best = { x: clampedX, y: clampedY };
+          }
+        };
+
+        if (anchorActor && liveCellCount(anchorActor) > 0) {
+          const anchor = actorCenter(anchorActor);
+          let anchorRadius = 0;
+          for (const cell of anchorActor.cells) {
+            if (!cell.dead) anchorRadius = Math.max(anchorRadius, cell.radius);
+          }
+          const baseAngle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
+          const baseDistance = radius + anchorRadius + options.cellPadding + 40;
+          for (let ring = 0; ring < 3; ring += 1) {
+            const distance = baseDistance + ring * (radius * 0.55 + 140);
+            for (let i = 0; i < 32; i += 1) {
+              const angle = baseAngle + (i / 32) * TAU;
+              consider(anchor.x + Math.cos(angle) * distance, anchor.y + Math.sin(angle) * distance);
+            }
+          }
+        }
+
+        const fallback = findOpenSpawnPosition(radius, margin, 96, options);
+        consider(fallback.x, fallback.y);
+        return best || fallback;
+      }
+
       function spawnLocalActorBeside(actor, anchorActor) {
-        const anchor = anchorActor && liveCellCount(anchorActor) > 0 ? actorCenter(anchorActor) : null;
-        const angle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
-        const distance = 216;
-        const x = anchor
-          ? clamp(anchor.x + Math.cos(angle) * distance, 120, WORLD_SIZE - 120)
-          : null;
-        const y = anchor
-          ? clamp(anchor.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120)
-          : null;
-        spawnActor(actor, PLAYER_RESPAWN_MASS, x, y);
+        const pos = findLocalActorSpawnPosition(actor, anchorActor, PLAYER_RESPAWN_MASS);
+        spawnActor(actor, PLAYER_RESPAWN_MASS, pos.x, pos.y);
         state.flashUntil = state.now + 1.0;
         state.net.lastSnapshotSend = -100;
         rebuildSpatialHashes();
@@ -1199,16 +1234,11 @@
         }
         let clone = localCloneActor();
         if (!clone) {
-          const center = actorCenter(main);
           state.localCloneIndex = 1;
           clone = createActor("local-clone-1", "自分2", botPalette[1 % botPalette.length], true, "local");
           clone.localClone = true;
           state.actors.push(clone);
-          const angle = 2.399963229728653;
-          const distance = 216;
-          const x = clamp(center.x + Math.cos(angle) * distance, 120, WORLD_SIZE - 120);
-          const y = clamp(center.y + Math.sin(angle) * distance, 120, WORLD_SIZE - 120);
-          spawnActor(clone, PLAYER_RESPAWN_MASS, x, y);
+          spawnLocalActorBeside(clone, main);
         }
         if (liveCellCount(clone) <= 0) {
           spawnLocalActorBeside(clone, main);
@@ -4163,22 +4193,25 @@
 
       function drawCursorLine() {
         if (!state.settings.cursorLine || state.spectating) return;
-        const useRender = state.net.role === "client";
-        const activeActor = state.player && state.player.control === "local" && liveCellCount(state.player) > 0
-          ? state.player
-          : null;
-        const center = activeActor ? actorCenter(activeActor, useRender) : sharedLocalViewCenter(useRender);
-        if (center.mass <= 0) return;
-
+        const sourceCells = [];
+        for (const actor of liveLocalHumanActors()) {
+          for (const cell of actor.cells) {
+            if (!cell.dead) sourceCells.push(cell);
+          }
+        }
+        if (!sourceCells.length) return;
         const endX = state.input.mouseWorldX;
         const endY = state.input.mouseWorldY;
+
         ctx.save();
         ctx.lineWidth = Math.max(2 / state.camera.zoom, 1.2);
-        ctx.strokeStyle = "rgba(23, 125, 220, 0.5)";
+        ctx.strokeStyle = "rgba(23, 125, 220, 0.36)";
         ctx.setLineDash([18 / state.camera.zoom, 12 / state.camera.zoom]);
         ctx.beginPath();
-        ctx.moveTo(center.x, center.y);
-        ctx.lineTo(endX, endY);
+        for (const cell of sourceCells) {
+          ctx.moveTo(entityRenderX(cell), entityRenderY(cell));
+          ctx.lineTo(endX, endY);
+        }
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = "rgba(23, 125, 220, 0.72)";
