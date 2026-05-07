@@ -371,6 +371,7 @@
 
     .profile-panel {
       display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       padding: 10px;
       border: 1px solid rgba(0, 220, 255, 0.7);
@@ -654,6 +655,7 @@
       <div id="menuPageHome" class="menu-page home-page active" data-menu-page-panel="home">
         <section class="profile-panel" aria-label="プロフィール">
           <input id="nameBox" maxlength="18" spellcheck="false" aria-label="名前" placeholder="name">
+          <input id="cloneNameBox" maxlength="18" spellcheck="false" aria-label="別個体の名前" placeholder="name2">
         </section>
 
         <section class="online-panel" aria-label="オンライン">
@@ -814,6 +816,7 @@
       const menuBtn = document.getElementById("menuBtn");
       const playBtn = document.getElementById("playBtn");
       const nameBox = document.getElementById("nameBox");
+      const cloneNameBox = document.getElementById("cloneNameBox");
       const menuTabButtons = Array.from(document.querySelectorAll("[data-menu-page]"));
       const menuPagePanels = Array.from(document.querySelectorAll("[data-menu-page-panel]"));
       const onlineStatusEl = document.getElementById("onlineStatus");
@@ -997,7 +1000,8 @@
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
         profile: {
-          name: "YOU"
+          name: "YOU",
+          cloneName: "YOU2"
         },
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
@@ -1606,11 +1610,13 @@
 
       function syncProfileFromInputs() {
         state.profile.name = sanitizeProfileText(nameBox.value, "YOU", 18);
+        state.profile.cloneName = sanitizeProfileText(cloneNameBox.value, `${state.profile.name || "YOU"}2`, 18);
       }
 
-      function localProfileName(suffix = "") {
+      function localProfileName(isClone = false) {
         const name = sanitizeProfileText(state.profile.name, "YOU", 18);
-        return `${name}${suffix}`;
+        if (!isClone) return name;
+        return sanitizeProfileText(state.profile.cloneName, `${name}2`, 18);
       }
 
       function playerSpawnMass() {
@@ -1620,7 +1626,7 @@
       function applyLocalProfile() {
         syncProfileFromInputs();
         for (const actor of localHumanActors()) {
-          actor.name = localProfileName(actor.localClone ? "2" : "");
+          actor.name = localProfileName(actor.localClone);
         }
         state.net.lastSnapshotSend = -100;
       }
@@ -1963,7 +1969,7 @@
         let clone = localCloneActor();
         if (!clone) {
           state.localCloneIndex = 1;
-          clone = createActor("local-clone-1", localProfileName("2"), botPalette[1 % botPalette.length], true, "local");
+          clone = createActor("local-clone-1", localProfileName(true), botPalette[1 % botPalette.length], true, "local");
           clone.localClone = true;
           state.actors.push(clone);
           spawnLocalActorBeside(clone, main);
@@ -2055,6 +2061,8 @@
           fragmentAge: 0,
           splitBoostAge: 0,
           separationGraceUntil: 0,
+          splitRecoilFrame: -1,
+          splitRecoilApplied: 0,
           mergePartnerId: null,
           mergeDominantId: null,
           virusCooldown: 0,
@@ -2560,6 +2568,19 @@
         return Math.max(0, radius * (recoil / 100));
       }
 
+      function applySplitRecoil(cell, dirX, dirY, distance) {
+        if (distance <= 0) return;
+        if (cell.splitRecoilFrame !== state.frameIndex) {
+          cell.splitRecoilFrame = state.frameIndex;
+          cell.splitRecoilApplied = 0;
+        }
+        const remaining = Math.max(0, distance - cell.splitRecoilApplied);
+        if (remaining <= 0) return;
+        cell.x = clamp(cell.x - dirX * remaining, cell.radius, WORLD_SIZE - cell.radius);
+        cell.y = clamp(cell.y - dirY * remaining, cell.radius, WORLD_SIZE - cell.radius);
+        cell.splitRecoilApplied += remaining;
+      }
+
       function ejectInterval() {
         return 1 / Math.max(1, state.settings.ejectRate);
       }
@@ -2610,6 +2631,7 @@
         source.vy *= 0.24;
         source.boostX *= 0.02;
         source.boostY *= 0.02;
+        applySplitRecoil(source, dirX, dirY, splitRecoilDistance(child.radius));
         if (targetX != null && targetY != null) {
           source.targetX = targetX;
           source.targetY = targetY;
@@ -5670,6 +5692,7 @@
           button.addEventListener("click", () => setMenuPage(button.dataset.menuPage));
         }
         nameBox.addEventListener("input", applyLocalProfile);
+        cloneNameBox.addEventListener("input", applyLocalProfile);
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
         }
@@ -5778,6 +5801,7 @@
         syncSettingsControls();
         syncKeyBindControls();
         nameBox.value = state.profile.name;
+        cloneNameBox.value = state.profile.cloneName;
         setMenuPage("home");
         setMenuOpen(true);
 
