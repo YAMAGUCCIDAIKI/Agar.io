@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.3</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.4</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.3";
+      const APP_VERSION = "v2026.05.08.4";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -4054,7 +4054,7 @@
         const guestClone = remoteCloneActor("guest");
         if (guest || guestClone) {
           const guestActors = [guest, guestClone].filter(Boolean);
-          const liveGuestActors = guestActors.filter((actor) => actor.cells.length > 0);
+          const liveGuestActors = guestActors.filter((actor) => liveCellCount(actor) > 0);
           if (!liveGuestActors.length && guest) {
             for (let i = state.actors.length - 1; i >= 0; i -= 1) {
               if (state.actors[i].id === localCloneId("guest")) state.actors.splice(i, 1);
@@ -4067,11 +4067,12 @@
 
         const localActors = localHumanActors();
         if (localActors.length) {
-          const liveLocalActors = localActors.filter((actor) => actor.cells.length > 0);
+          const liveLocalActors = localActors.filter((actor) => liveCellCount(actor) > 0);
           if (!liveLocalActors.length) {
             const main = primaryLocalActor() || localActors[0];
+            const mainFamily = actorFamilyId(main?.id || state.localActorId);
             for (let i = state.actors.length - 1; i >= 0; i -= 1) {
-              if (state.actors[i].localClone) state.actors.splice(i, 1);
+              if (state.actors[i].localClone && actorFamilyId(state.actors[i].id) === mainFamily) state.actors.splice(i, 1);
             }
             if (main) {
               main.localClone = false;
