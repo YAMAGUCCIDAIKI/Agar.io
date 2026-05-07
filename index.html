@@ -180,7 +180,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      width: min(620px, calc(100vw - 28px));
+      width: min(780px, calc(100vw - 28px));
       min-height: 56px;
       margin: 0;
       padding: 8px 10px;
@@ -215,10 +215,7 @@
     }
 
     .menu-layout {
-      display: grid;
-      grid-template-columns: minmax(220px, 0.72fr) minmax(430px, 1.28fr);
-      align-items: start;
-      gap: 6px;
+      display: block;
       width: min(780px, calc(100vw - 28px));
       max-height: calc(100vh - 126px);
       margin: 0;
@@ -231,6 +228,45 @@
       box-shadow: 0 18px 34px rgba(7, 18, 38, 0.28);
       overflow: hidden;
       pointer-events: auto;
+    }
+
+    .menu-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .menu-tab {
+      min-height: 32px;
+      border: 1px solid rgba(0, 220, 255, 0.58);
+      border-radius: 3px;
+      background: rgba(0, 126, 255, 0.34);
+      color: #8feeff;
+      font: 800 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .menu-tab.active {
+      background: #0095ff;
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.72);
+    }
+
+    .menu-page {
+      display: none;
+      min-height: 0;
+    }
+
+    .menu-page.active {
+      display: grid;
+      gap: 6px;
+    }
+
+    .menu-page.settings-page.active {
+      max-height: calc(100vh - 188px);
+      overflow-y: auto;
+      padding-right: 4px;
     }
 
     .online-panel {
@@ -341,6 +377,20 @@
       border-radius: 4px;
       background: rgba(0, 13, 38, 0.58);
       color: #13f6ff;
+    }
+
+    .menu-screen .profile-panel,
+    .menu-screen .online-panel,
+    .menu-screen .view-panel {
+      position: static;
+      width: 100%;
+      max-height: none;
+      border-color: rgba(0, 220, 255, 0.72);
+      border-radius: 3px;
+      background: rgba(0, 18, 52, 0.62);
+      color: #dffbff;
+      box-shadow: none;
+      backdrop-filter: none;
     }
 
     .profile-panel input {
@@ -489,20 +539,6 @@
       cursor: pointer;
     }
 
-    .menu-screen .online-panel,
-    .menu-screen .view-panel {
-      position: static;
-      width: 100%;
-      max-height: calc(100vh - 146px);
-      overflow-y: auto;
-      border-color: rgba(0, 220, 255, 0.72);
-      border-radius: 3px;
-      background: rgba(0, 18, 52, 0.62);
-      color: #dffbff;
-      box-shadow: none;
-      backdrop-filter: none;
-    }
-
     .menu-screen .online-title,
     .menu-screen .view-row,
     .menu-screen .setting-control,
@@ -610,33 +646,41 @@
       <button id="playBtn" type="button">PLAY</button>
     </div>
     <div class="menu-layout">
-      <section class="profile-panel" aria-label="プロフィール">
-        <input id="nameBox" maxlength="18" spellcheck="false" aria-label="名前" placeholder="name">
-      </section>
+      <div class="menu-tabs" role="tablist" aria-label="メニューページ">
+        <button class="menu-tab active" type="button" data-menu-page="home">プレイ</button>
+        <button class="menu-tab" type="button" data-menu-page="settings">設定</button>
+      </div>
 
-      <section class="online-panel" aria-label="オンライン">
-        <div class="online-title">
-          <span>オンライン2人</span>
-          <span id="onlineStatus" class="online-status">オフライン</span>
-        </div>
-        <div class="online-controls">
-          <button id="hostBtn" type="button">部屋を作る</button>
-          <button id="joinBtn" type="button">部屋に入る</button>
-          <button id="applyAnswerBtn" type="button">回答反映</button>
-          <button id="disconnectBtn" type="button">切断</button>
-          <button id="relayHostBtn" type="button">リレー作成</button>
-          <button id="relayJoinBtn" type="button">リレー参加</button>
-          <button id="spectateBtn" type="button">観戦</button>
-        </div>
-        <div class="online-fields">
-          <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
-          <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
-        </div>
-        <textarea id="offerBox" spellcheck="false" placeholder="オファー"></textarea>
-        <textarea id="answerBox" spellcheck="false" placeholder="回答"></textarea>
-      </section>
+      <div id="menuPageHome" class="menu-page home-page active" data-menu-page-panel="home">
+        <section class="profile-panel" aria-label="プロフィール">
+          <input id="nameBox" maxlength="18" spellcheck="false" aria-label="名前" placeholder="name">
+        </section>
 
-      <section class="view-panel" aria-label="設定">
+        <section class="online-panel" aria-label="オンライン">
+          <div class="online-title">
+            <span>オンライン2人</span>
+            <span id="onlineStatus" class="online-status">オフライン</span>
+          </div>
+          <div class="online-controls">
+            <button id="hostBtn" type="button">部屋を作る</button>
+            <button id="joinBtn" type="button">部屋に入る</button>
+            <button id="applyAnswerBtn" type="button">回答反映</button>
+            <button id="disconnectBtn" type="button">切断</button>
+            <button id="relayHostBtn" type="button">リレー作成</button>
+            <button id="relayJoinBtn" type="button">リレー参加</button>
+            <button id="spectateBtn" type="button">観戦</button>
+          </div>
+          <div class="online-fields">
+            <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
+            <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
+          </div>
+          <textarea id="offerBox" spellcheck="false" placeholder="オファー"></textarea>
+          <textarea id="answerBox" spellcheck="false" placeholder="回答"></textarea>
+        </section>
+      </div>
+
+      <section id="menuPageSettings" class="menu-page settings-page" data-menu-page-panel="settings" aria-label="設定">
+        <div class="view-panel">
         <div class="view-row"><span>表示</span><strong id="viewValue">100%</strong></div>
         <div class="view-controls">
           <button id="gameResetBtn" type="button">リセット</button>
@@ -751,6 +795,7 @@
           <strong id="worldSizeValue">5000</strong>
           <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
         </label>
+        </div>
       </section>
     </div>
   </section>
@@ -769,6 +814,8 @@
       const menuBtn = document.getElementById("menuBtn");
       const playBtn = document.getElementById("playBtn");
       const nameBox = document.getElementById("nameBox");
+      const menuTabButtons = Array.from(document.querySelectorAll("[data-menu-page]"));
+      const menuPagePanels = Array.from(document.querySelectorAll("[data-menu-page-panel]"));
       const onlineStatusEl = document.getElementById("onlineStatus");
       const hostBtn = document.getElementById("hostBtn");
       const joinBtn = document.getElementById("joinBtn");
@@ -1799,6 +1846,15 @@
         }
         document.body.classList.toggle("menu-open", state.menuOpen);
         syncKeyBindControls();
+      }
+
+      function setMenuPage(page) {
+        for (const button of menuTabButtons) {
+          button.classList.toggle("active", button.dataset.menuPage === page);
+        }
+        for (const panel of menuPagePanels) {
+          panel.classList.toggle("active", panel.dataset.menuPagePanel === page);
+        }
       }
 
       function keyLabel(code) {
@@ -5610,6 +5666,9 @@
           applyLocalProfile();
           setMenuOpen(false);
         });
+        for (const button of menuTabButtons) {
+          button.addEventListener("click", () => setMenuPage(button.dataset.menuPage));
+        }
         nameBox.addEventListener("input", applyLocalProfile);
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
@@ -5719,6 +5778,7 @@
         syncSettingsControls();
         syncKeyBindControls();
         nameBox.value = state.profile.name;
+        setMenuPage("home");
         setMenuOpen(true);
 
         resetFreshWorld("player", false);
