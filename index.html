@@ -215,9 +215,11 @@
     }
 
     .menu-layout {
-      display: block;
+      display: flex;
+      flex-direction: column;
       width: min(780px, calc(100vw - 28px));
-      max-height: calc(100vh - 126px);
+      height: min(760px, calc(100vh - 150px));
+      min-height: 320px;
       margin: 0;
       padding: 6px;
       border: 1px solid rgba(0, 220, 255, 0.85);
@@ -233,6 +235,7 @@
     .menu-tabs {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      flex: 0 0 auto;
       gap: 6px;
       margin-bottom: 6px;
     }
@@ -264,9 +267,25 @@
     }
 
     .menu-page.settings-page.active {
-      max-height: calc(100vh - 188px);
-      overflow-y: auto;
-      padding-right: 4px;
+      flex: 1 1 auto;
+      max-height: none;
+      overflow: hidden;
+      overscroll-behavior: contain;
+      padding-right: 6px;
+    }
+
+    .menu-screen .view-panel::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .menu-screen .view-panel::-webkit-scrollbar-track {
+      background: rgba(0, 18, 52, 0.42);
+      border-radius: 8px;
+    }
+
+    .menu-screen .view-panel::-webkit-scrollbar-thumb {
+      background: rgba(23, 245, 255, 0.66);
+      border-radius: 8px;
     }
 
     .online-panel {
@@ -394,6 +413,15 @@
       backdrop-filter: none;
     }
 
+    .menu-screen .view-panel {
+      display: grid;
+      gap: 7px;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 10px;
+      scrollbar-gutter: stable;
+    }
+
     .profile-panel input {
       min-height: 34px;
       border: 1px solid rgba(0, 220, 255, 0.65);
@@ -435,11 +463,20 @@
       grid-template-columns: 92px minmax(150px, 1fr) 58px 72px;
       align-items: center;
       gap: 8px;
-      min-height: 28px;
+      min-height: 36px;
+      padding: 5px 6px;
+      border: 1px solid rgba(0, 220, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(0, 20, 54, 0.3);
       color: var(--muted);
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.04em;
+    }
+
+    .setting-control input[type="range"] {
+      accent-color: #17f5ff;
+      min-width: 0;
     }
 
     .setting-control strong {
@@ -613,8 +650,17 @@
 
       .menu-layout {
         grid-template-columns: 1fr;
-        max-height: calc(100vh - 104px);
-        overflow-y: auto;
+        height: calc(100vh - 124px);
+      }
+
+      .menu-page.settings-page.active {
+        max-height: none;
+      }
+
+      .setting-control {
+        grid-template-columns: 76px minmax(94px, 1fr) 44px 58px;
+        gap: 6px;
+        padding: 5px;
       }
 
       .keybind-grid {
@@ -702,6 +748,30 @@
           <input id="activeColorToggle" class="toggle-input" type="checkbox" checked aria-label="操作中の細胞色">
           <strong id="activeColorValue" class="toggle-value">表示</strong>
         </label>
+        <label class="setting-control">
+          <span>反動</span>
+          <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="0" aria-label="分裂反動の大きさ">
+          <strong id="splitRecoilValue">0</strong>
+          <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
+        </label>
+        <label class="setting-control">
+          <span>分裂速度</span>
+          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="110" aria-label="分裂速度">
+          <strong id="splitSpeedValue">110</strong>
+          <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
+        </label>
+        <label class="setting-control">
+          <span>最低飛距離</span>
+          <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="160" aria-label="分裂の最低飛距離">
+          <strong id="splitMinDistanceValue">160</strong>
+          <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
+        </label>
+        <label class="setting-control">
+          <span>惰性距離</span>
+          <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="100" aria-label="分裂惰性の距離">
+          <strong id="splitMomentumValue">100</strong>
+          <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
+        </label>
         <div class="keybind-title">キー</div>
         <div class="keybind-grid">
           <label class="keybind-control"><span>分裂</span><button type="button" data-keybind="split1"></button></label>
@@ -765,30 +835,6 @@
           <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="粒の連射速度">
           <strong id="ejectRateValue">11</strong>
           <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="連射上限">
-        </label>
-        <label class="setting-control">
-          <span>反動</span>
-          <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="0" aria-label="分裂反動の大きさ">
-          <strong id="splitRecoilValue">0</strong>
-          <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
-        </label>
-        <label class="setting-control">
-          <span>分裂速度</span>
-          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="110" aria-label="分裂速度">
-          <strong id="splitSpeedValue">110</strong>
-          <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
-        </label>
-        <label class="setting-control">
-          <span>最低飛距離</span>
-          <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="160" aria-label="分裂の最低飛距離">
-          <strong id="splitMinDistanceValue">160</strong>
-          <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
-        </label>
-        <label class="setting-control">
-          <span>惰性距離</span>
-          <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="100" aria-label="分裂惰性の距離">
-          <strong id="splitMomentumValue">100</strong>
-          <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
         </label>
         <label class="setting-control">
           <span>ゲーム速度</span>
