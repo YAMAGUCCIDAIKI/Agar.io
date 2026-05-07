@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.10</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.11</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.10";
+      const APP_VERSION = "v2026.05.08.11";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5716,9 +5716,12 @@
         appendFeedPath(entity);
         ctx.fillStyle = entity.color;
         ctx.fill();
+        ctx.lineWidth = 2 / state.camera.zoom;
+        ctx.strokeStyle = darkenHex(entity.color, 0.24);
+        ctx.stroke();
       }
 
-      function drawBatchedEntities(entities, appendPath) {
+      function drawBatchedEntities(entities, appendPath, stroke = false) {
         for (const items of entityBatchByColor.values()) items.length = 0;
         for (const entity of entities) {
           let items = entityBatchByColor.get(entity.color);
@@ -5736,6 +5739,11 @@
             appendPath(entity);
           }
           ctx.fill();
+          if (stroke) {
+            ctx.lineWidth = 2 / state.camera.zoom;
+            ctx.strokeStyle = darkenHex(color, 0.24);
+            ctx.stroke();
+          }
         }
       }
 
@@ -5975,7 +5983,7 @@
           }
           drawFeedEntity(feed);
         }
-        if (feedRenderScratch.length) drawBatchedEntities(feedRenderScratch, appendFeedPath);
+        if (feedRenderScratch.length) drawBatchedEntities(feedRenderScratch, appendFeedPath, true);
 
         for (const virus of queryRenderableViruses(bounds)) {
           if (isVisible(virus, bounds, 90)) drawVirus(virus, renderMode);
