@@ -5296,6 +5296,10 @@
         actor.isHuman = Boolean(data.isHuman);
         actor.localClone = Boolean(data.localClone);
         actor.control = isLocalControlled ? "local" : (actor.isHuman ? "remote" : "bot");
+        if (isLocalControlled && actor.cells.length > 0 && (!Array.isArray(data.cells) || data.cells.length === 0)) {
+          actor.netSeenAt = state.realNow || performance.now() / 1000;
+          return actor;
+        }
         const cellsById = new Map(actor.cells.map((cell) => [cell.id, cell]));
         actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData, cellsById.get(cellData.id)));
         refreshNextSplitPriority(actor);
@@ -5359,7 +5363,6 @@
         if (!removedCells || !removedCells.length) return actors;
         const removed = new Set(removedCells.map((cell) => `${cell.ownerId}:${cell.id}`));
         for (const actor of actors) {
-          if (isLocalViewActor(actor)) continue;
           actor.cells = actor.cells.filter((cell) => !removed.has(`${actor.id}:${cell.id}`));
         }
         return actors.filter((actor) => actor.isHuman || actor.cells.length > 0);
