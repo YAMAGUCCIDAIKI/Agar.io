@@ -697,6 +697,11 @@
           <input id="nRespawnToggle" class="toggle-input" type="checkbox" checked aria-label="Nキーリスタート">
           <strong id="nRespawnValue" class="toggle-value">許可</strong>
         </label>
+        <label class="setting-control">
+          <span>操作色</span>
+          <input id="activeColorToggle" class="toggle-input" type="checkbox" checked aria-label="操作中の細胞色">
+          <strong id="activeColorValue" class="toggle-value">表示</strong>
+        </label>
         <div class="keybind-title">キー</div>
         <div class="keybind-grid">
           <label class="keybind-control"><span>分裂</span><button type="button" data-keybind="split1"></button></label>
@@ -837,6 +842,8 @@
       const cursorLineValueEl = document.getElementById("cursorLineValue");
       const nRespawnToggle = document.getElementById("nRespawnToggle");
       const nRespawnValueEl = document.getElementById("nRespawnValue");
+      const activeColorToggle = document.getElementById("activeColorToggle");
+      const activeColorValueEl = document.getElementById("activeColorValue");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
       const botMaxBox = document.getElementById("botMaxBox");
@@ -934,6 +941,7 @@
       const SPLIT_MAX_BOOST = 680;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
+      const ACTIVE_CONTROL_COLOR = "#ff1694";
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
@@ -1020,6 +1028,7 @@
           worldSize: WORLD_SIZE,
           cursorLine: true,
           nRespawnEnabled: true,
+          activeColorHighlight: true,
           max: {
             bot: 200,
             virus: 500,
@@ -1573,6 +1582,15 @@
 
       function isLocalControlledActorId(id) {
         return id === state.localActorId || isLocalCloneActorId(id);
+      }
+
+      function isActiveLocalActor(actor) {
+        return Boolean(actor && actor.control === "local" && actor.id === state.input.activeActorId);
+      }
+
+      function actorRenderColor(actor) {
+        if (state.settings.activeColorHighlight && isActiveLocalActor(actor)) return ACTIVE_CONTROL_COLOR;
+        return actor ? actor.color : "#2e90fa";
       }
 
       function remoteCloneActor(baseId = "guest") {
@@ -5135,13 +5153,14 @@
         const drawX = cell.birthX + (cellX - cell.birthX) * progress;
         const drawY = cell.birthY + (cellY - cell.birthY) * progress;
         const r = Math.max(1, cell.radius * scale);
+        const color = actorRenderColor(actor);
         ctx.beginPath();
         ctx.arc(drawX, drawY, r, 0, TAU);
-        ctx.fillStyle = actor.color;
+        ctx.fillStyle = color;
         ctx.fill();
         if (renderMode < 2 || localControlled || r * state.camera.zoom > 28) {
           ctx.lineWidth = Math.max(3 / state.camera.zoom, r * 0.045);
-          ctx.strokeStyle = isLocalActor(actor) ? "#07529e" : darkenHex(actor.color, 0.24);
+          ctx.strokeStyle = isActiveLocalActor(actor) ? "#b80f68" : (isLocalActor(actor) ? "#07529e" : darkenHex(color, 0.24));
           ctx.stroke();
         }
 
@@ -5405,6 +5424,8 @@
         cursorLineValueEl.textContent = state.settings.cursorLine ? "表示" : "非表示";
         nRespawnToggle.checked = state.settings.nRespawnEnabled;
         nRespawnValueEl.textContent = state.settings.nRespawnEnabled ? "許可" : "禁止";
+        activeColorToggle.checked = state.settings.activeColorHighlight;
+        activeColorValueEl.textContent = state.settings.activeColorHighlight ? "表示" : "通常";
         botSlider.max = String(state.settings.max.bot);
         botSlider.value = String(state.settings.botTarget);
         botValueEl.textContent = String(state.settings.botTarget);
@@ -5521,6 +5542,7 @@
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
         if (kind === "nRespawn") state.settings.nRespawnEnabled = Boolean(value);
+        if (kind === "activeColor") state.settings.activeColorHighlight = Boolean(value);
         if (kind === "worldSize") {
           state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
           clampWorldEntities();
@@ -5712,6 +5734,7 @@
         gameResetBtn.addEventListener("click", resetGameToStart);
         cursorLineToggle.addEventListener("change", () => setWorldSetting("cursorLine", cursorLineToggle.checked));
         nRespawnToggle.addEventListener("change", () => setWorldSetting("nRespawn", nRespawnToggle.checked));
+        activeColorToggle.addEventListener("change", () => setWorldSetting("activeColor", activeColorToggle.checked));
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
