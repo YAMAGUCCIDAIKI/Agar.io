@@ -941,6 +941,7 @@
       const SPLIT_MAX_BOOST = 680;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
+      const SPLIT_RECOIL_COOLDOWN = 0.22;
       const ACTIVE_CONTROL_COLOR = "#fff200";
       const ACTIVE_CONTROL_STROKE = "#111827";
 
@@ -1536,6 +1537,7 @@
           nextEjectIndex: 0,
           lastSplit: -100,
           lastSplitFrame: -1,
+          lastSplitRecoilAt: -100,
           lastMergeFrame: -1,
           mergeCancelUntil: new Map(),
           mergeDominantByPair: new Map(),
@@ -2180,6 +2182,34 @@
         return masses;
       }
 
+      function virusBurstMasses(total, count) {
+        if (count <= 1) return [total];
+        const weights = [];
+        for (let i = 0; i < count; i += 1) {
+          if (i === 0) weights.push(rand(2.7, 3.4));
+          else if (i <= 3) weights.push(rand(1.25, 1.75));
+          else weights.push(rand(0.42, 0.78));
+        }
+
+        const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+        const masses = weights.map((weight) => Math.max(MIN_CELL_MASS, total * weight / weightTotal));
+        let massTotal = masses.reduce((sum, mass) => sum + mass, 0);
+        for (let guard = 0; guard < 3 && Math.abs(massTotal - total) > 0.001; guard += 1) {
+          const adjustable = masses
+            .map((mass, index) => ({ mass, index }))
+            .filter((entry) => entry.mass > MIN_CELL_MASS + 0.001);
+          if (!adjustable.length) break;
+          const share = (total - massTotal) / adjustable.length;
+          for (const entry of adjustable) {
+            masses[entry.index] = Math.max(MIN_CELL_MASS, masses[entry.index] + share);
+          }
+          massTotal = masses.reduce((sum, mass) => sum + mass, 0);
+        }
+
+        masses[0] = Math.max(MIN_CELL_MASS, masses[0] + total - massTotal);
+        return masses.sort((a, b) => b - a);
+      }
+
       function totalMass(actor) {
         let total = 0;
         for (const cell of actor.cells) total += cell.mass;
@@ -2600,7 +2630,8 @@
       function splitRecoilDistance(radius) {
         const recoil = state.settings.splitRecoil;
         if (recoil <= 0) return 0;
-        return Math.max(0, radius * (recoil / 100));
+        const requested = Math.max(0, radius * (recoil / 100));
+        return Math.min(requested, 8 + radius * 0.018);
       }
 
       function applySplitRecoil(cell, dirX, dirY, distance) {
@@ -2692,15 +2723,20 @@
             const priorityDiff = (a.splitPriority || 0) - (b.splitPriority || 0);
             if (priorityDiff !== 0) return priorityDiff;
             return a.id - b.id;
-          });
+        });
         let didSplit = false;
         let recoilUsed = false;
+        const canUseRecoil = now - actor.lastSplitRecoilAt >= SPLIT_RECOIL_COOLDOWN;
         for (const cell of candidates) {
           if (liveCellCount(actor) >= MAX_CELLS) break;
-          const child = splitCell(actor, cell, dirX, dirY, targetX, targetY, !recoilUsed);
+          const shouldRecoil = canUseRecoil && !recoilUsed;
+          const child = splitCell(actor, cell, dirX, dirY, targetX, targetY, shouldRecoil);
           if (child) {
             didSplit = true;
-            recoilUsed = true;
+            if (shouldRecoil) {
+              recoilUsed = true;
+              actor.lastSplitRecoilAt = now;
+            }
           }
         }
         if (didSplit) {
@@ -2817,8 +2853,8 @@
           return;
         }
 
-        const pieceMass = Math.max(MIN_CELL_MASS, total / pieces);
-        cell.mass = pieceMass;
+        const pieceMasses = virusBurstMasses(total, pieces);
+        cell.mass = pieceMasses[0];
         refreshCell(cell);
         setMergeCooldown(cell);
         cell.vx *= 0.16;
@@ -2835,13 +2871,14 @@
           const angle = baseAngle + (TAU * spreadIndex / Math.max(1, pieces - 1)) + rand(-0.16, 0.16);
           const dirX = Math.cos(angle);
           const dirY = Math.sin(angle);
-          const childRadius = radiusFromMass(pieceMass);
+          const childMass = pieceMasses[i];
+          const childRadius = radiusFromMass(childMass);
           const spawnDistance = cell.radius + childRadius * rand(0.92, 1.16) + rand(8, 42);
           const child = createCell(
             actor,
             clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
             clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-            pieceMass
+            childMass
           );
           child.vx = cell.vx * 0.06;
           child.vy = cell.vy * 0.06;
@@ -2857,123 +2894,6 @@
           actor.cells.push(child);
         }
         return;
-
-        if (originalMass > MAX_CELL_MASS && slots > 1) {
-          const mergeTotal = originalMass;
-          const mergeExcess = Math.max(0, mergeTotal - MAX_CELL_MASS);
-          const requiredOverflowPieces = Math.max(1, Math.ceil(mergeExcess / MAX_CELL_MASS));
-          const outputCount = Math.min(slots, 1 + requiredOverflowPieces);
-          if (mergeTotal > MAX_CELL_MASS && outputCount > 1 && mergeExcess >= MIN_CELL_MASS) {
-            const splitMasses = mergeBurstMasses(mergeTotal, outputCount);
-
-            cell.mass = splitMasses[0];
-            cell.mergeOverflowMass = 0;
-            cell.mergeBurstPieces = 1;
-            cell.mergeBurstTotal = cell.mass;
-            cell.capFramesLeft = cell.mass > MAX_CELL_MASS ? MASS_CAP_SETTLE_FRAMES : 0;
-            refreshCell(cell);
-            setMergeCooldown(cell);
-            cell.vx *= 0.14;
-            cell.vy *= 0.14;
-            cell.boostX *= 0.08;
-            cell.boostY *= 0.08;
-            cell.virusCooldown = 0.24;
-            cell.mergeVirusWindow = 0;
-            capBoost(cell, 70);
-            startCellBirth(cell, originX, originY, 0.08, 0.94);
-
-            const angles = virusFragmentAngles(outputCount - 1);
-            for (let i = 1; i < outputCount; i += 1) {
-              const angle = angles[i - 1];
-              const dirX = Math.cos(angle);
-              const dirY = Math.sin(angle);
-              const childMass = Math.max(MIN_CELL_MASS, splitMasses[i]);
-              const childRadius = radiusFromMass(childMass);
-              const spawnDistance = cell.radius + childRadius * rand(1.05, 1.52) + rand(28, 122);
-              const child = createCell(
-                actor,
-                clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-                clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-                childMass
-              );
-              child.vx = cell.vx * 0.08;
-              child.vy = cell.vy * 0.08;
-              const massDrag = clamp(Math.sqrt(90 / Math.max(20, child.mass)), 0.62, 1.12);
-              const burst = rand(900, 1320) * massDrag;
-              child.boostX = dirX * burst;
-              child.boostY = dirY * burst;
-              capBoost(child, 1120);
-              child.fragmentAge = VIRUS_FRAGMENT_LIFE;
-              child.virusCooldown = 0.24;
-              setMergeCooldown(child);
-              startCellBirth(child, originX, originY, 0.16, 0.72);
-              actor.cells.push(child);
-            }
-            return;
-          }
-        }
-
-        if (originalMass >= VIRUS_CORE_SPLIT_MASS && slots > 1) {
-          const fragmentCount = Math.min(
-            slots - 1,
-            15,
-            Math.max(5, Math.floor(originalMass / 350) + 4)
-          );
-          if (fragmentCount > 0) {
-            const fragmentBudget = Math.max(MIN_CELL_MASS * fragmentCount, originalMass * 0.5);
-            const weights = [];
-            let weightTotal = 0;
-            for (let i = 0; i < fragmentCount; i += 1) {
-              const weight = rand(0.45, 1.65);
-              weights.push(weight);
-              weightTotal += weight;
-            }
-            const fragmentMasses = weights.map((weight) => Math.max(MIN_CELL_MASS, fragmentBudget * weight / weightTotal));
-            const actualFragmentTotal = fragmentMasses.reduce((sum, mass) => sum + mass, 0);
-            const coreMass = Math.max(MIN_CELL_MASS, originalMass - actualFragmentTotal + virus.mass);
-
-            cell.mass = coreMass;
-            if (cell.mass > MAX_CELL_MASS) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
-            refreshCell(cell);
-            setMergeCooldown(cell);
-            startCellBirth(cell, originX, originY, 0.1, 0.86);
-
-            cell.vx *= 0.16;
-            cell.vy *= 0.16;
-            cell.boostX *= 0.08;
-            cell.boostY *= 0.08;
-            cell.virusCooldown = 0.38;
-            capBoost(cell, 70);
-            const angles = virusFragmentAngles(fragmentCount);
-            for (let i = 0; i < fragmentCount; i += 1) {
-              const angle = angles[i];
-              const dirX = Math.cos(angle);
-              const dirY = Math.sin(angle);
-              const childRadius = radiusFromMass(fragmentMasses[i]);
-              const spawnDistance = cell.radius + childRadius * rand(1.0, 1.42) + rand(18, 96);
-              const child = createCell(
-                actor,
-                clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-                clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-                fragmentMasses[i]
-              );
-              child.vx = cell.vx * 0.08;
-              child.vy = cell.vy * 0.08;
-              const massDrag = clamp(Math.sqrt(80 / Math.max(20, child.mass)), 0.62, 1.08);
-              const burst = rand(900, 1300) * massDrag;
-              child.boostX = dirX * burst;
-              child.boostY = dirY * burst;
-              capBoost(child, 1120);
-              child.fragmentAge = VIRUS_FRAGMENT_LIFE;
-              child.virusCooldown = 0.38;
-              setMergeCooldown(child);
-              startCellBirth(child, originX, originY, 0.2, 0.02);
-              actor.cells.push(child);
-            }
-            return;
-          }
-        }
-
       }
 
       function updateBotAI(bot, dt, now) {
