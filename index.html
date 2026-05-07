@@ -993,7 +993,7 @@
       const MAX_CELL_SPREAD = 2400;
       const WORLD_SYNC_CHUNK = 300;
       const MAX_SYNC_FOODS = 1800;
-      const MAX_SYNC_FEEDS = 900;
+      const MAX_SYNC_FEEDS = 240;
       const NETWORK_RENDER_RANGE = 2600;
       const CLIENT_WORLD_CHUNKS_PER_FRAME = 1;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
@@ -1007,6 +1007,7 @@
       const TARGET_FRAME_TIME = 1 / TARGET_FPS;
       const CLIENT_INPUT_SEND_RATE = 1 / TARGET_FPS;
       const HOST_SNAPSHOT_RATE = 1 / 60;
+      const HOST_FEED_SNAPSHOT_RATE = 1 / 12;
       const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
@@ -1176,6 +1177,7 @@
           pendingWorldChunks: [],
           lastInputSend: -100,
           lastSnapshotSend: -100,
+          lastFeedSnapshotSend: -100,
           lastWorldSend: -100
         },
         foodGridDirty: true,
@@ -3297,6 +3299,23 @@
             cell.targetY = bot.wanderY;
           }
         }
+
+        const liveCells = bot.cells.filter((cell) => !cell.dead);
+        if (liveCells.length > 1) {
+          const lead = liveCells
+            .slice()
+            .sort((a, b) => {
+              const massDiff = b.mass - a.mass;
+              if (Math.abs(massDiff) > 0.001) return massDiff;
+              return (a.id || 0) - (b.id || 0);
+            })[0];
+          const targetX = lead.targetX;
+          const targetY = lead.targetY;
+          for (const cell of liveCells) {
+            cell.targetX = targetX;
+            cell.targetY = targetY;
+          }
+        }
       }
 
       function nearestHumanCell(cell, excludeActorId = "") {
@@ -4340,6 +4359,7 @@
           setStatus("CONNECTED");
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
+            state.net.lastFeedSnapshotSend = -100;
             state.net.lastWorldSend = -100;
             sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
@@ -4387,6 +4407,7 @@
           setStatus("CONNECTED");
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
+            state.net.lastFeedSnapshotSend = -100;
             state.net.lastWorldSend = -100;
             sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
@@ -4447,6 +4468,8 @@
             while (state.foods.length < initialFood) addFood();
             const center = actorCenter(host);
             seedInitialViruses(center.x, center.y);
+          } else if (localId === "guest") {
+            spawnActor(guest, playerSpawnMass());
           }
         } else {
           const player = createActor("player", localProfileName(), "#2e90fa", true, "local");
@@ -4515,6 +4538,7 @@
         state.net.pendingWorldChunks.length = 0;
         state.net.lastInputSend = -100;
         state.net.lastSnapshotSend = -100;
+        state.net.lastFeedSnapshotSend = -100;
         state.net.lastWorldSend = -100;
         setStatus("OFFLINE");
         if (!keepWorld) resetFreshWorld("player", false);
@@ -4715,6 +4739,7 @@
           }));
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
+            state.net.lastFeedSnapshotSend = -100;
             state.net.lastWorldSend = -100;
           }
         };
@@ -4827,6 +4852,7 @@
       function sendAuthoritativeSnapshot(now, forceWorld = false) {
         if (state.net.role !== "host" || !state.net.connected) return;
         const sendFast = forceWorld || now - state.net.lastSnapshotSend >= HOST_SNAPSHOT_RATE;
+        const sendFeeds = forceWorld || now - state.net.lastFeedSnapshotSend >= HOST_FEED_SNAPSHOT_RATE;
         const sendWorld = forceWorld || now - state.net.lastWorldSend >= 1.0;
         if (!sendFast && !sendWorld) return;
 
@@ -4843,10 +4869,15 @@
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
-          actors: state.actors.map(serializeActor),
-          feeds: feedsForNetworkSync().map(serializeCircle)
+          actors: state.actors.map(serializeActor)
         };
-        if (netSend(message)) state.net.lastSnapshotSend = now;
+        if (sendFeeds) {
+          message.feeds = feedsForNetworkSync().map(serializeCircle);
+        }
+        if (netSend(message)) {
+          state.net.lastSnapshotSend = now;
+          if (sendFeeds) state.net.lastFeedSnapshotSend = now;
+        }
         if (sendWorld) {
           state.net.worldSeq += 1;
           sendWorldChunks("foods", foodsForNetworkSync().map(serializeCircle), state.net.worldSeq);
@@ -4865,7 +4896,7 @@
       function feedsForNetworkSync() {
         const liveFeeds = state.feeds.filter((feed) => !feed.dead);
         if (liveFeeds.length <= MAX_SYNC_FEEDS) return liveFeeds;
-        return networkEntitiesNearHumans(feedGrid, MAX_SYNC_FEEDS, NETWORK_RENDER_RANGE);
+        return networkEntitiesNearHumans(feedGrid, MAX_SYNC_FEEDS, Math.min(NETWORK_RENDER_RANGE, 1800));
       }
 
       function networkEntitiesNearHumans(grid, limit, range) {
@@ -4902,6 +4933,7 @@
 
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
+        if (state.spectating) return;
         const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued || state.input.cloneQueued;
         if (!urgent && now - state.net.lastInputSend < CLIENT_INPUT_SEND_RATE) return;
         netSend({
@@ -5240,7 +5272,9 @@
           ? activeActor
           : actorById(state.localActorId) || actors[0] || state.player;
 
-        state.feeds = applyEntityListSnapshot(message.feeds, "feed", state.feeds);
+        if (Array.isArray(message.feeds)) {
+          state.feeds = applyEntityListSnapshot(message.feeds, "feed", state.feeds);
+        }
       }
 
       function applyWorldChunk(message) {
@@ -5940,6 +5974,7 @@
           state.net.transport = transport;
           state.net.connected = Boolean(state.net.channel?.readyState === "open" || state.net.socket?.readyState === WebSocket.OPEN);
           state.net.lastSnapshotSend = -100;
+          state.net.lastFeedSnapshotSend = -100;
           state.net.lastWorldSend = -100;
           sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           return;
