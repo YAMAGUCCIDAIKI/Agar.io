@@ -933,12 +933,12 @@
       const RENDER_FAST_CELL_COUNT = 480;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
-      const CELL_MOVE_SPEED_SCALE = 0.6;
+      const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
       const SPLIT_BOOST_DURATION = 0.08;
-      const SPLIT_BOOST_DECAY = 1.15;
-      const SPLIT_MAX_BOOST = 680;
+      const SPLIT_BOOST_DECAY = 0.82;
+      const SPLIT_MAX_BOOST = 560;
       const SPLIT_SPAWN_OFFSET_RATIO = 0.42;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
@@ -2636,7 +2636,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(360 + radius * 0.35, 380, 620) * splitSpeedScale();
+        return clamp(285 + radius * 0.28, 300, 500) * splitSpeedScale();
       }
 
       function splitSpeedScale() {
