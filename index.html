@@ -1513,6 +1513,22 @@
         let best = null;
         let bestScore = -Infinity;
 
+        if (actor && actor.localClone && anchorActor && liveCellCount(anchorActor) > 0) {
+          let anchorCell = null;
+          for (const cell of anchorActor.cells) {
+            if (cell.dead) continue;
+            if (!anchorCell || cell.radius > anchorCell.radius) anchorCell = cell;
+          }
+          if (anchorCell) {
+            const angle = 2.399963229728653;
+            const distance = anchorCell.radius + radius + 8;
+            return {
+              x: clamp(anchorCell.x + Math.cos(angle) * distance, margin, WORLD_SIZE - margin),
+              y: clamp(anchorCell.y + Math.sin(angle) * distance, margin, WORLD_SIZE - margin)
+            };
+          }
+        }
+
         const consider = (x, y) => {
           const clampedX = clamp(x, margin, WORLD_SIZE - margin);
           const clampedY = clamp(y, margin, WORLD_SIZE - margin);
