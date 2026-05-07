@@ -1530,11 +1530,12 @@
             if (!cell.dead) anchorRadius = Math.max(anchorRadius, cell.radius);
           }
           const baseAngle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
-          const baseDistance = radius + anchorRadius + options.cellPadding + 18;
-          for (let ring = 0; ring < 3; ring += 1) {
-            const distance = baseDistance + ring * (radius * 0.55 + 140);
-            for (let i = 0; i < 32; i += 1) {
-              const angle = baseAngle + (i / 32) * TAU;
+          const massRange = clamp(Math.sqrt(Math.max(1, anchor.mass + mass)) * 3.2, 38, 150);
+          const baseDistance = radius + anchorRadius + options.cellPadding + massRange;
+          for (let ring = 0; ring < 2; ring += 1) {
+            const distance = baseDistance + ring * Math.max(54, massRange * 0.72);
+            for (let i = 0; i < 24; i += 1) {
+              const angle = baseAngle + (i / 24) * TAU;
               consider(anchor.x + Math.cos(angle) * distance, anchor.y + Math.sin(angle) * distance);
             }
           }
@@ -4739,6 +4740,25 @@
         };
       }
 
+      function renderDistanceForLocalMass(center) {
+        if (state.spectating) return WORLD_SIZE;
+        const mass = Math.max(1, center.mass || 1);
+        const spread = Math.max(0, center.spread || 0);
+        return clamp(920 + Math.sqrt(mass) * 34 + spread * 0.62, 1250, 4200);
+      }
+
+      function renderWorldBounds(visibleBounds) {
+        if (state.spectating) return visibleBounds;
+        const center = sharedLocalViewCenter(state.net.role === "client");
+        const range = renderDistanceForLocalMass(center);
+        return {
+          left: Math.max(visibleBounds.left, center.x - range),
+          right: Math.min(visibleBounds.right, center.x + range),
+          top: Math.max(visibleBounds.top, center.y - range),
+          bottom: Math.min(visibleBounds.bottom, center.y + range)
+        };
+      }
+
       function entityRenderX(entity) {
         return Number.isFinite(entity.renderX) ? entity.renderX : entity.x;
       }
@@ -5012,7 +5032,7 @@
 
       function queryRenderableCells(bounds) {
         renderCellsScratch.length = 0;
-        const queryPad = 1100;
+        const queryPad = 220;
         const candidates = state.net.role === "client"
           ? allCells(renderCellQueryScratch)
           : cellGrid.queryRect(
@@ -5051,14 +5071,15 @@
         ctx.scale(state.camera.zoom, state.camera.zoom);
         ctx.translate(-state.camera.x, -state.camera.y);
 
-        const bounds = visibleWorldBounds();
+        const viewBounds = visibleWorldBounds();
+        const bounds = renderWorldBounds(viewBounds);
         detailCellsScratch.length = 0;
         foodRenderScratch.length = 0;
         feedRenderScratch.length = 0;
         const boostedVisibleCells = queryRenderableCells(bounds);
         const renderMode = renderModeForVisibleCells(renderCellsScratch.length, boostedVisibleCells);
         state.lastRenderMode = renderMode;
-        drawGrid(bounds, renderMode);
+        drawGrid(viewBounds, renderMode);
 
         if (renderMode < 2) {
           ctx.lineWidth = 3 / state.camera.zoom;
