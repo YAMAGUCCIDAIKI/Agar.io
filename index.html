@@ -706,7 +706,7 @@
 
         <section class="online-panel" aria-label="オンライン">
           <div class="online-title">
-            <span>オンライン</span>
+            <span>オンライン2人</span>
             <span id="onlineStatus" class="online-status">オフライン</span>
           </div>
           <div class="online-controls">
@@ -715,7 +715,6 @@
             <button id="spectateBtn" type="button">観戦</button>
           </div>
           <div class="online-fields">
-            <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="wss://.../ws">
             <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
           </div>
         </section>
@@ -1000,6 +999,8 @@
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
+      const RENDER_SIMPLE_CELL_COUNT = 280;
+      const RENDER_FAST_CELL_COUNT = 480;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const TARGET_FPS = 256;
@@ -1166,7 +1167,6 @@
           peerConn: null,
           connectTimer: 0,
           socket: null,
-          playerId: "",
           connected: false,
           status: "OFFLINE",
           iceCandidates: 0,
@@ -1271,15 +1271,6 @@
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
-      }
-
-      function hashString(value) {
-        let hash = 0;
-        const text = String(value || "");
-        for (let i = 0; i < text.length; i += 1) {
-          hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-        }
-        return hash;
       }
 
       function distSq(ax, ay, bx, by) {
@@ -1724,10 +1715,6 @@
         return actor ? actor.color : "#2e90fa";
       }
 
-      function playerColorForId(id) {
-        return playerPalette[Math.abs(hashString(id)) % playerPalette.length] || "#2e90fa";
-      }
-
       function remoteCloneActor(baseId = "guest") {
         return state.actors.find((actor) => actor.id === localCloneId(baseId) && actor.localClone) || null;
       }
@@ -1930,21 +1917,6 @@
         return clone;
       }
 
-      function ensureRemotePlayerActor(id, name = "") {
-        const safeId = String(id || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32);
-        if (!safeId) return null;
-        let actor = actorById(safeId);
-        if (!actor) {
-          actor = createActor(safeId, sanitizeProfileText(name, safeId.toUpperCase(), 18), playerColorForId(safeId), true, "remote");
-          state.actors.push(actor);
-          spawnActor(actor, playerSpawnMass());
-        }
-        actor.name = sanitizeProfileText(name, actor.name || safeId.toUpperCase(), 18);
-        actor.isHuman = true;
-        actor.control = isLocalControlledActorId(actor.id) ? "local" : "remote";
-        return actor;
-      }
-
       function displayActorName(actor) {
         if (actor && actor.isHuman) return actor.name || (actor.control === "local" ? "自分" : "P2");
         return actor ? actor.name : "";
@@ -1984,7 +1956,6 @@
           "RELAY NG": "リレー失敗",
           "RELAY SEND NG": "リレー送信失敗",
           "RELAY CLOSED": "リレー切断",
-          "PROMOTED HOST": "ホスト引継ぎ",
           "HOST RESET": "ホストでリセット",
           "PEERJS LOAD NG": "PeerJS読込失敗"
         };
@@ -2003,14 +1974,10 @@
       }
 
       function defaultRelayUrl() {
-        const params = new URLSearchParams(location.search);
-        const fromQuery = params.get("relay") || params.get("relayUrl");
-        if (fromQuery && /^wss?:\/\//i.test(fromQuery)) return fromQuery;
-        if (window.AGAR_RELAY_URL && /^wss?:\/\//i.test(window.AGAR_RELAY_URL)) return window.AGAR_RELAY_URL;
         if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
           return `ws://${location.host}/ws`;
         }
-        return "";
+        return "ws://localhost:8080/ws";
       }
 
       function ensureRelayDefaults() {
@@ -2103,8 +2070,6 @@
           profile: { ...state.profile },
           keyBindings: { ...state.keyBindings },
           viewScale: state.viewScale,
-          relayUrl: serverUrlBox ? serverUrlBox.value.trim() : "",
-          room: roomBox ? roomBox.value.trim() : "",
           settings: {
             botTarget: state.settings.botTarget,
             botMode: state.settings.botMode,
@@ -2195,8 +2160,6 @@
           if (saved.activeColorHighlight != null) state.settings.activeColorHighlight = Boolean(saved.activeColorHighlight);
         }
         if (Number.isFinite(prefs.viewScale)) state.viewScale = clamp(prefs.viewScale, 0.55, 2.2);
-        if (serverUrlBox && typeof prefs.relayUrl === "string") serverUrlBox.value = prefs.relayUrl.trim();
-        if (roomBox && typeof prefs.room === "string") roomBox.value = prefs.room.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24);
       }
 
       function actionForKey(code) {
@@ -3959,6 +3922,21 @@
           actor.cells = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_CELL_MASS);
         }
 
+        const guest = actorById("guest");
+        const guestClone = remoteCloneActor("guest");
+        if (guest || guestClone) {
+          const guestActors = [guest, guestClone].filter(Boolean);
+          const liveGuestActors = guestActors.filter((actor) => actor.cells.length > 0);
+          if (!liveGuestActors.length && guest) {
+            for (let i = state.actors.length - 1; i >= 0; i -= 1) {
+              if (state.actors[i].id === localCloneId("guest")) state.actors.splice(i, 1);
+            }
+            guest.localClone = false;
+            spawnActor(guest, playerSpawnMass());
+            state.flashUntil = state.now + 1.25;
+          }
+        }
+
         const localActors = localHumanActors();
         if (localActors.length) {
           const liveLocalActors = localActors.filter((actor) => actor.cells.length > 0);
@@ -3980,6 +3958,7 @@
 
         for (const actor of state.actors) {
           if (actor.control === "local" && actor.isHuman) continue;
+          if (actor.id === "guest" || actor.id === localCloneId("guest")) continue;
           if (actor.cells.length === 0) {
             if (actor.isHuman) {
               spawnActor(actor, playerSpawnMass());
@@ -4457,15 +4436,16 @@
         state.nextBotIndex = 0;
 
         if (onlineMode) {
-          const localColor = localId === "host" ? "#2e90fa" : playerColorForId(localId);
-          const local = createActor(localId, localProfileName(), localColor, true, "local");
-          state.actors.push(local);
-          state.player = local;
-          if (state.net.role === "host" || localId === "host") {
-            spawnActor(local, playerSpawnMass());
+          const host = createActor("host", localId === "host" ? localProfileName() : "P1", "#2e90fa", true, localId === "host" ? "local" : "remote");
+          const guest = createActor("guest", localId === "guest" ? localProfileName() : "P2", "#f04438", true, localId === "guest" ? "local" : "remote");
+          state.actors.push(host, guest);
+          state.player = localId === "guest" ? guest : host;
+          if (localId === "host") {
+            spawnActor(host, playerSpawnMass());
+            spawnActor(guest, playerSpawnMass());
             const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
             while (state.foods.length < initialFood) addFood();
-            const center = actorCenter(local);
+            const center = actorCenter(host);
             seedInitialViruses(center.x, center.y);
           }
         } else {
@@ -4706,20 +4686,18 @@
         }
 
         ensureRelayDefaults();
-        const url = serverUrlBox ? serverUrlBox.value.trim() : defaultRelayUrl();
+        const url = serverUrlBox.value.trim();
         if (!/^wss?:\/\//i.test(url)) {
           setStatus("SET RELAY URL");
-          if (serverUrlBox) serverUrlBox.focus();
+          serverUrlBox.focus();
           return;
         }
         const room = roomBox.value.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
         roomBox.value = room;
-        saveLocalPreferences();
 
         closeNetwork(true);
-        const startsAsHost = role === "host";
-        resetFreshWorld(startsAsHost ? "host" : "guest", true);
-        state.net.role = startsAsHost ? "host" : "client";
+        resetFreshWorld(role === "host" ? "host" : "guest", true);
+        state.net.role = role === "host" ? "host" : "client";
         state.net.transport = "relay";
         state.net.connected = false;
         setStatus("RELAY CONNECT");
@@ -4733,8 +4711,7 @@
           socket.send(JSON.stringify({
             t: "relayJoin",
             room,
-            role: state.net.role,
-            name: localProfileName(false)
+            role: state.net.role
           }));
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
@@ -4764,32 +4741,14 @@
         }
 
         if (message.t === "relayReady") {
-          if (message.playerId && state.net.playerId !== message.playerId) {
-            state.net.playerId = message.playerId;
-            resetFreshWorld(state.net.playerId, true);
-          }
-          setStatus(`ROOM ${message.peers}`);
+          setStatus(`ROOM ${message.peers}/2`);
           return;
         }
 
         if (message.t === "relayPeer") {
-          setStatus(`PEER ${message.peers}`);
+          setStatus(`PEER ${message.peers}/2`);
           if (state.net.role === "host" && message.peers >= 2) {
             sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
-          }
-          return;
-        }
-
-        if (message.t === "relayPromoteHost") {
-          promoteRelayClientToHost(message.snapshot || null);
-          return;
-        }
-
-        if (message.t === "relayDemoteClient") {
-          if (state.net.transport === "relay" && state.net.role === "host") {
-            state.net.role = "client";
-            state.net.lastInputSend = -100;
-            setStatus("RELAY JOIN");
           }
           return;
         }
@@ -4800,21 +4759,6 @@
         }
 
         handleNetMessage(JSON.stringify(message));
-      }
-
-      function promoteRelayClientToHost(snapshot = null) {
-        if (state.net.transport !== "relay") return;
-        state.net.role = "host";
-        state.net.connected = Boolean(state.net.socket?.readyState === WebSocket.OPEN);
-        if (snapshot) {
-          applySnapshot(snapshot);
-        } else {
-          resetFreshWorld(state.net.playerId || state.localActorId || "host", true);
-        }
-        state.net.lastSnapshotSend = -100;
-        state.net.lastWorldSend = -100;
-        setStatus("PROMOTED HOST");
-        sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
       }
 
       function serializeCell(cell) {
@@ -4962,9 +4906,6 @@
         if (!urgent && now - state.net.lastInputSend < CLIENT_INPUT_SEND_RATE) return;
         netSend({
           t: "input",
-          playerId: state.net.playerId || state.localActorId || state.player.id,
-          name: localProfileName(false),
-          cloneName: localProfileName(true),
           activeActorId: state.input.activeActorId || state.player.id,
           targetX: state.player.input.targetX,
           targetY: state.player.input.targetY,
@@ -5053,22 +4994,20 @@
         }
 
         if (state.net.role === "host" && message.t === "input") {
-          const playerId = typeof message.playerId === "string" ? message.playerId : (typeof message.activeActorId === "string" ? message.activeActorId.replace(/-clone-1$/, "") : "guest");
-          const guest = ensureRemotePlayerActor(playerId, message.name || "");
+          const guest = actorById("guest");
           if (!guest) return;
           let urgentInput = false;
           const cloneSeq = Number(message.cloneSeq) || 0;
-          let guestClone = remoteCloneActor(guest.id);
+          let guestClone = remoteCloneActor("guest");
           if (cloneSeq > guest.input.lastNetCloneSeq) {
             guestClone = handleRemoteCloneToggle(guest);
-            if (guestClone && message.cloneName) guestClone.name = sanitizeProfileText(message.cloneName, guestClone.name, 18);
             guest.input.lastNetCloneSeq = cloneSeq;
             urgentInput = true;
           }
 
-          const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : guest.id;
-          guestClone = remoteCloneActor(guest.id);
-          let activeGuest = requestedActorId === localCloneId(guest.id) && guestClone ? guestClone : guest;
+          const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : "guest";
+          guestClone = remoteCloneActor("guest");
+          let activeGuest = requestedActorId === localCloneId("guest") && guestClone ? guestClone : guest;
           if (activeGuest.cells.length === 0 && guest.cells.length > 0) activeGuest = guest;
           if (activeGuest.cells.length === 0 && guestClone && guestClone.cells.length > 0) activeGuest = guestClone;
           for (const actor of [guest, guestClone]) {
@@ -5294,14 +5233,7 @@
           }
           if (settingsChanged) syncSettingsControls();
         }
-        const previousLocalActor = actorById(state.localActorId);
         const actors = (message.actors || []).map(applyActorSnapshot);
-        if (state.net.role === "client" && state.localActorId && !actors.some((actor) => actor.id === state.localActorId)) {
-          const local = previousLocalActor || createActor(state.localActorId, localProfileName(), playerColorForId(state.localActorId), true, "local");
-          local.control = "local";
-          local.isHuman = true;
-          actors.push(local);
-        }
         state.actors = actors;
         const activeActor = actorById(state.input.activeActorId);
         state.player = activeActor && activeActor.control === "local"
@@ -5477,7 +5409,7 @@
       }
 
       function drawVirus(virus, renderMode = 0) {
-        const spikes = 10;
+        const spikes = 20;
         const centerX = entityRenderX(virus);
         const centerY = entityRenderY(virus);
         const points = virusSpikePoints(spikes);
@@ -5618,6 +5550,14 @@
         ctx.restore();
       }
 
+      function renderModeForVisibleCells(count, boostedCount = 0) {
+        if (boostedCount >= 180) return 2;
+        if (boostedCount >= 70) return 1;
+        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 45) return 2;
+        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 55) return 1;
+        return 0;
+      }
+
       function queryRenderableCells(bounds) {
         renderCellsScratch.length = 0;
         const queryPad = 220;
@@ -5630,10 +5570,13 @@
             bounds.bottom + queryPad,
             renderCellQueryScratch
           );
+        let boostedVisibleCells = 0;
         for (const cell of candidates) {
           if (!isVisible(cell, bounds, 80)) continue;
           renderCellsScratch.push(cell);
+          if (!isLocalViewActor(cell.actor) && cell.splitBoostAge > 0) boostedVisibleCells += 1;
         }
+        return boostedVisibleCells;
       }
 
       function queryRenderableFeeds(bounds) {
@@ -5661,8 +5604,8 @@
         detailCellsScratch.length = 0;
         foodRenderScratch.length = 0;
         feedRenderScratch.length = 0;
-        queryRenderableCells(bounds);
-        const renderMode = 0;
+        const boostedVisibleCells = queryRenderableCells(bounds);
+        const renderMode = renderModeForVisibleCells(renderCellsScratch.length, boostedVisibleCells);
         state.lastRenderMode = renderMode;
         drawGrid(viewBounds, renderMode);
 
@@ -6091,7 +6034,7 @@
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
         }
-        hostBtn.addEventListener("click", () => startRelayOnline("client"));
+        hostBtn.addEventListener("click", joinOrHostRoom);
         if (joinBtn) joinBtn.addEventListener("click", () => {
           joinRoom();
         });
@@ -6256,7 +6199,8 @@
             update(stepDt, state.simTime, realNow);
           }
         }
-        draw();
+        const skipRender = state.lastRenderMode >= 2 && state.fps < 42 && state.frameIndex % 2 === 1;
+        if (!skipRender) draw();
         const elapsed = performance.now() - frameStartedAt;
         scheduleNextFrame(TARGET_FRAME_TIME * 1000 - elapsed);
       }
