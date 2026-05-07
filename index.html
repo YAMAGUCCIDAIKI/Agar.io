@@ -676,6 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.1</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -873,6 +874,7 @@
       const massEl = document.getElementById("mass");
       const cellsEl = document.getElementById("cells");
       const fpsEl = document.getElementById("fps");
+      const versionEl = document.getElementById("version");
       const scoreboardEl = document.getElementById("scoreboard");
       const flashEl = document.getElementById("flash");
       const menuBtn = document.getElementById("menuBtn");
@@ -953,6 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
+      const APP_VERSION = "v2026.05.08.1";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1616,13 +1619,32 @@
         return false;
       }
 
+      function actorFamilyId(id) {
+        const text = String(id || "");
+        if (text === "local-clone-1") return state.localActorId || "player";
+        return text.endsWith("-clone-1") ? text.slice(0, -8) : text;
+      }
+
+      function protectCellFamily(ownerId, until) {
+        const family = actorFamilyId(ownerId);
+        for (const actor of state.actors) {
+          if (actorFamilyId(actor.id) !== family) continue;
+          for (const cell of actor.cells) {
+            if (cell.dead) continue;
+            cell.ateProtectUntil = Math.max(cell.ateProtectUntil || 0, until);
+          }
+        }
+      }
+
       function markCellConsumed(eater, victim) {
         victim.dead = true;
         victim.eatenFrame = state.frameIndex;
         victim.eatenByOwnerId = eater.ownerId;
         victim.eatenByCellId = eater.id;
         eater.ateCellFrame = state.frameIndex;
-        eater.ateProtectUntil = Math.max(eater.ateProtectUntil || 0, state.now + 0.35);
+        const protectUntil = state.now + 0.35;
+        eater.ateProtectUntil = Math.max(eater.ateProtectUntil || 0, protectUntil);
+        if (actorFamilyId(eater.ownerId) !== actorFamilyId(victim.ownerId)) protectCellFamily(eater.ownerId, protectUntil);
         addConsumedMass(eater, victim.mass);
       }
 
@@ -4144,6 +4166,7 @@
         massEl.textContent = state.spectating ? "観戦" : String(Math.round(playerMass));
         cellsEl.textContent = state.spectating ? "-" : `${state.player.cells.length}/${MAX_CELLS}`;
         fpsEl.textContent = String(Math.round(state.fps));
+        versionEl.textContent = APP_VERSION;
 
         const ranked = state.actors
           .map((actor) => ({ actor, mass: totalMass(actor) }))
