@@ -943,8 +943,8 @@
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_COOLDOWN = 0.22;
-      const SPLIT_HOLD_DURATION = 0.075;
-      const MAX_QUEUED_SPLITS_PER_FRAME = 4;
+      const SPLIT_HOLD_DURATION = 0.045;
+      const QUEUED_SPLIT_INTERVAL = 0.075;
       const ACTIVE_CONTROL_COLOR = "#fff200";
       const ACTIVE_CONTROL_STROKE = "#111827";
 
@@ -1541,6 +1541,7 @@
           lastSplit: -100,
           lastSplitFrame: -1,
           lastSplitRecoilAt: -100,
+          nextQueuedSplitAt: -100,
           lastMergeFrame: -1,
           mergeCancelUntil: new Map(),
           mergeDominantByPair: new Map(),
@@ -3882,24 +3883,23 @@
               actor.input.splitLockX = aim.x;
               actor.input.splitLockY = aim.y;
               actor.input.splitLockActive = true;
+              actor.nextQueuedSplitAt = Math.min(actor.nextQueuedSplitAt, now);
             }
 
             let remaining = Math.max(1, actor.input.splitCount || 1);
             let didAnySplit = false;
-            let splitBudget = MAX_QUEUED_SPLITS_PER_FRAME;
-            while (remaining > 0 && splitBudget > 0 && liveCellCount(actor) < MAX_CELLS) {
+            if (remaining > 0 && now >= actor.nextQueuedSplitAt && liveCellCount(actor) < MAX_CELLS) {
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
                 remaining = 0;
-                break;
               } else {
                 didAnySplit = true;
                 remaining -= 1;
-                splitBudget -= 1;
+                actor.nextQueuedSplitAt = now + QUEUED_SPLIT_INTERVAL;
               }
             }
 
             actor.input.splitCount = Math.max(0, remaining);
-            if (actor.input.splitCount <= 0 || !didAnySplit || liveCellCount(actor) >= MAX_CELLS) {
+            if (actor.input.splitCount <= 0 || (!didAnySplit && liveCellCount(actor) >= MAX_CELLS)) {
               actor.input.splitQueued = false;
               actor.input.splitCount = 0;
               actor.input.splitLockActive = false;
