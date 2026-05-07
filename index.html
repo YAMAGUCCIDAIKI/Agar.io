@@ -1616,6 +1616,19 @@
         return false;
       }
 
+      function markCellConsumed(eater, victim) {
+        victim.dead = true;
+        victim.eatenFrame = state.frameIndex;
+        victim.eatenByOwnerId = eater.ownerId;
+        victim.eatenByCellId = eater.id;
+        eater.ateCellFrame = state.frameIndex;
+        addConsumedMass(eater, victim.mass);
+      }
+
+      function canBeCellVictim(cell) {
+        return !cell.dead && cell.ateCellFrame !== state.frameIndex;
+      }
+
       function createActor(id, name, color, isHuman = false, control = null) {
         return {
           id,
@@ -3935,10 +3948,9 @@
           if (eater.dead) continue;
           const nearbyCells = cellGrid.query(eater.x, eater.y, eater.radius + 650, cellQueryScratch);
           for (const victim of nearbyCells) {
-            if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsume(eater, victim)) continue;
-            victim.dead = true;
-            addConsumedMass(eater, victim.mass);
+            markCellConsumed(eater, victim);
           }
         }
         handleSweptCellEating(cells);
@@ -3951,20 +3963,18 @@
         for (const eater of cells) {
           if (eater.dead) continue;
           for (const victim of sweptCells) {
-            if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
-            victim.dead = true;
-            addConsumedMass(eater, victim.mass);
+            markCellConsumed(eater, victim);
           }
         }
 
         for (const eater of sweptCells) {
           if (eater.dead) continue;
           for (const victim of cells) {
-            if (victim.dead || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
-            victim.dead = true;
-            addConsumedMass(eater, victim.mass);
+            markCellConsumed(eater, victim);
           }
         }
       }
