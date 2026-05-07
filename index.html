@@ -774,14 +774,14 @@
         </label>
         <label class="setting-control">
           <span>分裂速度</span>
-          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="100" aria-label="分裂速度">
-          <strong id="splitSpeedValue">100</strong>
+          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="70" aria-label="分裂速度">
+          <strong id="splitSpeedValue">70</strong>
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
           <span>最低飛距離</span>
-          <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="80" aria-label="分裂の最低飛距離">
-          <strong id="splitMinDistanceValue">80</strong>
+          <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="160" aria-label="分裂の最低飛距離">
+          <strong id="splitMinDistanceValue">160</strong>
           <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
         </label>
         <label class="setting-control">
@@ -906,8 +906,8 @@
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 0;
-      const DEFAULT_SPLIT_SPEED = 100;
-      const DEFAULT_SPLIT_MIN_DISTANCE = 80;
+      const DEFAULT_SPLIT_SPEED = 70;
+      const DEFAULT_SPLIT_MIN_DISTANCE = 160;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
       const BOT_SPAWN_MASS = 132;
@@ -936,8 +936,8 @@
       const CELL_MOVE_SPEED_SCALE = 0.6;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
-      const SPLIT_BOOST_DURATION = 0.28;
-      const SPLIT_BOOST_DECAY = 5.2;
+      const SPLIT_BOOST_DURATION = 0.72;
+      const SPLIT_BOOST_DECAY = 1.8;
       const SPLIT_MAX_BOOST = 680;
       const SPLIT_SPAWN_OFFSET_RATIO = 0.42;
       const SPLIT_SPREAD_ALLOWANCE = 900;
