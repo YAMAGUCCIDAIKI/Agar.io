@@ -2103,8 +2103,6 @@
           birthScale: 1,
           fragmentAge: 0,
           splitBoostAge: 0,
-          splitLineX: 0,
-          splitLineY: 0,
           separationGraceUntil: 0,
           splitRecoilFrame: -1,
           splitRecoilApplied: 0,
@@ -2707,10 +2705,6 @@
         source.faceY = dirY;
         child.faceX = dirX;
         child.faceY = dirY;
-        source.splitLineX = dirX;
-        source.splitLineY = dirY;
-        child.splitLineX = dirX;
-        child.splitLineY = dirY;
         const impulse = splitImpulse(child.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
@@ -3223,12 +3217,10 @@
 
             const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
             const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
-            const instantControl = receivesPlayerInput(actor) && !hasSplitMomentum && cell.fragmentAge <= 0;
+            const instantControl = receivesPlayerInput(actor) && cell.fragmentAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
-            const n = hasSplitMomentum && Number.isFinite(cell.splitLineX) && Number.isFinite(cell.splitLineY)
-              ? normalized(cell.splitLineX, cell.splitLineY, dx, dy)
-              : normalized(dx, dy, 0, 0);
+            const n = normalized(dx, dy, 0, 0);
             const speed = cellSpeed(cell);
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
             cell.instantFacing = instantControl;
