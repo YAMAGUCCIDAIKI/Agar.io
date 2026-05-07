@@ -999,8 +999,6 @@
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
-      const RENDER_SIMPLE_CELL_COUNT = 280;
-      const RENDER_FAST_CELL_COUNT = 480;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const TARGET_FPS = 256;
@@ -1956,6 +1954,7 @@
           "RELAY NG": "リレー失敗",
           "RELAY SEND NG": "リレー送信失敗",
           "RELAY CLOSED": "リレー切断",
+          "PROMOTED HOST": "ホスト引継ぎ",
           "HOST RESET": "ホストでリセット",
           "PEERJS LOAD NG": "PeerJS読込失敗"
         };
@@ -4686,18 +4685,19 @@
         }
 
         ensureRelayDefaults();
-        const url = serverUrlBox.value.trim();
+        const url = serverUrlBox ? serverUrlBox.value.trim() : defaultRelayUrl();
         if (!/^wss?:\/\//i.test(url)) {
           setStatus("SET RELAY URL");
-          serverUrlBox.focus();
+          if (serverUrlBox) serverUrlBox.focus();
           return;
         }
         const room = roomBox.value.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
         roomBox.value = room;
 
         closeNetwork(true);
-        resetFreshWorld(role === "host" ? "host" : "guest", true);
-        state.net.role = role === "host" ? "host" : "client";
+        const startsAsHost = role === "host";
+        resetFreshWorld(startsAsHost ? "host" : "guest", true);
+        state.net.role = startsAsHost ? "host" : "client";
         state.net.transport = "relay";
         state.net.connected = false;
         setStatus("RELAY CONNECT");
@@ -4753,12 +4753,41 @@
           return;
         }
 
+        if (message.t === "relayPromoteHost") {
+          promoteRelayClientToHost(message.snapshot || null);
+          return;
+        }
+
+        if (message.t === "relayDemoteClient") {
+          if (state.net.transport === "relay" && state.net.role === "host") {
+            state.net.role = "client";
+            state.net.lastInputSend = -100;
+            setStatus("RELAY JOIN");
+          }
+          return;
+        }
+
         if (message.t === "relayError") {
           setStatus(message.message || "RELAY ERROR");
           return;
         }
 
         handleNetMessage(JSON.stringify(message));
+      }
+
+      function promoteRelayClientToHost(snapshot = null) {
+        if (state.net.transport !== "relay") return;
+        state.net.role = "host";
+        state.net.connected = Boolean(state.net.socket?.readyState === WebSocket.OPEN);
+        if (snapshot) {
+          applySnapshot(snapshot);
+        } else {
+          resetFreshWorld("host", true);
+        }
+        state.net.lastSnapshotSend = -100;
+        state.net.lastWorldSend = -100;
+        setStatus("PROMOTED HOST");
+        sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
       }
 
       function serializeCell(cell) {
@@ -5409,7 +5438,7 @@
       }
 
       function drawVirus(virus, renderMode = 0) {
-        const spikes = 20;
+        const spikes = 10;
         const centerX = entityRenderX(virus);
         const centerY = entityRenderY(virus);
         const points = virusSpikePoints(spikes);
@@ -5550,14 +5579,6 @@
         ctx.restore();
       }
 
-      function renderModeForVisibleCells(count, boostedCount = 0) {
-        if (boostedCount >= 180) return 2;
-        if (boostedCount >= 70) return 1;
-        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 45) return 2;
-        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 55) return 1;
-        return 0;
-      }
-
       function queryRenderableCells(bounds) {
         renderCellsScratch.length = 0;
         const queryPad = 220;
@@ -5570,13 +5591,10 @@
             bounds.bottom + queryPad,
             renderCellQueryScratch
           );
-        let boostedVisibleCells = 0;
         for (const cell of candidates) {
           if (!isVisible(cell, bounds, 80)) continue;
           renderCellsScratch.push(cell);
-          if (!isLocalViewActor(cell.actor) && cell.splitBoostAge > 0) boostedVisibleCells += 1;
         }
-        return boostedVisibleCells;
       }
 
       function queryRenderableFeeds(bounds) {
@@ -5604,8 +5622,8 @@
         detailCellsScratch.length = 0;
         foodRenderScratch.length = 0;
         feedRenderScratch.length = 0;
-        const boostedVisibleCells = queryRenderableCells(bounds);
-        const renderMode = renderModeForVisibleCells(renderCellsScratch.length, boostedVisibleCells);
+        queryRenderableCells(bounds);
+        const renderMode = 0;
         state.lastRenderMode = renderMode;
         drawGrid(viewBounds, renderMode);
 
@@ -6034,7 +6052,7 @@
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
         }
-        hostBtn.addEventListener("click", joinOrHostRoom);
+        hostBtn.addEventListener("click", () => startRelayOnline("client"));
         if (joinBtn) joinBtn.addEventListener("click", () => {
           joinRoom();
         });
@@ -6199,8 +6217,7 @@
             update(stepDt, state.simTime, realNow);
           }
         }
-        const skipRender = state.lastRenderMode >= 2 && state.fps < 42 && state.frameIndex % 2 === 1;
-        if (!skipRender) draw();
+        draw();
         const elapsed = performance.now() - frameStartedAt;
         scheduleNextFrame(TARGET_FRAME_TIME * 1000 - elapsed);
       }

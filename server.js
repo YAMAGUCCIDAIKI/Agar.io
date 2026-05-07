@@ -5,6 +5,7 @@ const crypto = require("crypto");
 
 const PORT = Number(process.env.PORT || 8080);
 const ROOT = __dirname;
+const HOST_TIMEOUT_MS = 2200;
 const rooms = new Map();
 
 function sendHttp(res, status, body, type = "text/plain; charset=utf-8") {
@@ -66,10 +67,13 @@ server.on("upgrade", (req, socket) => {
 
   const client = {
     socket,
+    id: crypto.randomBytes(8).toString("hex"),
     room: "",
-    role: "",
+    role: "client",
     buffer: Buffer.alloc(0),
-    alive: true
+    alive: true,
+    joinedAt: Date.now(),
+    lastMessageAt: Date.now()
   };
 
   socket.on("data", (chunk) => {
@@ -80,6 +84,22 @@ server.on("upgrade", (req, socket) => {
   socket.on("close", () => leaveRoom(client));
   socket.on("error", () => leaveRoom(client));
 });
+
+function roomState(roomId) {
+  let room = rooms.get(roomId);
+  if (!room) {
+    room = {
+      id: roomId,
+      clients: new Set(),
+      host: null,
+      snapshot: null,
+      world: new Map(),
+      lastHostMessageAt: 0
+    };
+    rooms.set(roomId, room);
+  }
+  return room;
+}
 
 function readFrames(client) {
   while (client.buffer.length >= 2) {
@@ -135,52 +155,108 @@ function handleMessage(client, text) {
     return;
   }
 
+  client.lastMessageAt = Date.now();
   if (message.t === "relayJoin") {
     joinRoom(client, String(message.room || "").trim(), String(message.role || ""));
     return;
   }
 
   if (!client.room) return;
-  const peers = rooms.get(client.room);
-  if (!peers) return;
-  for (const peer of peers) {
+  const room = rooms.get(client.room);
+  if (!room) return;
+
+  if (client === room.host) {
+    room.lastHostMessageAt = Date.now();
+    if (message.t === "snapshot") room.snapshot = message;
+    if (message.t === "world") room.world.set(`${message.kind}:${message.seq}:${message.index}`, message);
+  }
+
+  for (const peer of room.clients) {
     if (peer !== client) sendJson(peer, message);
   }
 }
 
 function joinRoom(client, requestedRoom, role) {
   const roomId = requestedRoom.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
-  let peers = rooms.get(roomId);
-  if (!peers) {
-    peers = new Set();
-    rooms.set(roomId, peers);
-  }
-
-  if (!peers.has(client) && peers.size >= 2) {
-    sendJson(client, { t: "relayError", message: "ROOM_FULL" });
-    return;
-  }
+  if (client.room && client.room !== roomId) leaveRoom(client, false);
+  const room = roomState(roomId);
 
   client.room = roomId;
-  client.role = role;
-  peers.add(client);
-  sendJson(client, { t: "relayReady", room: roomId, peers: peers.size });
-  for (const peer of peers) {
-    sendJson(peer, { t: "relayPeer", room: roomId, peers: peers.size });
+  client.role = role === "host" ? "host" : "client";
+  client.alive = true;
+  client.joinedAt = Date.now();
+  room.clients.add(client);
+
+  if (!room.host || !room.clients.has(room.host)) {
+    promoteHost(room, client);
+  } else {
+    sendJson(client, { t: "relayReady", room: roomId, peers: room.clients.size, host: room.host.id });
+    if (room.snapshot) sendJson(client, room.snapshot);
+    for (const worldMessage of room.world.values()) sendJson(client, worldMessage);
+  }
+  broadcastPeerCount(room);
+}
+
+function promoteHost(room, client = null) {
+  const previousHost = room.host;
+  const nextHost = client || [...room.clients].sort((a, b) => a.joinedAt - b.joinedAt)[0] || null;
+  room.host = nextHost;
+  room.lastHostMessageAt = Date.now();
+  if (!nextHost) return;
+  if (previousHost && previousHost !== nextHost && room.clients.has(previousHost)) {
+    previousHost.role = "client";
+    sendJson(previousHost, { t: "relayDemoteClient", room: room.id });
+  }
+  nextHost.role = "host";
+  sendJson(nextHost, {
+    t: "relayPromoteHost",
+    room: room.id,
+    snapshot: room.snapshot
+  });
+}
+
+function broadcastPeerCount(room) {
+  for (const peer of room.clients) {
+    sendJson(peer, {
+      t: "relayPeer",
+      room: room.id,
+      peers: room.clients.size,
+      host: room.host ? room.host.id : ""
+    });
   }
 }
 
-function leaveRoom(client) {
-  if (!client.alive) return;
-  client.alive = false;
+function leaveRoom(client, markDead = true) {
+  if (markDead) client.alive = false;
   if (!client.room) return;
-  const peers = rooms.get(client.room);
-  if (!peers) return;
-  peers.delete(client);
-  for (const peer of peers) {
-    sendJson(peer, { t: "relayPeer", room: client.room, peers: peers.size });
+  const room = rooms.get(client.room);
+  if (!room) return;
+  room.clients.delete(client);
+  if (room.host === client) {
+    room.host = null;
+    promoteHost(room);
   }
-  if (peers.size === 0) rooms.delete(client.room);
+  broadcastPeerCount(room);
+  client.room = "";
+}
+
+function checkRooms() {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    if (!room.host && room.clients.size) {
+      promoteHost(room);
+      broadcastPeerCount(room);
+      continue;
+    }
+    if (room.host && now - room.lastHostMessageAt > HOST_TIMEOUT_MS) {
+      const candidates = [...room.clients].filter((client) => client !== room.host);
+      if (candidates.length) {
+        room.host = null;
+        promoteHost(room, candidates.sort((a, b) => a.joinedAt - b.joinedAt)[0]);
+        broadcastPeerCount(room);
+      }
+    }
+  }
 }
 
 function sendJson(client, message) {
@@ -207,6 +283,8 @@ function sendFrame(socket, payload, opcode = 0x1) {
   }
   socket.write(Buffer.concat([header, payload]));
 }
+
+setInterval(checkRooms, 500);
 
 server.listen(PORT, () => {
   console.log(`Agar relay ready: http://localhost:${PORT}`);
