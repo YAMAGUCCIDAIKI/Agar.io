@@ -774,8 +774,8 @@
         </label>
         <label class="setting-control">
           <span>分裂速度</span>
-          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="140" aria-label="分裂速度">
-          <strong id="splitSpeedValue">140</strong>
+          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="110" aria-label="分裂速度">
+          <strong id="splitSpeedValue">110</strong>
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
@@ -906,7 +906,7 @@
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 0;
-      const DEFAULT_SPLIT_SPEED = 140;
+      const DEFAULT_SPLIT_SPEED = 110;
       const DEFAULT_SPLIT_MIN_DISTANCE = 160;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
@@ -2103,6 +2103,8 @@
           birthScale: 1,
           fragmentAge: 0,
           splitBoostAge: 0,
+          splitLineX: 0,
+          splitLineY: 0,
           separationGraceUntil: 0,
           splitRecoilFrame: -1,
           splitRecoilApplied: 0,
@@ -2679,12 +2681,6 @@
         if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
         assignSplitPriority(actor, source);
 
-        if (targetX != null && targetY != null) {
-          const aim = normalized(targetX - source.x, targetY - source.y, dirX, dirY);
-          dirX = aim.x;
-          dirY = aim.y;
-        }
-
         const childMass = source.mass * 0.5;
         const remaining = source.mass - childMass;
         if (childMass < MIN_CELL_MASS || remaining < MIN_CELL_MASS) return null;
@@ -2711,6 +2707,10 @@
         source.faceY = dirY;
         child.faceX = dirX;
         child.faceY = dirY;
+        source.splitLineX = dirX;
+        source.splitLineY = dirY;
+        child.splitLineX = dirX;
+        child.splitLineY = dirY;
         const impulse = splitImpulse(child.radius);
         child.boostX = dirX * impulse;
         child.boostY = dirY * impulse;
@@ -3221,10 +3221,14 @@
               cell.targetY = actor.input.targetY;
             }
 
-            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
+            const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
+            const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
+            const instantControl = receivesPlayerInput(actor) && !hasSplitMomentum && cell.fragmentAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
-            const n = normalized(dx, dy, 0, 0);
+            const n = hasSplitMomentum && Number.isFinite(cell.splitLineX) && Number.isFinite(cell.splitLineY)
+              ? normalized(cell.splitLineX, cell.splitLineY, dx, dy)
+              : normalized(dx, dy, 0, 0);
             const speed = cellSpeed(cell);
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
             cell.instantFacing = instantControl;
@@ -3236,8 +3240,6 @@
 
             cell.vx += (desiredX - cell.vx) * steer;
             cell.vy += (desiredY - cell.vy) * steer;
-            const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
-            const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
               : (hasSplitMomentum ? SPLIT_MAX_BOOST * splitSpeedScale() : 720);
