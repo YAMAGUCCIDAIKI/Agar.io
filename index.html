@@ -710,20 +710,13 @@
             <span id="onlineStatus" class="online-status">オフライン</span>
           </div>
           <div class="online-controls">
-            <button id="hostBtn" type="button">部屋を作る</button>
-            <button id="joinBtn" type="button">部屋に入る</button>
-            <button id="applyAnswerBtn" type="button">回答反映</button>
+            <button id="hostBtn" type="button">オンライン参加</button>
             <button id="disconnectBtn" type="button">切断</button>
-            <button id="relayHostBtn" type="button">リレー作成</button>
-            <button id="relayJoinBtn" type="button">リレー参加</button>
             <button id="spectateBtn" type="button">観戦</button>
           </div>
           <div class="online-fields">
-            <input id="serverUrlBox" spellcheck="false" aria-label="リレーサーバー" placeholder="リレーURL">
             <input id="roomBox" spellcheck="false" aria-label="部屋名" placeholder="部屋名">
           </div>
-          <textarea id="offerBox" spellcheck="false" placeholder="オファー"></textarea>
-          <textarea id="answerBox" spellcheck="false" placeholder="回答"></textarea>
         </section>
       </div>
 
@@ -748,6 +741,19 @@
           <input id="activeColorToggle" class="toggle-input" type="checkbox" checked aria-label="操作中の細胞色">
           <strong id="activeColorValue" class="toggle-value">表示</strong>
         </label>
+        <div class="keybind-title">キー</div>
+        <div class="keybind-grid">
+          <label class="keybind-control"><span>分裂</span><button type="button" data-keybind="split1"></button></label>
+          <label class="keybind-control"><span>2分裂</span><button type="button" data-keybind="split2"></button></label>
+          <label class="keybind-control"><span>3分裂</span><button type="button" data-keybind="split3"></button></label>
+          <label class="keybind-control"><span>4分裂</span><button type="button" data-keybind="split4"></button></label>
+          <label class="keybind-control"><span>粒</span><button type="button" data-keybind="eject"></button></label>
+          <label class="keybind-control"><span>連射</span><button type="button" data-keybind="autoEject"></button></label>
+          <label class="keybind-control"><span>別個体</span><button type="button" data-keybind="clone"></button></label>
+          <label class="keybind-control"><span>復活</span><button type="button" data-keybind="respawn"></button></label>
+          <label class="keybind-control"><span>Bot分裂</span><button type="button" data-keybind="botSplit"></button></label>
+          <label class="keybind-control"><span>Bot粒</span><button type="button" data-keybind="botEject"></button></label>
+        </div>
         <label class="setting-control">
           <span>反動</span>
           <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="0" aria-label="分裂反動の大きさ">
@@ -772,19 +778,12 @@
           <strong id="splitMomentumValue">100</strong>
           <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
         </label>
-        <div class="keybind-title">キー</div>
-        <div class="keybind-grid">
-          <label class="keybind-control"><span>分裂</span><button type="button" data-keybind="split1"></button></label>
-          <label class="keybind-control"><span>2分裂</span><button type="button" data-keybind="split2"></button></label>
-          <label class="keybind-control"><span>3分裂</span><button type="button" data-keybind="split3"></button></label>
-          <label class="keybind-control"><span>4分裂</span><button type="button" data-keybind="split4"></button></label>
-          <label class="keybind-control"><span>粒</span><button type="button" data-keybind="eject"></button></label>
-          <label class="keybind-control"><span>連射</span><button type="button" data-keybind="autoEject"></button></label>
-          <label class="keybind-control"><span>別個体</span><button type="button" data-keybind="clone"></button></label>
-          <label class="keybind-control"><span>復活</span><button type="button" data-keybind="respawn"></button></label>
-          <label class="keybind-control"><span>Bot分裂</span><button type="button" data-keybind="botSplit"></button></label>
-          <label class="keybind-control"><span>Bot粒</span><button type="button" data-keybind="botEject"></button></label>
-        </div>
+        <label class="setting-control">
+          <span>分裂入力</span>
+          <input id="splitInputSpeedSlider" type="range" min="1" max="4" step="1" value="4" aria-label="GRT分裂入力速度">
+          <strong id="splitInputSpeedValue">4</strong>
+          <input id="splitInputSpeedMaxBox" class="max-input" type="number" min="1" max="4" step="1" value="4" aria-label="分裂入力速度上限">
+        </label>
         <label class="setting-control">
           <span>ボット</span>
           <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
@@ -930,6 +929,9 @@
       const splitMomentumSlider = document.getElementById("splitMomentumSlider");
       const splitMomentumValueEl = document.getElementById("splitMomentumValue");
       const splitMomentumMaxBox = document.getElementById("splitMomentumMaxBox");
+      const splitInputSpeedSlider = document.getElementById("splitInputSpeedSlider");
+      const splitInputSpeedValueEl = document.getElementById("splitInputSpeedValue");
+      const splitInputSpeedMaxBox = document.getElementById("splitInputSpeedMaxBox");
       const gameSpeedSlider = document.getElementById("gameSpeedSlider");
       const gameSpeedValueEl = document.getElementById("gameSpeedValue");
       const gameSpeedMaxBox = document.getElementById("gameSpeedMaxBox");
@@ -951,6 +953,7 @@
       const UNCONSUMABLE_CELL_MASS = 16900;
       const MIN_CELL_MASS = 12;
       const MIN_SPLIT_SOURCE_MASS = 36;
+      const MIN_EJECT_SOURCE_MASS = 32;
       const VIRUS_MASS = 100;
       const VIRUS_EXPLODE_MASS = 133;
       const DEFAULT_EJECT_MASS = 21;
@@ -964,6 +967,7 @@
       const DEFAULT_SPLIT_SPEED = 110;
       const DEFAULT_SPLIT_MIN_DISTANCE = 160;
       const DEFAULT_SPLIT_MOMENTUM = 100;
+      const DEFAULT_SPLIT_INPUT_SPEED = 4;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
       const BOT_SPAWN_MASS = 132;
@@ -1091,6 +1095,7 @@
           splitSpeed: DEFAULT_SPLIT_SPEED,
           splitMinDistance: DEFAULT_SPLIT_MIN_DISTANCE,
           splitMomentum: DEFAULT_SPLIT_MOMENTUM,
+          splitInputSpeed: DEFAULT_SPLIT_INPUT_SPEED,
           gameSpeed: DEFAULT_GAME_SPEED,
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
@@ -1109,6 +1114,7 @@
             splitSpeed: 300,
             splitMinDistance: 360,
             splitMomentum: 160,
+            splitInputSpeed: 4,
             gameSpeed: 3,
             mergeCooldown: 60,
             worldSize: 15000
@@ -1568,6 +1574,14 @@
         return false;
       }
 
+      function canConsumeFeed(cell, feed) {
+        if (feed.ownerId === cell.ownerId) return canConsumeSwept(cell, feed);
+        const threshold = Math.max(0, cell.radius + feed.radius * 0.45);
+        if (distSq(cell.x, cell.y, feed.x, feed.y) <= threshold * threshold) return true;
+        if (hasSweepPath(cell) && sweptPointDistSq(cell, feed.x, feed.y) <= threshold * threshold) return true;
+        return false;
+      }
+
       function createActor(id, name, color, isHuman = false, control = null) {
         return {
           id,
@@ -1944,14 +1958,20 @@
       }
 
       function ensureRelayDefaults() {
-        if (!serverUrlBox.value.trim()) serverUrlBox.value = defaultRelayUrl();
-        roomBox.value = "agar";
+        if (serverUrlBox && !serverUrlBox.value.trim()) serverUrlBox.value = defaultRelayUrl();
+        if (roomBox && !roomBox.value.trim()) roomBox.value = "agar";
       }
 
       function setMenuOpen(open) {
         state.menuOpen = Boolean(open);
         if (state.menuOpen) {
           state.input.keys.clear();
+          state.input.splitQueued = false;
+          state.input.splitCount = 0;
+          state.input.ejectQueued = false;
+          state.input.botSplitQueued = false;
+          state.input.botEjectQueued = false;
+          for (const actor of localHumanActors()) clearActorControlInput(actor);
         } else {
           state.keyCaptureAction = null;
           if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
@@ -2858,7 +2878,7 @@
         if (now - actor.lastEject < ejectInterval()) return false;
         const ejectMass = state.settings.ejectMass;
         const ejectCost = ejectMass + 1;
-        const eligible = actor.cells.filter((candidate) => !candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS);
+        const eligible = actor.cells.filter((candidate) => !candidate.dead && candidate.mass >= MIN_EJECT_SOURCE_MASS);
         if (!eligible.length) return false;
         if (allCells) {
           let emitted = false;
@@ -2873,7 +2893,7 @@
         let cell = null;
         for (let offset = 0; offset < actor.cells.length; offset += 1) {
           const candidate = actor.cells[(actor.nextEjectIndex + offset) % actor.cells.length];
-          if (!candidate.dead && candidate.mass - ejectCost >= MIN_SPLIT_SOURCE_MASS) {
+          if (!candidate.dead && candidate.mass >= MIN_EJECT_SOURCE_MASS) {
             cell = candidate;
             actor.nextEjectIndex = (actor.cells.indexOf(candidate) + 1) % actor.cells.length;
             break;
@@ -2895,7 +2915,7 @@
           actor.input.lastAimX = n.x;
           actor.input.lastAimY = n.y;
         }
-        cell.mass -= ejectCost;
+        cell.mass = Math.max(MIN_CELL_MASS, cell.mass - ejectCost);
         refreshCell(cell);
         const startX = cell.x + n.x * (cell.radius + 18);
         const startY = cell.y + n.y * (cell.radius + 18);
@@ -3133,7 +3153,7 @@
             if (feed.dead) continue;
             if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
             const d2 = distSq(cell.x, cell.y, feed.x, feed.y) * 0.45;
-            if (d2 < bestFoodD2 && cell.radius >= feed.radius * CONSUME_RADIUS_RATIO) {
+            if (d2 < bestFoodD2 && (feed.ownerId !== cell.ownerId || cell.radius >= feed.radius * CONSUME_RADIUS_RATIO)) {
               bestFoodD2 = d2;
               bestFood = feed;
             }
@@ -3687,7 +3707,7 @@
           for (const feed of nearby) {
             if (feed.dead) continue;
             if (feed.ownerId === cell.ownerId && feed.age < 0.75) continue;
-            if (canConsumeSwept(cell, feed)) {
+            if (canConsumeFeed(cell, feed)) {
               feed.dead = true;
               addConsumedMass(cell, feed.mass);
             }
@@ -3954,7 +3974,7 @@
 
             let remaining = Math.max(1, actor.input.splitCount || 1);
             let didAnySplit = false;
-            let splitBudget = MAX_QUEUED_SPLITS_PER_FRAME;
+            let splitBudget = clamp(Math.round(state.settings.splitInputSpeed) || MAX_QUEUED_SPLITS_PER_FRAME, 1, MAX_QUEUED_SPLITS_PER_FRAME);
             while (remaining > 0 && splitBudget > 0 && liveCellCount(actor) < MAX_CELLS) {
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
                 remaining = 0;
@@ -4431,7 +4451,11 @@
         peer.on("disconnected", () => setStatus("ROOM LOST"));
       }
 
-      function joinRoom() {
+      function joinOrHostRoom() {
+        joinRoom(true);
+      }
+
+      function joinRoom(autoHostOnMiss = false) {
         if (!peerJsSupported()) {
           setStatus("PEERJS LOAD NG");
           return;
@@ -4461,14 +4485,30 @@
           setupPeerJsConnection(conn);
           state.net.connectTimer = setTimeout(() => {
             if (state.net.transport !== "peerjs" || state.net.connected) return;
+            if (autoHostOnMiss) {
+              startRoomHost();
+              return;
+            }
             setStatus("NO ROOM");
             setTimeout(() => {
               if (state.net.transport === "peerjs" && !state.net.connected) continueOfflineAfterHostLoss();
             }, 900);
           }, 3500);
         });
-        peer.on("error", () => continueOfflineAfterHostLoss());
-        peer.on("disconnected", () => continueOfflineAfterHostLoss());
+        peer.on("error", () => {
+          if (autoHostOnMiss && !state.net.connected) {
+            startRoomHost();
+            return;
+          }
+          continueOfflineAfterHostLoss();
+        });
+        peer.on("disconnected", () => {
+          if (autoHostOnMiss && !state.net.connected) {
+            startRoomHost();
+            return;
+          }
+          continueOfflineAfterHostLoss();
+        });
       }
 
       async function createGuestAnswer() {
@@ -4668,6 +4708,7 @@
             splitSpeed: state.settings.splitSpeed,
             splitMinDistance: state.settings.splitMinDistance,
             splitMomentum: state.settings.splitMomentum,
+            splitInputSpeed: state.settings.splitInputSpeed,
             spawnMass: state.settings.spawnMass,
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
@@ -5004,6 +5045,13 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMomentum || nextValue !== state.settings.splitMomentum;
             state.settings.max.splitMomentum = nextMax;
             state.settings.splitMomentum = nextValue;
+          }
+          if (Number.isFinite(message.settings.splitInputSpeed)) {
+            const nextMax = Math.max(state.settings.max.splitInputSpeed, message.settings.splitInputSpeed);
+            const nextValue = clamp(message.settings.splitInputSpeed, 1, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitInputSpeed || nextValue !== state.settings.splitInputSpeed;
+            state.settings.max.splitInputSpeed = nextMax;
+            state.settings.splitInputSpeed = nextValue;
           }
           if (Number.isFinite(message.settings.spawnMass)) {
             const nextMax = Math.max(state.settings.max.spawnMass, message.settings.spawnMass);
@@ -5482,12 +5530,14 @@
       }
 
       function onPointerMove(event) {
+        if (state.menuOpen) return;
         state.input.mouseX = event.clientX;
         state.input.mouseY = event.clientY;
         syncPointerTarget();
       }
 
       function onTouch(event) {
+        if (state.menuOpen) return;
         if (!event.touches.length) return;
         const touch = event.touches[0];
         state.input.mouseX = touch.clientX;
@@ -5503,6 +5553,7 @@
       }
 
       function onWheel(event) {
+        if (state.menuOpen) return;
         event.preventDefault();
         const direction = event.deltaY > 0 ? 1 : -1;
         setViewScalePercent(state.viewScale * 100 + direction * 6);
@@ -5564,6 +5615,10 @@
         splitMomentumSlider.value = String(state.settings.splitMomentum);
         splitMomentumValueEl.textContent = String(state.settings.splitMomentum);
         splitMomentumMaxBox.value = String(state.settings.max.splitMomentum);
+        splitInputSpeedSlider.max = String(state.settings.max.splitInputSpeed);
+        splitInputSpeedSlider.value = String(state.settings.splitInputSpeed);
+        splitInputSpeedValueEl.textContent = String(state.settings.splitInputSpeed);
+        splitInputSpeedMaxBox.value = String(state.settings.max.splitInputSpeed);
         gameSpeedSlider.max = String(state.settings.max.gameSpeed);
         gameSpeedSlider.value = String(state.settings.gameSpeed);
         gameSpeedValueEl.textContent = formatMultiplier(state.settings.gameSpeed);
@@ -5636,6 +5691,7 @@
         if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
         if (kind === "splitMinDistance") state.settings.splitMinDistance = clamp(Math.round(number / 5) * 5, 0, state.settings.max.splitMinDistance);
         if (kind === "splitMomentum") state.settings.splitMomentum = clamp(Math.round(number / 5) * 5, 20, state.settings.max.splitMomentum);
+        if (kind === "splitInputSpeed") state.settings.splitInputSpeed = clamp(number, 1, state.settings.max.splitInputSpeed);
         if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
@@ -5695,6 +5751,10 @@
         if (kind === "splitMomentum") {
           state.settings.max.splitMomentum = Math.max(20, Math.round(number / 5) * 5);
           state.settings.splitMomentum = clamp(state.settings.splitMomentum, 20, state.settings.max.splitMomentum);
+        }
+        if (kind === "splitInputSpeed") {
+          state.settings.max.splitInputSpeed = clamp(number, 1, MAX_QUEUED_SPLITS_PER_FRAME);
+          state.settings.splitInputSpeed = clamp(state.settings.splitInputSpeed, 1, state.settings.max.splitInputSpeed);
         }
         if (kind === "gameSpeed") {
           state.settings.max.gameSpeed = Math.max(0.1, Math.round(rawNumber * 10) / 10);
@@ -5820,17 +5880,15 @@
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
         }
-        hostBtn.addEventListener("click", () => {
-          startRoomHost();
-        });
-        joinBtn.addEventListener("click", () => {
+        hostBtn.addEventListener("click", joinOrHostRoom);
+        if (joinBtn) joinBtn.addEventListener("click", () => {
           joinRoom();
         });
-        applyAnswerBtn.addEventListener("click", () => {
+        if (applyAnswerBtn) applyAnswerBtn.addEventListener("click", () => {
           applyHostAnswer().catch(() => setStatus("ANSWER NG"));
         });
-        relayHostBtn.addEventListener("click", () => startRelayOnline("host"));
-        relayJoinBtn.addEventListener("click", () => startRelayOnline("client"));
+        if (relayHostBtn) relayHostBtn.addEventListener("click", () => startRelayOnline("host"));
+        if (relayJoinBtn) relayJoinBtn.addEventListener("click", () => startRelayOnline("client"));
         spectateBtn.addEventListener("click", toggleSpectating);
         disconnectBtn.addEventListener("click", () => closeNetwork(false));
         gameResetBtn.addEventListener("click", resetGameToStart);
@@ -5849,6 +5907,7 @@
         splitSpeedSlider.addEventListener("input", () => setWorldSetting("splitSpeed", splitSpeedSlider.value));
         splitMinDistanceSlider.addEventListener("input", () => setWorldSetting("splitMinDistance", splitMinDistanceSlider.value));
         splitMomentumSlider.addEventListener("input", () => setWorldSetting("splitMomentum", splitMomentumSlider.value));
+        splitInputSpeedSlider.addEventListener("input", () => setWorldSetting("splitInputSpeed", splitInputSpeedSlider.value));
         gameSpeedSlider.addEventListener("input", () => setWorldSetting("gameSpeed", gameSpeedSlider.value));
         mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
@@ -5863,6 +5922,7 @@
         splitSpeedMaxBox.addEventListener("change", () => setSliderMax("splitSpeed", splitSpeedMaxBox.value));
         splitMinDistanceMaxBox.addEventListener("change", () => setSliderMax("splitMinDistance", splitMinDistanceMaxBox.value));
         splitMomentumMaxBox.addEventListener("change", () => setSliderMax("splitMomentum", splitMomentumMaxBox.value));
+        splitInputSpeedMaxBox.addEventListener("change", () => setSliderMax("splitInputSpeed", splitInputSpeedMaxBox.value));
         gameSpeedMaxBox.addEventListener("change", () => setSliderMax("gameSpeed", gameSpeedMaxBox.value));
         mergeCooldownMaxBox.addEventListener("change", () => setSliderMax("mergeCooldown", mergeCooldownMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
