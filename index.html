@@ -5409,7 +5409,7 @@
       }
 
       function drawVirus(virus, renderMode = 0) {
-        const spikes = renderMode >= 2 ? 8 : (renderMode === 1 ? 12 : 20);
+        const spikes = 20;
         const centerX = entityRenderX(virus);
         const centerY = entityRenderY(virus);
         const points = virusSpikePoints(spikes);
@@ -5424,11 +5424,9 @@
         ctx.closePath();
         ctx.fillStyle = "#12e05a";
         ctx.fill();
-        if (renderMode < 2) {
-          ctx.lineWidth = Math.max(3 / state.camera.zoom, virus.radius * 0.09);
-          ctx.strokeStyle = "#0d9940";
-          ctx.stroke();
-        }
+        ctx.lineWidth = Math.max(3 / state.camera.zoom, virus.radius * 0.09);
+        ctx.strokeStyle = "#0d9940";
+        ctx.stroke();
       }
 
       function drawCell(cell, renderMode = 0) {
@@ -5478,15 +5476,7 @@
         }
       }
 
-      function appendCellCirclePath(cell, fast = false) {
-        if (fast) {
-          const x = entityRenderX(cell);
-          const y = entityRenderY(cell);
-          const r = Math.max(1, cell.radius);
-          ctx.moveTo(x + r, y);
-          ctx.arc(x, y, r, 0, TAU);
-          return;
-        }
+      function appendCellCirclePath(cell) {
         let progress = 1;
         if (cell.birthDuration > 0 && cell.birthAge < cell.birthDuration) {
           progress = clamp(cell.birthAge / cell.birthDuration, 0, 1);
@@ -5503,7 +5493,6 @@
       }
 
       function drawBatchedCells(renderMode = 1) {
-        const fast = renderMode >= 2;
         for (const cells of cellBatchByColor.values()) cells.length = 0;
         for (const cell of renderCellsScratch) {
           if (isLocalViewActor(cell.actor)) {
@@ -5521,7 +5510,7 @@
         for (const [color, cells] of cellBatchByColor) {
           if (!cells.length) continue;
           ctx.beginPath();
-          for (const cell of cells) appendCellCirclePath(cell, fast);
+          for (const cell of cells) appendCellCirclePath(cell);
           ctx.fillStyle = color;
           ctx.fill();
         }
