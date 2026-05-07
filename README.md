@@ -20,7 +20,9 @@ node server.js
 
 GitHub Pages は静的ホスティングなので、WebSocket サーバーは Pages 上では動きません。
 
-オンライン参加には、このリポジトリの `server.js` を Render、Fly.io、Railway、VPS など Node.js が常時起動できる場所へデプロイし、発行された WebSocket URL をゲーム画面のリレーURL欄へ入力します。
+このリポジトリは `main` ブランチへ push すると、GitHub Actions で GitHub Pages へ自動反映されます。手動で起動する必要があるのは `server.js` の Node.js リレーサーバーだけです。
+
+オンライン参加には、このリポジトリの `server.js` を自分のPC、Render、Fly.io、Railway、VPS など Node.js が起動できる場所で動かし、発行された WebSocket URL をゲーム画面のリレーURL欄へ入力します。
 
 例:
 
