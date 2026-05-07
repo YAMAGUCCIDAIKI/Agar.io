@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.11</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.12</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.11";
+      const APP_VERSION = "v2026.05.08.12";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1560,7 +1560,10 @@
       function canConsume(eater, victim) {
         const threshold = consumeThreshold(eater, victim);
         if (!threshold) return false;
-        return distSq(eater.x, eater.y, victim.x, victim.y) <= threshold * threshold;
+        const d2 = distSq(eater.x, eater.y, victim.x, victim.y);
+        if (d2 <= threshold * threshold) return true;
+        const overlapArea = circleOverlapArea(eater.radius, victim.radius, Math.sqrt(d2));
+        return overlapArea >= Math.PI * victim.radius * victim.radius * 0.5;
       }
 
       function hasSweepPath(cell) {
@@ -1602,7 +1605,9 @@
         const threshold = consumeThreshold(eater, victim);
         if (!threshold) return false;
         const thresholdSq = threshold * threshold;
-        if (distSq(eater.x, eater.y, victim.x, victim.y) <= thresholdSq) return true;
+        const d2 = distSq(eater.x, eater.y, victim.x, victim.y);
+        if (d2 <= thresholdSq) return true;
+        if (circleOverlapArea(eater.radius, victim.radius, Math.sqrt(d2)) >= Math.PI * victim.radius * victim.radius * 0.5) return true;
 
         const eaterSweeps = hasSweepPath(eater);
         const victimSweeps = hasSweepPath(victim);
