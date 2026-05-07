@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.12</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.13</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.12";
+      const APP_VERSION = "v2026.05.08.13";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1979,6 +1979,10 @@
           state.input.activeActorId = nextId;
           setActiveLocalActor(main);
           state.input.activeActorId = nextId;
+        }
+        if (main && main.input) {
+          main.input.targetX = state.input.mouseWorldX;
+          main.input.targetY = state.input.mouseWorldY;
         }
         state.input.cloneQueued = true;
         state.input.cloneSeq += 1;
@@ -5135,22 +5139,33 @@
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
         if (state.spectating) return;
-        const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued || state.input.cloneQueued;
+        const activeActorId = state.input.activeActorId || state.player.id;
+        const activeActor = actorById(activeActorId) || state.player;
+        const inputActor = activeActor && activeActor.input ? activeActor : state.player;
+        const pendingRemoteActor = activeActorId !== state.player.id && activeActor === state.player;
+        const targetX = pendingRemoteActor ? state.input.mouseWorldX : (Number.isFinite(inputActor.input.targetX) ? inputActor.input.targetX : state.input.mouseWorldX);
+        const targetY = pendingRemoteActor ? state.input.mouseWorldY : (Number.isFinite(inputActor.input.targetY) ? inputActor.input.targetY : state.input.mouseWorldY);
+        const urgent = inputActor.input.splitQueued || inputActor.input.ejectQueued || state.input.respawnQueued || state.input.cloneQueued;
         if (!urgent && now - state.net.lastInputSend < CLIENT_INPUT_SEND_RATE) return;
         netSend({
           t: "input",
-          activeActorId: state.input.activeActorId || state.player.id,
-          targetX: state.player.input.targetX,
-          targetY: state.player.input.targetY,
-          e: actorAutoEjectHeld(state.player),
+          activeActorId,
+          targetX,
+          targetY,
+          e: actorAutoEjectHeld(inputActor),
           ejectSeq: state.input.ejectSeq,
           splitSeq: state.input.splitSeq,
           respawnSeq: state.input.respawnSeq,
           cloneSeq: state.input.cloneSeq
         });
-        state.player.input.ejectQueued = false;
-        state.player.input.splitQueued = false;
-        state.player.input.splitCount = 0;
+        inputActor.input.ejectQueued = false;
+        inputActor.input.splitQueued = false;
+        inputActor.input.splitCount = 0;
+        if (inputActor !== state.player) {
+          state.player.input.ejectQueued = false;
+          state.player.input.splitQueued = false;
+          state.player.input.splitCount = 0;
+        }
         state.input.respawnQueued = false;
         state.input.cloneQueued = false;
         state.net.lastInputSend = now;
