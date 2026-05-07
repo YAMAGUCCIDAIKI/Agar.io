@@ -1533,9 +1533,8 @@
           }
           if (anchorCell) {
             const angle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
-            const maxDistance = Math.max(1, anchorCell.mass * 2);
-            const minDistance = anchorCell.radius + radius + 8;
-            const maxSearchDistance = Math.max(minDistance, maxDistance);
+            const targetDistance = anchorCell.radius + radiusFromMass(500);
+            const minDistance = Math.max(anchorCell.radius + radius + 2, targetDistance);
             const overlapsAnyCell = (x, y) => {
               for (const otherActor of state.actors) {
                 for (const otherCell of otherActor.cells) {
@@ -1546,8 +1545,8 @@
               }
               return false;
             };
-            for (let ring = 0; ring < 10; ring += 1) {
-              const distance = Math.min(maxSearchDistance, minDistance + ring * Math.max(8, radius * 0.24));
+            for (let ring = 0; ring < 8; ring += 1) {
+              const distance = minDistance + ring * Math.max(10, radius * 0.28);
               for (let i = 0; i < 16; i += 1) {
                 const offset = i === 0 ? 0 : ((i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * (TAU / 16));
                 const nextAngle = angle + offset;
@@ -1555,9 +1554,8 @@
                 const y = clamp(anchorCell.y + Math.sin(nextAngle) * distance, margin, WORLD_SIZE - margin);
                 if (!overlapsAnyCell(x, y)) return { x, y };
               }
-              if (distance >= maxSearchDistance) break;
             }
-            for (let ring = 10; ring < 28; ring += 1) {
+            for (let ring = 8; ring < 24; ring += 1) {
               const distance = minDistance + ring * Math.max(10, radius * 0.36);
               for (let i = 0; i < 20; i += 1) {
                 const nextAngle = angle + (i / 20) * TAU;
