@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.7</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.8</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.7";
+      const APP_VERSION = "v2026.05.08.8";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5675,7 +5675,7 @@
       function appendPelletPath(entity) {
         const x = entityRenderX(entity);
         const y = entityRenderY(entity);
-        const r = Math.max(1.8 / state.camera.zoom, entity.radius);
+        const r = 4;
         const sides = 9;
         const phase = ((entity.id || 0) % sides) * TAU / sides;
         for (let i = 0; i < sides; i += 1) {
@@ -5693,9 +5693,6 @@
         appendPelletPath(entity);
         ctx.fillStyle = entity.color;
         ctx.fill();
-        ctx.lineWidth = Math.max(1.8 / state.camera.zoom, 1.2);
-        ctx.strokeStyle = darkenHex(entity.color, 0.22);
-        ctx.stroke();
       }
 
       function drawBatchedCircleEntities(entities, renderMode = 1) {
@@ -5716,9 +5713,6 @@
             appendPelletPath(entity);
           }
           ctx.fill();
-          ctx.lineWidth = Math.max(1.8 / state.camera.zoom, 1.2);
-          ctx.strokeStyle = darkenHex(color, 0.22);
-          ctx.stroke();
         }
       }
 
@@ -5754,7 +5748,7 @@
         ctx.closePath();
         ctx.fillStyle = "#00f40b";
         ctx.fill();
-        ctx.lineWidth = Math.max(2 / state.camera.zoom, virus.radius * 0.045);
+        ctx.lineWidth = 2 / state.camera.zoom;
         ctx.strokeStyle = "#00c60a";
         ctx.stroke();
       }
