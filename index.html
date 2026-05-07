@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.4</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.5</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.4";
+      const APP_VERSION = "v2026.05.08.5";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5672,6 +5672,29 @@
         ctx.fill();
       }
 
+      function appendPelletPath(entity) {
+        const x = entityRenderX(entity);
+        const y = entityRenderY(entity);
+        const r = Math.max(2.2, entity.radius * 1.08);
+        const sides = 9;
+        const phase = ((entity.id || 0) % sides) * TAU / sides;
+        for (let i = 0; i < sides; i += 1) {
+          const angle = phase + i * TAU / sides;
+          const px = x + Math.cos(angle) * r;
+          const py = y + Math.sin(angle) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+      }
+
+      function drawPelletEntity(entity) {
+        ctx.beginPath();
+        appendPelletPath(entity);
+        ctx.fillStyle = entity.color;
+        ctx.fill();
+      }
+
       function drawBatchedCircleEntities(entities, renderMode = 1) {
         for (const items of entityBatchByColor.values()) items.length = 0;
         for (const entity of entities) {
@@ -5687,11 +5710,7 @@
           ctx.fillStyle = color;
           ctx.beginPath();
           for (const entity of items) {
-            const x = entityRenderX(entity);
-            const y = entityRenderY(entity);
-            const r = Math.max(1, entity.radius);
-            ctx.moveTo(x + r, y);
-            ctx.arc(x, y, r, 0, TAU);
+            appendPelletPath(entity);
           }
           ctx.fill();
         }
@@ -5703,7 +5722,7 @@
         points = [];
         for (let i = 0; i < spikes; i += 1) {
           const angle = (i / spikes) * TAU;
-          const scale = i % 2 === 0 ? 1.13 : 0.9;
+          const scale = i % 2 === 0 ? 1.12 : 0.965;
           points.push({
             x: Math.cos(angle) * scale,
             y: Math.sin(angle) * scale
@@ -5714,7 +5733,7 @@
       }
 
       function drawVirus(virus, renderMode = 0) {
-        const spikes = 20;
+        const spikes = 56;
         const centerX = entityRenderX(virus);
         const centerY = entityRenderY(virus);
         const points = virusSpikePoints(spikes);
@@ -5727,11 +5746,8 @@
           else ctx.lineTo(x, y);
         }
         ctx.closePath();
-        ctx.fillStyle = "#12e05a";
+        ctx.fillStyle = "#00f40b";
         ctx.fill();
-        ctx.lineWidth = Math.max(3 / state.camera.zoom, virus.radius * 0.09);
-        ctx.strokeStyle = "#0d9940";
-        ctx.stroke();
       }
 
       function drawCell(cell, renderMode = 0) {
@@ -5921,7 +5937,7 @@
           if (food.dead) continue;
           if (!isVisible(food, bounds, 20)) continue;
           if (renderMode > 0) foodRenderScratch.push(food);
-          else drawCircleEntity(food);
+          else drawPelletEntity(food);
         }
         if (foodRenderScratch.length) drawBatchedCircleEntities(foodRenderScratch, renderMode);
 
@@ -5931,15 +5947,7 @@
             feedRenderScratch.push(feed);
             continue;
           }
-          ctx.beginPath();
-          ctx.arc(entityRenderX(feed), entityRenderY(feed), feed.radius, 0, TAU);
-          ctx.fillStyle = feed.color;
-          ctx.fill();
-          if (renderMode === 0) {
-            ctx.lineWidth = 1.5 / state.camera.zoom;
-            ctx.strokeStyle = "rgba(20,32,51,0.22)";
-            ctx.stroke();
-          }
+          drawPelletEntity(feed);
         }
         if (feedRenderScratch.length) drawBatchedCircleEntities(feedRenderScratch, renderMode);
 
