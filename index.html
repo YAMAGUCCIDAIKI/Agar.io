@@ -810,7 +810,7 @@
       const DEFAULT_SPLIT_SPEED = 200;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
-      const BOT_SPAWN_MASS = 700;
+      const BOT_SPAWN_MASS = 132;
       const CONSUME_MASS_RATIO = 1.325;
       const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_MASS_RATIO);
       const MASS_DECAY_PER_SECOND = 0.002;
@@ -1508,7 +1508,7 @@
         const options = {
           avoidViruses: true,
           virusPadding: 130,
-          cellPadding: 96
+          cellPadding: 36
         };
         let best = null;
         let bestScore = -Infinity;
@@ -1530,7 +1530,7 @@
             if (!cell.dead) anchorRadius = Math.max(anchorRadius, cell.radius);
           }
           const baseAngle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
-          const baseDistance = radius + anchorRadius + options.cellPadding + 40;
+          const baseDistance = radius + anchorRadius + options.cellPadding + 18;
           for (let ring = 0; ring < 3; ring += 1) {
             const distance = baseDistance + ring * (radius * 0.55 + 140);
             for (let i = 0; i < 32; i += 1) {
