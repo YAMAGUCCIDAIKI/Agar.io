@@ -941,11 +941,18 @@
       const SPLIT_MAX_BOOST = 680;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
-      const ACTIVE_CONTROL_COLOR = "#ff1694";
+      const ACTIVE_CONTROL_COLOR = "#fff200";
+      const ACTIVE_CONTROL_STROKE = "#111827";
 
       const foodPalette = [
         "#f04438", "#f79009", "#12b76a", "#2e90fa", "#7a5af8",
         "#ee46bc", "#06aed4", "#84cc16", "#f63d68", "#fdb022"
+      ];
+
+      const playerPalette = [
+        "#2e90fa", "#12b76a", "#f04438", "#f79009", "#7a5af8",
+        "#ee46bc", "#06aed4", "#84cc16", "#f63d68", "#fdb022",
+        "#14b8a6", "#a855f7", "#ef4444", "#22c55e", "#38bdf8"
       ];
 
       const botPalette = [
@@ -1538,6 +1545,15 @@
           respawns: 0,
           nextSplitPriority: 1
         };
+      }
+
+      function randomActorColor(previous = "") {
+        if (!playerPalette.length) return "#2e90fa";
+        let color = previous;
+        for (let i = 0; i < 6 && color === previous; i += 1) {
+          color = playerPalette[Math.floor(Math.random() * playerPalette.length)];
+        }
+        return color || playerPalette[0];
       }
 
       function actorById(id) {
@@ -2364,6 +2380,7 @@
 
       function spawnActor(actor, mass = 70, preferredX = null, preferredY = null) {
         const pos = preferredX == null ? findSpawnPosition(mass) : { x: preferredX, y: preferredY };
+        actor.color = randomActorColor(actor.color);
         actor.cells.length = 0;
         actor.respawns += 1;
         actor.respawnAt = 0;
@@ -2603,7 +2620,7 @@
         return 1 / Math.max(1, state.settings.ejectRate);
       }
 
-      function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
+      function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null, applyRecoil = true) {
         if (liveCellCount(actor) >= MAX_CELLS) return null;
         if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
         assignSplitPriority(actor, source);
@@ -2649,7 +2666,7 @@
         source.vy *= 0.24;
         source.boostX *= 0.02;
         source.boostY *= 0.02;
-        applySplitRecoil(source, dirX, dirY, splitRecoilDistance(child.radius));
+        if (applyRecoil) applySplitRecoil(source, dirX, dirY, splitRecoilDistance(child.radius));
         if (targetX != null && targetY != null) {
           source.targetX = targetX;
           source.targetY = targetY;
@@ -2677,10 +2694,14 @@
             return a.id - b.id;
           });
         let didSplit = false;
+        let recoilUsed = false;
         for (const cell of candidates) {
           if (liveCellCount(actor) >= MAX_CELLS) break;
-          const child = splitCell(actor, cell, dirX, dirY, targetX, targetY);
-          if (child) didSplit = true;
+          const child = splitCell(actor, cell, dirX, dirY, targetX, targetY, !recoilUsed);
+          if (child) {
+            didSplit = true;
+            recoilUsed = true;
+          }
         }
         if (didSplit) {
           actor.lastSplit = now;
@@ -2788,6 +2809,54 @@
         const slots = MAX_CELLS - liveCells + 1;
         const originX = cell.x;
         const originY = cell.y;
+
+        const desiredPieces = clamp(Math.floor(total / MIN_SPLIT_SOURCE_MASS), 4, 16);
+        const pieces = Math.min(slots, desiredPieces);
+        if (pieces <= 1) {
+          scatterMass(cell, 0.22, cell.x - virus.x, cell.y - virus.y);
+          return;
+        }
+
+        const pieceMass = Math.max(MIN_CELL_MASS, total / pieces);
+        cell.mass = pieceMass;
+        refreshCell(cell);
+        setMergeCooldown(cell);
+        cell.vx *= 0.16;
+        cell.vy *= 0.16;
+        cell.boostX *= 0.08;
+        cell.boostY *= 0.08;
+        cell.virusCooldown = 0.42;
+        capBoost(cell, 75);
+        startCellBirth(cell, originX, originY, 0.1, 0.82);
+
+        const baseAngle = Math.atan2(cell.y - virus.y, cell.x - virus.x);
+        for (let i = 1; i < pieces; i += 1) {
+          const spreadIndex = i - 1;
+          const angle = baseAngle + (TAU * spreadIndex / Math.max(1, pieces - 1)) + rand(-0.16, 0.16);
+          const dirX = Math.cos(angle);
+          const dirY = Math.sin(angle);
+          const childRadius = radiusFromMass(pieceMass);
+          const spawnDistance = cell.radius + childRadius * rand(0.92, 1.16) + rand(8, 42);
+          const child = createCell(
+            actor,
+            clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+            clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
+            pieceMass
+          );
+          child.vx = cell.vx * 0.06;
+          child.vy = cell.vy * 0.06;
+          const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.58, 1.0);
+          const burst = rand(760, 1080) * massDrag;
+          child.boostX = dirX * burst;
+          child.boostY = dirY * burst;
+          capBoost(child, 980);
+          child.fragmentAge = VIRUS_FRAGMENT_LIFE;
+          child.virusCooldown = 0.42;
+          setMergeCooldown(child);
+          startCellBirth(child, originX, originY, 0.18, 0.04);
+          actor.cells.push(child);
+        }
+        return;
 
         if (originalMass > MAX_CELL_MASS && slots > 1) {
           const mergeTotal = originalMass;
@@ -2905,49 +2974,6 @@
           }
         }
 
-        const desiredPieces = clamp(Math.floor(total / MIN_SPLIT_SOURCE_MASS), 4, MAX_CELLS);
-        const pieces = Math.min(slots, desiredPieces);
-        if (pieces <= 1) {
-          scatterMass(cell, 0.22, cell.x - virus.x, cell.y - virus.y);
-          return;
-        }
-
-        const pieceMass = Math.max(MIN_CELL_MASS, total / pieces);
-        cell.mass = pieceMass;
-        refreshCell(cell);
-        setMergeCooldown(cell);
-        cell.vx *= 0.18;
-        cell.vy *= 0.18;
-        cell.boostX *= 0.1;
-        cell.boostY *= 0.1;
-        cell.virusCooldown = 0.38;
-        capBoost(cell, 80);
-        startCellBirth(cell, originX, originY, 0.12, 0.72);
-
-        const angles = virusFragmentAngles(pieces - 1);
-        for (let i = 1; i < pieces; i += 1) {
-          const angle = angles[i - 1];
-          const dirX = Math.cos(angle);
-          const dirY = Math.sin(angle);
-          const childRadius = radiusFromMass(pieceMass);
-          const spawnDistance = cell.radius + childRadius * rand(1.0, 1.34) + rand(14, 84);
-          const child = createCell(
-            actor,
-            clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-            clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
-            pieceMass
-          );
-          child.vx = cell.vx * 0.08;
-          child.vy = cell.vy * 0.08;
-          child.boostX = dirX * rand(900, 1300);
-          child.boostY = dirY * rand(900, 1300);
-          capBoost(child, 1120);
-          child.fragmentAge = VIRUS_FRAGMENT_LIFE;
-          child.virusCooldown = 0.38;
-          setMergeCooldown(child);
-          startCellBirth(child, originX, originY, 0.2, 0.03);
-          actor.cells.push(child);
-        }
       }
 
       function updateBotAI(bot, dt, now) {
@@ -5159,8 +5185,8 @@
         ctx.fillStyle = color;
         ctx.fill();
         if (renderMode < 2 || localControlled || r * state.camera.zoom > 28) {
-          ctx.lineWidth = Math.max(3 / state.camera.zoom, r * 0.045);
-          ctx.strokeStyle = isActiveLocalActor(actor) ? "#b80f68" : (isLocalActor(actor) ? "#07529e" : darkenHex(color, 0.24));
+          ctx.lineWidth = Math.max(3 / state.camera.zoom, isActiveLocalActor(actor) ? r * 0.075 : r * 0.045);
+          ctx.strokeStyle = isActiveLocalActor(actor) ? ACTIVE_CONTROL_STROKE : (isLocalActor(actor) ? "#07529e" : darkenHex(color, 0.24));
           ctx.stroke();
         }
 
