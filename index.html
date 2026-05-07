@@ -993,7 +993,7 @@
       const MAX_CELL_SPREAD = 2400;
       const WORLD_SYNC_CHUNK = 300;
       const MAX_SYNC_FOODS = 1800;
-      const MAX_SYNC_FEEDS = 240;
+      const MAX_SYNC_FEEDS = 520;
       const MAX_SYNC_VIRUSES = 600;
       const MAX_SYNC_BOTS = 80;
       const NETWORK_RENDER_RANGE = 2600;
@@ -1183,7 +1183,8 @@
           lastSnapshotSend: -100,
           lastFeedSnapshotSend: -100,
           lastBotSnapshotSend: -100,
-          lastWorldSend: -100
+          lastWorldSend: -100,
+          removedFeedIds: new Set()
         },
         foodGridDirty: true,
         flashUntil: 0,
@@ -3183,7 +3184,7 @@
           }
 
           if (state.settings.botMode === "virus") {
-            const virus = nearestEdibleVirus(cell);
+            const virus = nearestBreakableVirus(cell);
             if (virus) {
               cell.targetX = virus.x;
               cell.targetY = virus.y;
@@ -3348,6 +3349,22 @@
           if (virus.dead) continue;
           if (cell.mass + 0.001 < virus.mass * CONSUME_MASS_RATIO) continue;
           if (cell.radius + 0.001 < virus.radius * CONSUME_RADIUS_RATIO) continue;
+          const d2 = distSq(cell.x, cell.y, virus.x, virus.y);
+          if (d2 < nearestD2) {
+            nearestD2 = d2;
+            nearest = virus;
+          }
+        }
+        return nearest;
+      }
+
+      function nearestBreakableVirus(cell) {
+        if (cell.mass + 0.001 < VIRUS_EXPLODE_MASS) return null;
+        let nearest = null;
+        let nearestD2 = Infinity;
+        const nearby = virusGrid.query(cell.x, cell.y, 1800, aiEntityScratch);
+        for (const virus of nearby) {
+          if (virus.dead) continue;
           const d2 = distSq(cell.x, cell.y, virus.x, virus.y);
           if (d2 < nearestD2) {
             nearestD2 = d2;
@@ -3998,6 +4015,11 @@
         }
 
         const foodsBeforeCleanup = state.foods.length;
+        if (state.net.role === "host" && state.net.connected) {
+          for (const feed of state.feeds) {
+            if (feed.dead && feed.id != null) state.net.removedFeedIds.add(feed.id);
+          }
+        }
         state.foods = state.foods.filter((food) => !food.dead);
         state.feeds = state.feeds.filter((feed) => !feed.dead);
         const foodTarget = state.settings.foodTarget;
@@ -4548,6 +4570,7 @@
         state.net.lastFeedSnapshotSend = -100;
         state.net.lastBotSnapshotSend = -100;
         state.net.lastWorldSend = -100;
+        state.net.removedFeedIds.clear();
         setStatus("OFFLINE");
         if (!keepWorld) resetFreshWorld("player", false);
       }
@@ -4911,6 +4934,8 @@
           partialActors: true,
           actors: actorsForNetwork(sendBots).map(serializeActor)
         };
+        const removedFeedIds = Array.from(state.net.removedFeedIds);
+        if (removedFeedIds.length) message.removedFeedIds = removedFeedIds;
         if (sendFeeds) {
           message.feeds = feedsForNetworkSync().map(serializeCircle);
         }
@@ -4918,6 +4943,7 @@
           state.net.lastSnapshotSend = now;
           if (sendFeeds) state.net.lastFeedSnapshotSend = now;
           if (sendBots) state.net.lastBotSnapshotSend = now;
+          for (const id of removedFeedIds) state.net.removedFeedIds.delete(id);
         }
         if (sendWorld) {
           state.net.worldSeq += 1;
@@ -4937,7 +4963,7 @@
       function feedsForNetworkSync() {
         const liveFeeds = state.feeds.filter((feed) => !feed.dead);
         if (liveFeeds.length <= MAX_SYNC_FEEDS) return liveFeeds;
-        return networkEntitiesNearHumans(feedGrid, MAX_SYNC_FEEDS, Math.min(NETWORK_RENDER_RANGE, 1800));
+        return networkEntitiesNearHumans(feedGrid, MAX_SYNC_FEEDS, Math.min(NETWORK_RENDER_RANGE, 2300));
       }
 
       function virusesForNetworkSync() {
@@ -5038,6 +5064,7 @@
 
       function predictClientCellMotion(dt) {
         for (const actor of state.actors) {
+          if (!isLocalViewActor(actor)) continue;
           for (const cell of actor.cells) {
             if (cell.splitHoldAge > 0) {
               cell.splitHoldAge = Math.max(0, cell.splitHoldAge - dt);
@@ -5269,6 +5296,12 @@
         return Array.from(byId.values()).filter((actor) => actor.isHuman || now - (actor.netSeenAt == null ? 0 : actor.netSeenAt) <= 5);
       }
 
+      function removeEntityIds(existingList, ids) {
+        if (!ids || !ids.length) return existingList;
+        const removed = new Set(ids);
+        return existingList.filter((entity) => !removed.has(entity.id));
+      }
+
       function applySnapshot(message) {
         if (message.worldSize) {
           const incomingWorldSize = Math.max(2000, Math.round(Number(message.worldSize) / 100) * 100);
@@ -5340,6 +5373,9 @@
           ? activeActor
           : actorById(state.localActorId) || actors[0] || state.player;
 
+        if (Array.isArray(message.removedFeedIds)) {
+          state.feeds = removeEntityIds(state.feeds, message.removedFeedIds);
+        }
         if (Array.isArray(message.feeds)) {
           state.feeds = mergeEntityListSnapshot(message.feeds, "feed", state.feeds, 3.5);
         }
@@ -5653,10 +5689,6 @@
       }
 
       function renderModeForVisibleCells(count, boostedCount = 0) {
-        if (boostedCount >= 180) return 2;
-        if (boostedCount >= 70) return 1;
-        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 45) return 2;
-        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 55) return 1;
         return 0;
       }
 
@@ -6303,8 +6335,7 @@
             update(stepDt, state.simTime, realNow);
           }
         }
-        const skipRender = state.lastRenderMode >= 2 && state.fps < 42 && state.frameIndex % 2 === 1;
-        if (!skipRender) draw();
+        draw();
         const elapsed = performance.now() - frameStartedAt;
         scheduleNextFrame(TARGET_FRAME_TIME * 1000 - elapsed);
       }
