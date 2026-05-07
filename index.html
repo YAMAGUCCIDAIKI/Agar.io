@@ -1530,10 +1530,10 @@
             if (!cell.dead) anchorRadius = Math.max(anchorRadius, cell.radius);
           }
           const baseAngle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
-          const massRange = clamp(Math.sqrt(Math.max(1, anchor.mass + mass)) * 3.2, 38, 150);
-          const baseDistance = radius + anchorRadius + options.cellPadding + massRange;
+          const massRange = clamp(anchorRadius * 0.75 + radius * 0.45, 24, anchorRadius * 2);
+          const baseDistance = Math.min(anchorRadius * 3, radius + anchorRadius + options.cellPadding + massRange);
           for (let ring = 0; ring < 2; ring += 1) {
-            const distance = baseDistance + ring * Math.max(54, massRange * 0.72);
+            const distance = Math.min(anchorRadius * 3, baseDistance + ring * Math.max(24, massRange * 0.32));
             for (let i = 0; i < 24; i += 1) {
               const angle = baseAngle + (i / 24) * TAU;
               consider(anchor.x + Math.cos(angle) * distance, anchor.y + Math.sin(angle) * distance);
@@ -4744,7 +4744,7 @@
         if (state.spectating) return WORLD_SIZE;
         const mass = Math.max(1, center.mass || 1);
         const spread = Math.max(0, center.spread || 0);
-        return clamp(920 + Math.sqrt(mass) * 34 + spread * 0.62, 1250, 4200);
+        return clamp(620 + Math.sqrt(mass) * 24 + spread * 0.48, 820, 2900);
       }
 
       function renderWorldBounds(visibleBounds) {
