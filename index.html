@@ -768,8 +768,8 @@
         </label>
         <label class="setting-control">
           <span>反動</span>
-          <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="8" aria-label="分裂反動の大きさ">
-          <strong id="splitRecoilValue">8</strong>
+          <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="0" aria-label="分裂反動の大きさ">
+          <strong id="splitRecoilValue">0</strong>
           <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
         </label>
         <label class="setting-control">
@@ -905,7 +905,7 @@
       const DEFAULT_FOOD_TARGET = 1200;
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
-      const DEFAULT_SPLIT_RECOIL = 8;
+      const DEFAULT_SPLIT_RECOIL = 0;
       const DEFAULT_SPLIT_SPEED = 200;
       const DEFAULT_SPLIT_MIN_DISTANCE = 160;
       const DEFAULT_GAME_SPEED = 1;
@@ -936,9 +936,10 @@
       const CELL_MOVE_SPEED_SCALE = 0.6;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
-      const SPLIT_BOOST_DURATION = 0.34;
-      const SPLIT_BOOST_DECAY = 4.4;
+      const SPLIT_BOOST_DURATION = 0.28;
+      const SPLIT_BOOST_DECAY = 5.2;
       const SPLIT_MAX_BOOST = 680;
+      const SPLIT_SPAWN_OFFSET_RATIO = 0.42;
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_COOLDOWN = 0.22;
@@ -2696,10 +2697,13 @@
         const childRadius = radiusFromMass(childMass);
         const originX = source.x;
         const originY = source.y;
+        const spawnOffset = (source.radius + childRadius) * SPLIT_SPAWN_OFFSET_RATIO;
+        const spawnX = originX + dirX * spawnOffset;
+        const spawnY = originY + dirY * spawnOffset;
         const child = createCell(
           actor,
-          clamp(originX, childRadius, WORLD_SIZE - childRadius),
-          clamp(originY, childRadius, WORLD_SIZE - childRadius),
+          clamp(spawnX, childRadius, WORLD_SIZE - childRadius),
+          clamp(spawnY, childRadius, WORLD_SIZE - childRadius),
           childMass
         );
         child.vx = source.vx;
@@ -2728,7 +2732,7 @@
           child.targetY = targetY;
         }
         setMergeCooldown(child);
-        startCellBirth(child, originX, originY, 0.24, 0.12);
+        startCellBirth(child, originX, originY, 0.16, 0.35);
         actor.cells.push(child);
         return child;
       }
