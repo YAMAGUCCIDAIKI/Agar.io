@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.9</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.10</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.9";
+      const APP_VERSION = "v2026.05.08.10";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5675,7 +5675,7 @@
       function appendPelletPath(entity) {
         const x = entityRenderX(entity);
         const y = entityRenderY(entity);
-        const r = 5.8;
+        const r = 8.5;
         const sides = 9;
         const phase = ((entity.id || 0) % sides) * TAU / sides;
         for (let i = 0; i < sides; i += 1) {
@@ -5695,7 +5695,30 @@
         ctx.fill();
       }
 
-      function drawBatchedCircleEntities(entities, renderMode = 1) {
+      function appendFeedPath(entity) {
+        const x = entityRenderX(entity);
+        const y = entityRenderY(entity);
+        const r = Math.max(7.5, entity.radius * 0.72);
+        const sides = 10;
+        const phase = ((entity.id || 0) % sides) * TAU / sides;
+        for (let i = 0; i < sides; i += 1) {
+          const angle = phase + i * TAU / sides;
+          const px = x + Math.cos(angle) * r;
+          const py = y + Math.sin(angle) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+      }
+
+      function drawFeedEntity(entity) {
+        ctx.beginPath();
+        appendFeedPath(entity);
+        ctx.fillStyle = entity.color;
+        ctx.fill();
+      }
+
+      function drawBatchedEntities(entities, appendPath) {
         for (const items of entityBatchByColor.values()) items.length = 0;
         for (const entity of entities) {
           let items = entityBatchByColor.get(entity.color);
@@ -5710,7 +5733,7 @@
           ctx.fillStyle = color;
           ctx.beginPath();
           for (const entity of items) {
-            appendPelletPath(entity);
+            appendPath(entity);
           }
           ctx.fill();
         }
@@ -5942,7 +5965,7 @@
           if (renderMode > 0) foodRenderScratch.push(food);
           else drawPelletEntity(food);
         }
-        if (foodRenderScratch.length) drawBatchedCircleEntities(foodRenderScratch, renderMode);
+        if (foodRenderScratch.length) drawBatchedEntities(foodRenderScratch, appendPelletPath);
 
         for (const feed of queryRenderableFeeds(bounds)) {
           if (!isVisible(feed, bounds, 20)) continue;
@@ -5950,9 +5973,9 @@
             feedRenderScratch.push(feed);
             continue;
           }
-          drawPelletEntity(feed);
+          drawFeedEntity(feed);
         }
-        if (feedRenderScratch.length) drawBatchedCircleEntities(feedRenderScratch, renderMode);
+        if (feedRenderScratch.length) drawBatchedEntities(feedRenderScratch, appendFeedPath);
 
         for (const virus of queryRenderableViruses(bounds)) {
           if (isVisible(virus, bounds, 90)) drawVirus(virus, renderMode);
