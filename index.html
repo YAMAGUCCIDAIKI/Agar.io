@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.5</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.6</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.5";
+      const APP_VERSION = "v2026.05.08.6";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1002,7 +1002,7 @@
       const NETWORK_RENDER_RANGE = 2600;
       const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
-      const MAX_FOOD_SPAWNS_PER_FRAME = 450;
+      const MAX_FOOD_SPAWNS_PER_FRAME = 80;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
       const RENDER_SIMPLE_CELL_COUNT = 280;
       const RENDER_FAST_CELL_COUNT = 480;
@@ -2761,7 +2761,7 @@
       }
 
       function createFood() {
-        const mass = rand(1.2, 3.4);
+        const mass = 2.1;
         const radius = radiusFromMass(mass);
         const crowded = state.foods.length > FOOD_AVOID_LIMIT;
         const pos = crowded
@@ -5675,7 +5675,7 @@
       function appendPelletPath(entity) {
         const x = entityRenderX(entity);
         const y = entityRenderY(entity);
-        const r = Math.max(2.2, entity.radius * 1.08);
+        const r = Math.max(5.8 / state.camera.zoom, 5.2);
         const sides = 9;
         const phase = ((entity.id || 0) % sides) * TAU / sides;
         for (let i = 0; i < sides; i += 1) {
@@ -5693,6 +5693,9 @@
         appendPelletPath(entity);
         ctx.fillStyle = entity.color;
         ctx.fill();
+        ctx.lineWidth = Math.max(1.1 / state.camera.zoom, 0.9);
+        ctx.strokeStyle = darkenHex(entity.color, 0.22);
+        ctx.stroke();
       }
 
       function drawBatchedCircleEntities(entities, renderMode = 1) {
@@ -5713,6 +5716,9 @@
             appendPelletPath(entity);
           }
           ctx.fill();
+          ctx.lineWidth = Math.max(1.1 / state.camera.zoom, 0.9);
+          ctx.strokeStyle = darkenHex(color, 0.22);
+          ctx.stroke();
         }
       }
 
@@ -5748,6 +5754,9 @@
         ctx.closePath();
         ctx.fillStyle = "#00f40b";
         ctx.fill();
+        ctx.lineWidth = Math.max(2 / state.camera.zoom, virus.radius * 0.045);
+        ctx.strokeStyle = "#00c60a";
+        ctx.stroke();
       }
 
       function drawCell(cell, renderMode = 0) {
