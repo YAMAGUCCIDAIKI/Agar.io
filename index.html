@@ -943,6 +943,7 @@
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_COOLDOWN = 0.22;
+      const MAX_QUEUED_SPLITS_PER_FRAME = 4;
       const ACTIVE_CONTROL_COLOR = "#fff200";
       const ACTIVE_CONTROL_STROKE = "#111827";
 
@@ -2679,6 +2680,12 @@
         if (source.dead || source.mass < MIN_SPLIT_SOURCE_MASS) return null;
         assignSplitPriority(actor, source);
 
+        if (targetX != null && targetY != null) {
+          const aim = normalized(targetX - source.x, targetY - source.y, dirX, dirY);
+          dirX = aim.x;
+          dirY = aim.y;
+        }
+
         const childMass = source.mass * 0.5;
         const remaining = source.mass - childMass;
         if (childMass < MIN_CELL_MASS || remaining < MIN_CELL_MASS) return null;
@@ -3215,9 +3222,7 @@
               cell.targetY = actor.input.targetY;
             }
 
-            const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
-            const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
-            const instantControl = receivesPlayerInput(actor) && cell.fragmentAge <= 0;
+            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
             const n = normalized(dx, dy, 0, 0);
@@ -3232,6 +3237,8 @@
 
             cell.vx += (desiredX - cell.vx) * steer;
             cell.vy += (desiredY - cell.vy) * steer;
+            const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
+            const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
               : (hasSplitMomentum ? SPLIT_MAX_BOOST * splitSpeedScale() : 720);
@@ -3855,12 +3862,15 @@
 
             let remaining = Math.max(1, actor.input.splitCount || 1);
             let didAnySplit = false;
-            if (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
+            let splitBudget = MAX_QUEUED_SPLITS_PER_FRAME;
+            while (remaining > 0 && splitBudget > 0 && liveCellCount(actor) < MAX_CELLS) {
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
                 remaining = 0;
+                break;
               } else {
                 didAnySplit = true;
                 remaining -= 1;
+                splitBudget -= 1;
               }
             }
 
