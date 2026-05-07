@@ -801,8 +801,8 @@
       const DEFAULT_EJECT_MASS = 21;
       const DEFAULT_EJECT_SPEED = 710;
       const DEFAULT_EJECT_RATE = 11;
-      const PLAYER_START_MASS = 22500;
-      const PLAYER_RESPAWN_MASS = 22500;
+      const PLAYER_START_MASS = 132;
+      const PLAYER_RESPAWN_MASS = 132;
       const DEFAULT_FOOD_TARGET = 1200;
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
@@ -829,8 +829,8 @@
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
-      const RENDER_SIMPLE_CELL_COUNT = 420;
-      const RENDER_FAST_CELL_COUNT = 760;
+      const RENDER_SIMPLE_CELL_COUNT = 280;
+      const RENDER_FAST_CELL_COUNT = 480;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.6;
@@ -885,6 +885,7 @@
         fps: 60,
         fpsSample: 60,
         fpsTimer: 0,
+        lastRenderMode: 0,
         nextId: 1,
         nextBotIndex: 0,
         player: null,
@@ -1045,7 +1046,15 @@
       const aiCellsScratch = [];
       const aiEntityScratch = [];
       const cellQueryScratch = [];
+      const renderCellQueryScratch = [];
+      const renderEntityQueryScratch = [];
       const renderCellsScratch = [];
+      const detailCellsScratch = [];
+      const foodRenderScratch = [];
+      const feedRenderScratch = [];
+      const cellBatchByColor = new Map();
+      const entityBatchByColor = new Map();
+      const virusSpikePointCache = new Map();
       const darkenCache = new Map();
 
       function nextId() {
@@ -3348,7 +3357,7 @@
 
             feed.dead = true;
             const owner = actorById(feed.ownerId);
-            if (owner && owner.isHuman) {
+            if (owner) {
               virus.feedCount += 1;
               const n = normalized(feed.vx, feed.vy, feed.x - virus.x, feed.y - virus.y);
               if (virus.feedCount >= VIRUS_FEED_LIMIT) {
@@ -4770,15 +4779,16 @@
         ctx.lineWidth = 1.4 / state.camera.zoom;
         ctx.strokeStyle = "#cfd8e3";
         ctx.beginPath();
-        const startLargeX = Math.floor(bounds.left / GRID_LARGE) * GRID_LARGE;
-        const endLargeX = Math.ceil(bounds.right / GRID_LARGE) * GRID_LARGE;
-        const startLargeY = Math.floor(bounds.top / GRID_LARGE) * GRID_LARGE;
-        const endLargeY = Math.ceil(bounds.bottom / GRID_LARGE) * GRID_LARGE;
-        for (let x = startLargeX; x <= endLargeX; x += GRID_LARGE) {
+        const largeStep = renderMode >= 2 ? GRID_LARGE * 2 : GRID_LARGE;
+        const startLargeX = Math.floor(bounds.left / largeStep) * largeStep;
+        const endLargeX = Math.ceil(bounds.right / largeStep) * largeStep;
+        const startLargeY = Math.floor(bounds.top / largeStep) * largeStep;
+        const endLargeY = Math.ceil(bounds.bottom / largeStep) * largeStep;
+        for (let x = startLargeX; x <= endLargeX; x += largeStep) {
           ctx.moveTo(x, bounds.top);
           ctx.lineTo(x, bounds.bottom);
         }
-        for (let y = startLargeY; y <= endLargeY; y += GRID_LARGE) {
+        for (let y = startLargeY; y <= endLargeY; y += largeStep) {
           ctx.moveTo(bounds.left, y);
           ctx.lineTo(bounds.right, y);
         }
@@ -4792,16 +4802,64 @@
         ctx.fill();
       }
 
-      function drawVirus(virus, renderMode = 0) {
-        const spikes = renderMode >= 2 ? 14 : (renderMode === 1 ? 22 : 30);
-        const centerX = entityRenderX(virus);
-        const centerY = entityRenderY(virus);
-        ctx.beginPath();
+      function drawBatchedCircleEntities(entities, renderMode = 1) {
+        for (const items of entityBatchByColor.values()) items.length = 0;
+        for (const entity of entities) {
+          let items = entityBatchByColor.get(entity.color);
+          if (!items) {
+            items = [];
+            entityBatchByColor.set(entity.color, items);
+          }
+          items.push(entity);
+        }
+        for (const [color, items] of entityBatchByColor) {
+          if (!items.length) continue;
+          ctx.fillStyle = color;
+          if (renderMode >= 2) {
+            for (const entity of items) {
+              const r = Math.max(1, entity.radius);
+              ctx.fillRect(entityRenderX(entity) - r, entityRenderY(entity) - r, r * 2, r * 2);
+            }
+            continue;
+          }
+          ctx.beginPath();
+          for (const entity of items) {
+            const x = entityRenderX(entity);
+            const y = entityRenderY(entity);
+            const r = Math.max(1, entity.radius);
+            ctx.moveTo(x + r, y);
+            ctx.arc(x, y, r, 0, TAU);
+          }
+          ctx.fill();
+        }
+      }
+
+      function virusSpikePoints(spikes) {
+        let points = virusSpikePointCache.get(spikes);
+        if (points) return points;
+        points = [];
         for (let i = 0; i < spikes; i += 1) {
           const angle = (i / spikes) * TAU;
-          const radius = virus.radius * (i % 2 === 0 ? 1.18 : 0.84);
-          const x = centerX + Math.cos(angle) * radius;
-          const y = centerY + Math.sin(angle) * radius;
+          const scale = i % 2 === 0 ? 1.13 : 0.9;
+          points.push({
+            x: Math.cos(angle) * scale,
+            y: Math.sin(angle) * scale
+          });
+        }
+        virusSpikePointCache.set(spikes, points);
+        return points;
+      }
+
+      function drawVirus(virus, renderMode = 0) {
+        const spikes = renderMode >= 2 ? 8 : (renderMode === 1 ? 12 : 20);
+        const centerX = entityRenderX(virus);
+        const centerY = entityRenderY(virus);
+        const points = virusSpikePoints(spikes);
+        ctx.beginPath();
+        for (let i = 0; i < points.length; i += 1) {
+          const point = points[i];
+          const x = centerX + point.x * virus.radius;
+          const y = centerY + point.y * virus.radius;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
@@ -4861,6 +4919,58 @@
         }
       }
 
+      function appendCellCirclePath(cell, fast = false) {
+        if (fast) {
+          const x = entityRenderX(cell);
+          const y = entityRenderY(cell);
+          const r = Math.max(1, cell.radius);
+          ctx.moveTo(x + r, y);
+          ctx.arc(x, y, r, 0, TAU);
+          return;
+        }
+        let progress = 1;
+        if (cell.birthDuration > 0 && cell.birthAge < cell.birthDuration) {
+          progress = clamp(cell.birthAge / cell.birthDuration, 0, 1);
+          progress = 1 - Math.pow(1 - progress, 3);
+        }
+        const scale = cell.birthScale + (1 - cell.birthScale) * progress;
+        const cellX = entityRenderX(cell);
+        const cellY = entityRenderY(cell);
+        const drawX = cell.birthX + (cellX - cell.birthX) * progress;
+        const drawY = cell.birthY + (cellY - cell.birthY) * progress;
+        const r = Math.max(1, cell.radius * scale);
+        ctx.moveTo(drawX + r, drawY);
+        ctx.arc(drawX, drawY, r, 0, TAU);
+      }
+
+      function drawBatchedCells(renderMode = 1) {
+        const fast = renderMode >= 2;
+        for (const cells of cellBatchByColor.values()) cells.length = 0;
+        for (const cell of renderCellsScratch) {
+          if (isLocalViewActor(cell.actor)) {
+            detailCellsScratch.push(cell);
+            continue;
+          }
+          let cells = cellBatchByColor.get(cell.actor.color);
+          if (!cells) {
+            cells = [];
+            cellBatchByColor.set(cell.actor.color, cells);
+          }
+          cells.push(cell);
+        }
+
+        for (const [color, cells] of cellBatchByColor) {
+          if (!cells.length) continue;
+          ctx.beginPath();
+          for (const cell of cells) appendCellCirclePath(cell, fast);
+          ctx.fillStyle = color;
+          ctx.fill();
+        }
+
+        detailCellsScratch.sort((a, b) => a.radius - b.radius);
+        for (const cell of detailCellsScratch) drawCell(cell, renderMode);
+      }
+
       function drawCursorLine() {
         if (!state.settings.cursorLine || state.spectating) return;
         const sourceCells = [];
@@ -4892,10 +5002,43 @@
         ctx.restore();
       }
 
-      function renderModeForVisibleCells(count) {
-        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 38) return 2;
-        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 50) return 1;
+      function renderModeForVisibleCells(count, boostedCount = 0) {
+        if (boostedCount >= 180) return 2;
+        if (boostedCount >= 70) return 1;
+        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 45) return 2;
+        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 55) return 1;
         return 0;
+      }
+
+      function queryRenderableCells(bounds) {
+        renderCellsScratch.length = 0;
+        const queryPad = 1100;
+        const candidates = state.net.role === "client"
+          ? allCells(renderCellQueryScratch)
+          : cellGrid.queryRect(
+            bounds.left - queryPad,
+            bounds.top - queryPad,
+            bounds.right + queryPad,
+            bounds.bottom + queryPad,
+            renderCellQueryScratch
+          );
+        let boostedVisibleCells = 0;
+        for (const cell of candidates) {
+          if (!isVisible(cell, bounds, 80)) continue;
+          renderCellsScratch.push(cell);
+          if (!isLocalViewActor(cell.actor) && cell.splitBoostAge > 0) boostedVisibleCells += 1;
+        }
+        return boostedVisibleCells;
+      }
+
+      function queryRenderableFeeds(bounds) {
+        if (state.net.role === "client") return state.feeds;
+        return feedGrid.queryRect(bounds.left - 20, bounds.top - 20, bounds.right + 20, bounds.bottom + 20, renderEntityQueryScratch);
+      }
+
+      function queryRenderableViruses(bounds) {
+        if (state.net.role === "client") return state.viruses;
+        return virusGrid.queryRect(bounds.left - 90, bounds.top - 90, bounds.right + 90, bounds.bottom + 90, renderEntityQueryScratch);
       }
 
       function draw() {
@@ -4909,26 +5052,35 @@
         ctx.translate(-state.camera.x, -state.camera.y);
 
         const bounds = visibleWorldBounds();
-        renderCellsScratch.length = 0;
-        const allLiveCells = allCells(scratch);
-        for (const cell of allLiveCells) {
-          if (isVisible(cell, bounds, 80)) renderCellsScratch.push(cell);
-        }
-        const renderMode = renderModeForVisibleCells(renderCellsScratch.length);
+        detailCellsScratch.length = 0;
+        foodRenderScratch.length = 0;
+        feedRenderScratch.length = 0;
+        const boostedVisibleCells = queryRenderableCells(bounds);
+        const renderMode = renderModeForVisibleCells(renderCellsScratch.length, boostedVisibleCells);
+        state.lastRenderMode = renderMode;
         drawGrid(bounds, renderMode);
 
-        ctx.lineWidth = 3 / state.camera.zoom;
-        ctx.strokeStyle = "rgba(128, 139, 154, 0.55)";
-        ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+        if (renderMode < 2) {
+          ctx.lineWidth = 3 / state.camera.zoom;
+          ctx.strokeStyle = "rgba(128, 139, 154, 0.55)";
+          ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+        }
 
         const visibleFoods = foodGrid.queryRect(bounds.left - 20, bounds.top - 20, bounds.right + 20, bounds.bottom + 20, aiEntityScratch);
         for (const food of visibleFoods) {
           if (food.dead) continue;
-          if (isVisible(food, bounds, 20)) drawCircleEntity(food);
+          if (!isVisible(food, bounds, 20)) continue;
+          if (renderMode > 0) foodRenderScratch.push(food);
+          else drawCircleEntity(food);
         }
+        if (foodRenderScratch.length) drawBatchedCircleEntities(foodRenderScratch, renderMode);
 
-        for (const feed of state.feeds) {
+        for (const feed of queryRenderableFeeds(bounds)) {
           if (!isVisible(feed, bounds, 20)) continue;
+          if (renderMode > 0) {
+            feedRenderScratch.push(feed);
+            continue;
+          }
           ctx.beginPath();
           ctx.arc(entityRenderX(feed), entityRenderY(feed), feed.radius, 0, TAU);
           ctx.fillStyle = feed.color;
@@ -4939,14 +5091,19 @@
             ctx.stroke();
           }
         }
+        if (feedRenderScratch.length) drawBatchedCircleEntities(feedRenderScratch, renderMode);
 
-        for (const virus of state.viruses) {
+        for (const virus of queryRenderableViruses(bounds)) {
           if (isVisible(virus, bounds, 90)) drawVirus(virus, renderMode);
         }
 
-        renderCellsScratch.sort((a, b) => a.radius - b.radius);
-        for (const cell of renderCellsScratch) {
-          drawCell(cell, renderMode);
+        if (renderMode > 0) {
+          drawBatchedCells(renderMode);
+        } else {
+          renderCellsScratch.sort((a, b) => a.radius - b.radius);
+          for (const cell of renderCellsScratch) {
+            drawCell(cell, renderMode);
+          }
         }
         drawCursorLine();
 
@@ -5396,7 +5553,8 @@
             update(stepDt, state.simTime, realNow);
           }
         }
-        draw();
+        const skipRender = state.lastRenderMode >= 2 && state.fps < 42 && state.frameIndex % 2 === 1;
+        if (!skipRender) draw();
         requestAnimationFrame(loop);
       }
 
