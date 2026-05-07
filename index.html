@@ -994,8 +994,10 @@
       const WORLD_SYNC_CHUNK = 300;
       const MAX_SYNC_FOODS = 1800;
       const MAX_SYNC_FEEDS = 240;
+      const MAX_SYNC_VIRUSES = 600;
+      const MAX_SYNC_BOTS = 80;
       const NETWORK_RENDER_RANGE = 2600;
-      const CLIENT_WORLD_CHUNKS_PER_FRAME = 1;
+      const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
@@ -1008,6 +1010,8 @@
       const CLIENT_INPUT_SEND_RATE = 1 / TARGET_FPS;
       const HOST_SNAPSHOT_RATE = 1 / 60;
       const HOST_FEED_SNAPSHOT_RATE = 1 / 12;
+      const HOST_BOT_SNAPSHOT_RATE = 1 / 8;
+      const HOST_WORLD_SYNC_RATE = 2.0;
       const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
@@ -1178,6 +1182,7 @@
           lastInputSend: -100,
           lastSnapshotSend: -100,
           lastFeedSnapshotSend: -100,
+          lastBotSnapshotSend: -100,
           lastWorldSend: -100
         },
         foodGridDirty: true,
@@ -4360,6 +4365,7 @@
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
             state.net.lastFeedSnapshotSend = -100;
+            state.net.lastBotSnapshotSend = -100;
             state.net.lastWorldSend = -100;
             sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
@@ -4408,6 +4414,7 @@
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
             state.net.lastFeedSnapshotSend = -100;
+            state.net.lastBotSnapshotSend = -100;
             state.net.lastWorldSend = -100;
             sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
@@ -4539,6 +4546,7 @@
         state.net.lastInputSend = -100;
         state.net.lastSnapshotSend = -100;
         state.net.lastFeedSnapshotSend = -100;
+        state.net.lastBotSnapshotSend = -100;
         state.net.lastWorldSend = -100;
         setStatus("OFFLINE");
         if (!keepWorld) resetFreshWorld("player", false);
@@ -4740,6 +4748,7 @@
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
             state.net.lastFeedSnapshotSend = -100;
+            state.net.lastBotSnapshotSend = -100;
             state.net.lastWorldSend = -100;
           }
         };
@@ -4832,6 +4841,35 @@
         };
       }
 
+      function actorNearAnyHuman(actor, range = NETWORK_RENDER_RANGE) {
+        if (!actor || actor.isHuman || actor.cells.length <= 0) return actor && actor.isHuman;
+        const center = actorCenter(actor);
+        for (const human of state.actors) {
+          if (!human.isHuman || human.cells.length <= 0) continue;
+          const humanCenter = actorCenter(human);
+          const dx = center.x - humanCenter.x;
+          const dy = center.y - humanCenter.y;
+          if (dx * dx + dy * dy <= range * range) return true;
+        }
+        return false;
+      }
+
+      function actorsForNetwork(sendBots) {
+        const actors = [];
+        let botCount = 0;
+        for (const actor of state.actors) {
+          if (actor.isHuman) {
+            actors.push(actor);
+            continue;
+          }
+          if (!sendBots || botCount >= MAX_SYNC_BOTS) continue;
+          if (!actorNearAnyHuman(actor, NETWORK_RENDER_RANGE)) continue;
+          actors.push(actor);
+          botCount += 1;
+        }
+        return actors;
+      }
+
       function serializeCircle(entity) {
         return {
           id: entity.id,
@@ -4853,7 +4891,8 @@
         if (state.net.role !== "host" || !state.net.connected) return;
         const sendFast = forceWorld || now - state.net.lastSnapshotSend >= HOST_SNAPSHOT_RATE;
         const sendFeeds = forceWorld || now - state.net.lastFeedSnapshotSend >= HOST_FEED_SNAPSHOT_RATE;
-        const sendWorld = forceWorld || now - state.net.lastWorldSend >= 1.0;
+        const sendBots = forceWorld || now - state.net.lastBotSnapshotSend >= HOST_BOT_SNAPSHOT_RATE;
+        const sendWorld = forceWorld || now - state.net.lastWorldSend >= HOST_WORLD_SYNC_RATE;
         if (!sendFast && !sendWorld) return;
 
         const message = {
@@ -4869,7 +4908,8 @@
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
-          actors: state.actors.map(serializeActor)
+          partialActors: true,
+          actors: actorsForNetwork(sendBots).map(serializeActor)
         };
         if (sendFeeds) {
           message.feeds = feedsForNetworkSync().map(serializeCircle);
@@ -4877,11 +4917,12 @@
         if (netSend(message)) {
           state.net.lastSnapshotSend = now;
           if (sendFeeds) state.net.lastFeedSnapshotSend = now;
+          if (sendBots) state.net.lastBotSnapshotSend = now;
         }
         if (sendWorld) {
           state.net.worldSeq += 1;
           sendWorldChunks("foods", foodsForNetworkSync().map(serializeCircle), state.net.worldSeq);
-          sendWorldChunks("viruses", state.viruses.filter((virus) => !virus.dead).map(serializeCircle), state.net.worldSeq);
+          sendWorldChunks("viruses", virusesForNetworkSync().map(serializeCircle), state.net.worldSeq);
           state.net.lastWorldSend = now;
         }
       }
@@ -4897,6 +4938,12 @@
         const liveFeeds = state.feeds.filter((feed) => !feed.dead);
         if (liveFeeds.length <= MAX_SYNC_FEEDS) return liveFeeds;
         return networkEntitiesNearHumans(feedGrid, MAX_SYNC_FEEDS, Math.min(NETWORK_RENDER_RANGE, 1800));
+      }
+
+      function virusesForNetworkSync() {
+        const liveViruses = state.viruses.filter((virus) => !virus.dead);
+        if (liveViruses.length <= MAX_SYNC_VIRUSES) return liveViruses;
+        return networkEntitiesNearHumans(virusGrid, MAX_SYNC_VIRUSES, NETWORK_RENDER_RANGE);
       }
 
       function networkEntitiesNearHumans(grid, limit, range) {
@@ -5172,6 +5219,7 @@
         const cellsById = new Map(actor.cells.map((cell) => [cell.id, cell]));
         actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData, cellsById.get(cellData.id)));
         refreshNextSplitPriority(actor);
+        actor.netSeenAt = state.realNow || performance.now() / 1000;
         return actor;
       }
 
@@ -5192,6 +5240,7 @@
           natural: type === "virus" ? data.natural !== false : false,
           renderX: Number.isFinite(existing?.renderX) ? existing.renderX : clamp(data.x, 0, WORLD_SIZE),
           renderY: Number.isFinite(existing?.renderY) ? existing.renderY : clamp(data.y, 0, WORLD_SIZE),
+          netSeenAt: existing?.netSeenAt || 0,
           dead: false
         };
       }
@@ -5199,6 +5248,25 @@
       function applyEntityListSnapshot(items, type, existingList) {
         const byId = new Map(existingList.map((entity) => [entity.id, entity]));
         return (items || []).map((entity) => applyEntitySnapshot(entity, type, byId.get(entity.id)));
+      }
+
+      function mergeEntityListSnapshot(items, type, existingList, maxAge = 4) {
+        const now = state.realNow || performance.now() / 1000;
+        const byId = new Map(existingList.map((entity) => [entity.id, entity]));
+        for (const item of items || []) {
+          const next = applyEntitySnapshot(item, type, byId.get(item.id));
+          next.netSeenAt = now;
+          byId.set(item.id, next);
+        }
+        return Array.from(byId.values()).filter((entity) => now - (entity.netSeenAt == null ? 0 : entity.netSeenAt) <= maxAge);
+      }
+
+      function mergeActorListSnapshot(items, existingList) {
+        const now = state.realNow || performance.now() / 1000;
+        const incoming = (items || []).map(applyActorSnapshot);
+        const byId = new Map(existingList.map((actor) => [actor.id, actor]));
+        for (const actor of incoming) byId.set(actor.id, actor);
+        return Array.from(byId.values()).filter((actor) => actor.isHuman || now - (actor.netSeenAt == null ? 0 : actor.netSeenAt) <= 5);
       }
 
       function applySnapshot(message) {
@@ -5265,15 +5333,15 @@
           }
           if (settingsChanged) syncSettingsControls();
         }
-        const actors = (message.actors || []).map(applyActorSnapshot);
-        state.actors = actors;
+        state.actors = mergeActorListSnapshot(message.actors || [], state.actors);
+        const actors = state.actors;
         const activeActor = actorById(state.input.activeActorId);
         state.player = activeActor && activeActor.control === "local"
           ? activeActor
           : actorById(state.localActorId) || actors[0] || state.player;
 
         if (Array.isArray(message.feeds)) {
-          state.feeds = applyEntityListSnapshot(message.feeds, "feed", state.feeds);
+          state.feeds = mergeEntityListSnapshot(message.feeds, "feed", state.feeds, 3.5);
         }
       }
 
@@ -5975,6 +6043,7 @@
           state.net.connected = Boolean(state.net.channel?.readyState === "open" || state.net.socket?.readyState === WebSocket.OPEN);
           state.net.lastSnapshotSend = -100;
           state.net.lastFeedSnapshotSend = -100;
+          state.net.lastBotSnapshotSend = -100;
           state.net.lastWorldSend = -100;
           sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           return;
