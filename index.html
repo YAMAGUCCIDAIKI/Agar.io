@@ -333,6 +333,52 @@
       pointer-events: auto;
     }
 
+    .profile-panel {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid rgba(0, 220, 255, 0.7);
+      border-radius: 4px;
+      background: rgba(0, 13, 38, 0.58);
+      color: #13f6ff;
+    }
+
+    .profile-fields {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 6px;
+    }
+
+    .profile-panel input {
+      min-height: 34px;
+      border: 1px solid rgba(0, 220, 255, 0.65);
+      border-radius: 3px;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.96);
+      color: #111827;
+      font: 700 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    .tag-presets {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .tag-presets button {
+      min-height: 28px;
+      border: 1px solid rgba(0, 220, 255, 0.62);
+      border-radius: 3px;
+      background: rgba(0, 126, 255, 0.34);
+      color: #13f6ff;
+      font: 800 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+
+    .tag-presets button:hover {
+      background: rgba(0, 170, 255, 0.5);
+    }
+
     .view-row {
       display: flex;
       align-items: center;
@@ -590,6 +636,19 @@
       <button id="playBtn" type="button">PLAY</button>
     </div>
     <div class="menu-layout">
+      <section class="profile-panel" aria-label="プロフィール">
+        <div class="profile-fields">
+          <input id="teamBox" maxlength="8" spellcheck="false" aria-label="チームタグ" placeholder="team">
+          <input id="nameBox" maxlength="18" spellcheck="false" aria-label="名前" placeholder="name">
+        </div>
+        <div class="tag-presets" aria-label="チームタグ">
+          <button type="button" data-team-tag="">なし</button>
+          <button type="button" data-team-tag="先輩">先輩</button>
+          <button type="button" data-team-tag="敵">敵</button>
+          <button type="button" data-team-tag="紅">紅</button>
+        </div>
+      </section>
+
       <section class="online-panel" aria-label="オンライン">
         <div class="online-title">
           <span>オンライン2人</span>
@@ -738,6 +797,9 @@
       const flashEl = document.getElementById("flash");
       const menuBtn = document.getElementById("menuBtn");
       const playBtn = document.getElementById("playBtn");
+      const teamBox = document.getElementById("teamBox");
+      const nameBox = document.getElementById("nameBox");
+      const teamPresetButtons = Array.from(document.querySelectorAll("[data-team-tag]"));
       const onlineStatusEl = document.getElementById("onlineStatus");
       const hostBtn = document.getElementById("hostBtn");
       const joinBtn = document.getElementById("joinBtn");
@@ -916,6 +978,10 @@
         },
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
+        profile: {
+          team: "",
+          name: "YOU"
+        },
         settings: {
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
@@ -1514,6 +1580,40 @@
         actor.input.targetY = state.input.mouseWorldY;
       }
 
+      function sanitizeProfileText(value, fallback, maxLength) {
+        const text = String(value || "").replace(/[<>{}[\]\\]/g, "").trim().slice(0, maxLength);
+        return text || fallback;
+      }
+
+      function syncProfileFromInputs() {
+        state.profile.team = sanitizeProfileText(teamBox.value, "", 8);
+        state.profile.name = sanitizeProfileText(nameBox.value, "YOU", 18);
+      }
+
+      function localProfileName(suffix = "") {
+        const name = sanitizeProfileText(state.profile.name, "YOU", 18);
+        const team = sanitizeProfileText(state.profile.team, "", 8);
+        return `${team ? `[${team}] ` : ""}${name}${suffix}`;
+      }
+
+      function applyLocalProfile() {
+        syncProfileFromInputs();
+        for (const actor of localHumanActors()) {
+          actor.name = localProfileName(actor.localClone ? "2" : "");
+        }
+        state.net.lastSnapshotSend = -100;
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          "\"": "&quot;",
+          "'": "&#39;"
+        })[char]);
+      }
+
       function findLocalActorSpawnPosition(actor, anchorActor, mass) {
         const radius = radiusFromMass(mass);
         const margin = Math.min(Math.max(radius + 24, 80), WORLD_SIZE * 0.5 - 1);
@@ -1628,7 +1728,7 @@
       function ensureRemoteClone(main) {
         let clone = remoteCloneActor(main.id);
         if (!clone) {
-          clone = createActor(localCloneId(main.id), `${main.name}2`, main.color, true, "remote");
+          clone = createActor(localCloneId(main.id), `${main.name || "P2"}2`, main.color, true, "remote");
           clone.localClone = true;
           state.actors.push(clone);
           spawnLocalActorBeside(clone, main);
@@ -1647,8 +1747,7 @@
       }
 
       function displayActorName(actor) {
-        if (actor && actor.control === "local") return actor.localClone ? actor.name : "自分";
-        if (actor && actor.isHuman) return "P2";
+        if (actor && actor.isHuman) return actor.name || (actor.control === "local" ? "自分" : "P2");
         return actor ? actor.name : "";
       }
 
@@ -1833,7 +1932,7 @@
         let clone = localCloneActor();
         if (!clone) {
           state.localCloneIndex = 1;
-          clone = createActor("local-clone-1", "自分2", botPalette[1 % botPalette.length], true, "local");
+          clone = createActor("local-clone-1", localProfileName("2"), botPalette[1 % botPalette.length], true, "local");
           clone.localClone = true;
           state.actors.push(clone);
           spawnLocalActorBeside(clone, main);
@@ -3681,7 +3780,7 @@
         scoreboardEl.innerHTML = nutrientRow + ranked
           .map((entry, index) => {
             const cls = isLocalActor(entry.actor) ? "rank you" : "rank";
-            return `<div class="${cls}"><span>${index + 1}</span><span>${displayActorName(entry.actor)}</span><b>${Math.round(entry.mass)}</b></div>`;
+            return `<div class="${cls}"><span>${index + 1}</span><span>${escapeHtml(displayActorName(entry.actor))}</span><b>${Math.round(entry.mass)}</b></div>`;
           })
           .join("");
 
@@ -4021,6 +4120,7 @@
       }
 
       function resetFreshWorld(localId, onlineMode = false) {
+        syncProfileFromInputs();
         WORLD_SIZE = state.settings.worldSize;
         setSpectating(false);
         state.localCloneIndex = 0;
@@ -4038,8 +4138,8 @@
         state.nextBotIndex = 0;
 
         if (onlineMode) {
-          const host = createActor("host", "P1", "#2e90fa", true, localId === "host" ? "local" : "remote");
-          const guest = createActor("guest", "P2", "#f04438", true, localId === "guest" ? "local" : "remote");
+          const host = createActor("host", localId === "host" ? localProfileName() : "P1", "#2e90fa", true, localId === "host" ? "local" : "remote");
+          const guest = createActor("guest", localId === "guest" ? localProfileName() : "P2", "#f04438", true, localId === "guest" ? "local" : "remote");
           state.actors.push(host, guest);
           state.player = localId === "guest" ? guest : host;
           if (localId === "host") {
@@ -4051,7 +4151,7 @@
             seedInitialViruses(center.x, center.y);
           }
         } else {
-          const player = createActor("player", "YOU", "#2e90fa", true, "local");
+          const player = createActor("player", localProfileName(), "#2e90fa", true, "local");
           state.player = player;
           state.actors.push(player);
           spawnActor(player, PLAYER_START_MASS);
@@ -5514,7 +5614,18 @@
           state.input.botEjectQueued = false;
         });
         menuBtn.addEventListener("click", () => setMenuOpen(true));
-        playBtn.addEventListener("click", () => setMenuOpen(false));
+        playBtn.addEventListener("click", () => {
+          applyLocalProfile();
+          setMenuOpen(false);
+        });
+        nameBox.addEventListener("input", applyLocalProfile);
+        teamBox.addEventListener("input", applyLocalProfile);
+        for (const button of teamPresetButtons) {
+          button.addEventListener("click", () => {
+            teamBox.value = button.dataset.teamTag || "";
+            applyLocalProfile();
+          });
+        }
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
         }
@@ -5620,6 +5731,8 @@
         setViewScalePercent(DEFAULT_VIEW_SCALE * 100);
         syncSettingsControls();
         syncKeyBindControls();
+        teamBox.value = state.profile.team;
+        nameBox.value = state.profile.name;
         setMenuOpen(true);
 
         resetFreshWorld("player", false);
