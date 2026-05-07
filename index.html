@@ -1001,6 +1001,10 @@
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
+      const TARGET_FPS = 256;
+      const TARGET_FRAME_TIME = 1 / TARGET_FPS;
+      const CLIENT_INPUT_SEND_RATE = 1 / TARGET_FPS;
+      const HOST_SNAPSHOT_RATE = 1 / 60;
       const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
@@ -1063,8 +1067,8 @@
         simTime: 0,
         frameIndex: 0,
         lastFrame: performance.now(),
-        fps: 60,
-        fpsSample: 60,
+        fps: TARGET_FPS,
+        fpsSample: TARGET_FPS,
         fpsTimer: 0,
         lastRenderMode: 0,
         nextId: 1,
@@ -4820,7 +4824,7 @@
 
       function sendAuthoritativeSnapshot(now, forceWorld = false) {
         if (state.net.role !== "host" || !state.net.connected) return;
-        const sendFast = forceWorld || now - state.net.lastSnapshotSend >= 1 / 14;
+        const sendFast = forceWorld || now - state.net.lastSnapshotSend >= HOST_SNAPSHOT_RATE;
         const sendWorld = forceWorld || now - state.net.lastWorldSend >= 1.0;
         if (!sendFast && !sendWorld) return;
 
@@ -4897,7 +4901,7 @@
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
         const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued || state.input.cloneQueued;
-        if (!urgent && now - state.net.lastInputSend < 1 / 60) return;
+        if (!urgent && now - state.net.lastInputSend < CLIENT_INPUT_SEND_RATE) return;
         netSend({
           t: "input",
           activeActorId: state.input.activeActorId || state.player.id,
@@ -6167,10 +6171,15 @@
 
         resetFreshWorld("player", false);
 
-        requestAnimationFrame(loop);
+        scheduleNextFrame(0);
       }
 
-      function loop(time) {
+      function scheduleNextFrame(delay = TARGET_FRAME_TIME * 1000) {
+        setTimeout(() => loop(performance.now()), Math.max(0, delay));
+      }
+
+      function loop(time = performance.now()) {
+        const frameStartedAt = performance.now();
         state.frameIndex += 1;
         const dt = Math.min(0.04, Math.max(0.001, (time - state.lastFrame) / 1000));
         state.lastFrame = time;
@@ -6196,7 +6205,8 @@
           }
         }
         draw();
-        requestAnimationFrame(loop);
+        const elapsed = performance.now() - frameStartedAt;
+        scheduleNextFrame(TARGET_FRAME_TIME * 1000 - elapsed);
       }
 
       init();
