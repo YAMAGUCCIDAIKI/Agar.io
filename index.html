@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.13</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.14</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.13";
+      const APP_VERSION = "v2026.05.08.14";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5258,8 +5258,8 @@
           const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : "guest";
           guestClone = remoteCloneActor("guest");
           let activeGuest = requestedActorId === localCloneId("guest") && guestClone ? guestClone : guest;
-          if (activeGuest.cells.length === 0 && guest.cells.length > 0) activeGuest = guest;
-          if (activeGuest.cells.length === 0 && guestClone && guestClone.cells.length > 0) activeGuest = guestClone;
+          if (liveCellCount(activeGuest) <= 0 && liveCellCount(guest) > 0) activeGuest = guest;
+          if (liveCellCount(activeGuest) <= 0 && guestClone && liveCellCount(guestClone) > 0) activeGuest = guestClone;
           for (const actor of [guest, guestClone]) {
             if (actor && actor !== activeGuest) clearActorControlInput(actor, true);
           }
