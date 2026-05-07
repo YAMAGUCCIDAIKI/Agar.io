@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.8</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.9</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.8";
+      const APP_VERSION = "v2026.05.08.9";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5675,7 +5675,7 @@
       function appendPelletPath(entity) {
         const x = entityRenderX(entity);
         const y = entityRenderY(entity);
-        const r = 4;
+        const r = 5.8;
         const sides = 9;
         const phase = ((entity.id || 0) % sides) * TAU / sides;
         for (let i = 0; i < sides; i += 1) {
