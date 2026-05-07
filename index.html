@@ -3216,9 +3216,6 @@
             if (receivesPlayerInput(actor)) {
               cell.targetX = actor.input.targetX;
               cell.targetY = actor.input.targetY;
-            } else if (actor.control === "local" && actor.isHuman) {
-              cell.targetX = cell.x;
-              cell.targetY = cell.y;
             }
 
             const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
