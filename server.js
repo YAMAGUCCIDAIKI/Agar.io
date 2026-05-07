@@ -92,6 +92,7 @@ function roomState(roomId) {
       id: roomId,
       clients: new Set(),
       host: null,
+      nextPlayerIndex: 1,
       snapshot: null,
       world: new Map(),
       lastHostMessageAt: 0
@@ -158,6 +159,7 @@ function handleMessage(client, text) {
   client.lastMessageAt = Date.now();
   if (message.t === "relayJoin") {
     joinRoom(client, String(message.room || "").trim(), String(message.role || ""));
+    client.name = String(message.name || "").slice(0, 18);
     return;
   }
 
@@ -182,6 +184,10 @@ function joinRoom(client, requestedRoom, role) {
   const room = roomState(roomId);
 
   client.room = roomId;
+  if (!client.playerId) {
+    client.playerId = `p${room.nextPlayerIndex}`;
+    room.nextPlayerIndex += 1;
+  }
   client.role = role === "host" ? "host" : "client";
   client.alive = true;
   client.joinedAt = Date.now();
@@ -190,7 +196,7 @@ function joinRoom(client, requestedRoom, role) {
   if (!room.host || !room.clients.has(room.host)) {
     promoteHost(room, client);
   } else {
-    sendJson(client, { t: "relayReady", room: roomId, peers: room.clients.size, host: room.host.id });
+    sendJson(client, { t: "relayReady", room: roomId, peers: room.clients.size, host: room.host.id, playerId: client.playerId });
     if (room.snapshot) sendJson(client, room.snapshot);
     for (const worldMessage of room.world.values()) sendJson(client, worldMessage);
   }
@@ -208,6 +214,7 @@ function promoteHost(room, client = null) {
     sendJson(previousHost, { t: "relayDemoteClient", room: room.id });
   }
   nextHost.role = "host";
+  sendJson(nextHost, { t: "relayReady", room: room.id, peers: room.clients.size, host: nextHost.id, playerId: nextHost.playerId });
   sendJson(nextHost, {
     t: "relayPromoteHost",
     room: room.id,
