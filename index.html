@@ -2185,10 +2185,11 @@
       function virusBurstMasses(total, count) {
         if (count <= 1) return [total];
         const weights = [];
+        const mediumCount = Math.min(3, Math.max(1, count - 2));
         for (let i = 0; i < count; i += 1) {
-          if (i === 0) weights.push(rand(2.7, 3.4));
-          else if (i <= 3) weights.push(rand(1.25, 1.75));
-          else weights.push(rand(0.42, 0.78));
+          if (i === 0) weights.push(rand(2.0, 2.35));
+          else if (i <= mediumCount) weights.push(rand(1.18, 1.48));
+          else weights.push(rand(0.38, 0.62));
         }
 
         const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
@@ -2207,7 +2208,14 @@
         }
 
         masses[0] = Math.max(MIN_CELL_MASS, masses[0] + total - massTotal);
-        return masses.sort((a, b) => b - a);
+
+        const sorted = masses.sort((a, b) => b - a);
+        if (sorted.length <= 2) return sorted;
+
+        const centerIndex = Math.min(sorted.length - 1, 2);
+        const centerMass = sorted[centerIndex];
+        sorted.splice(centerIndex, 1);
+        return [centerMass, ...sorted];
       }
 
       function totalMass(actor) {
@@ -2631,7 +2639,7 @@
         const recoil = state.settings.splitRecoil;
         if (recoil <= 0) return 0;
         const requested = Math.max(0, radius * (recoil / 100));
-        return Math.min(requested, 8 + radius * 0.018);
+        return Math.min(requested, 4 + radius * 0.01);
       }
 
       function applySplitRecoil(cell, dirX, dirY, distance) {
@@ -3825,13 +3833,13 @@
 
             let remaining = Math.max(1, actor.input.splitCount || 1);
             let didAnySplit = false;
-            while (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
+            if (remaining > 0 && liveCellCount(actor) < MAX_CELLS) {
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
                 remaining = 0;
-                break;
+              } else {
+                didAnySplit = true;
+                remaining -= 1;
               }
-              didAnySplit = true;
-              remaining -= 1;
             }
 
             actor.input.splitCount = Math.max(0, remaining);
