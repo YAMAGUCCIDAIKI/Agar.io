@@ -8,6 +8,23 @@ const ROOT = __dirname;
 const HOST_TIMEOUT_MS = 2200;
 const rooms = new Map();
 
+function publicRelayUrl() {
+  const rawUrl =
+    process.env.PUBLIC_RELAY_URL ||
+    process.env.RELAY_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.RAILWAY_PUBLIC_DOMAIN ||
+    process.env.FLY_APP_NAME ||
+    "";
+  const value = String(rawUrl).trim();
+  if (!value) return "wss://your-server.example.com/ws";
+  if (/^(https?|wss?):\/\//i.test(value)) {
+    return `${value.replace(/\/+$/, "").replace(/^http:/i, "ws:").replace(/^https:/i, "wss:")}/ws`;
+  }
+  if (process.env.FLY_APP_NAME && value === process.env.FLY_APP_NAME) return `wss://${value}.fly.dev/ws`;
+  return `wss://${value.replace(/\/+$/, "")}/ws`;
+}
+
 function sendHttp(res, status, body, type = "text/plain; charset=utf-8") {
   res.writeHead(status, {
     "content-type": type,
@@ -295,4 +312,5 @@ setInterval(checkRooms, 500);
 
 server.listen(PORT, () => {
   console.log(`Agar relay ready: http://localhost:${PORT}`);
+  console.log(`GitHub Pages relay URL: ${publicRelayUrl()}`);
 });
