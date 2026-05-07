@@ -943,6 +943,7 @@
       const SPLIT_SPREAD_ALLOWANCE = 900;
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_COOLDOWN = 0.22;
+      const SPLIT_HOLD_DURATION = 0.075;
       const MAX_QUEUED_SPLITS_PER_FRAME = 4;
       const ACTIVE_CONTROL_COLOR = "#fff200";
       const ACTIVE_CONTROL_STROKE = "#111827";
@@ -2104,6 +2105,9 @@
           birthScale: 1,
           fragmentAge: 0,
           splitBoostAge: 0,
+          splitHoldAge: 0,
+          pendingBoostX: 0,
+          pendingBoostY: 0,
           separationGraceUntil: 0,
           splitRecoilFrame: -1,
           splitRecoilApplied: 0,
@@ -2713,8 +2717,11 @@
         child.faceX = dirX;
         child.faceY = dirY;
         const impulse = splitImpulse(child.radius);
-        child.boostX = dirX * impulse;
-        child.boostY = dirY * impulse;
+        child.pendingBoostX = dirX * impulse;
+        child.pendingBoostY = dirY * impulse;
+        child.splitHoldAge = SPLIT_HOLD_DURATION;
+        child.boostX = 0;
+        child.boostY = 0;
         child.splitBoostAge = SPLIT_BOOST_DURATION;
         child.splitPriority = actor.nextSplitPriority;
         actor.nextSplitPriority += 1;
@@ -3217,6 +3224,23 @@
       function moveCellsStep(dt) {
         for (const actor of state.actors) {
           for (const cell of actor.cells) {
+            if (cell.splitHoldAge > 0) {
+              cell.splitHoldAge = Math.max(0, cell.splitHoldAge - dt);
+              cell.vx *= Math.exp(-dt * 16);
+              cell.vy *= Math.exp(-dt * 16);
+              if (cell.splitHoldAge <= 0) {
+                cell.boostX += cell.pendingBoostX || 0;
+                cell.boostY += cell.pendingBoostY || 0;
+                cell.pendingBoostX = 0;
+                cell.pendingBoostY = 0;
+              } else {
+                if (cell.birthAge < cell.birthDuration) {
+                  cell.birthAge = Math.min(cell.birthDuration, cell.birthAge + dt);
+                }
+                appendCellSweepPoint(cell);
+                continue;
+              }
+            }
             if (receivesPlayerInput(actor)) {
               cell.targetX = actor.input.targetX;
               cell.targetY = actor.input.targetY;
@@ -4521,6 +4545,9 @@
           birthScale: cell.birthScale,
           fragmentAge: cell.fragmentAge,
           splitBoostAge: cell.splitBoostAge,
+          splitHoldAge: cell.splitHoldAge,
+          pendingBoostX: cell.pendingBoostX,
+          pendingBoostY: cell.pendingBoostY,
           virusCooldown: cell.virusCooldown,
           mergeVirusWindow: cell.mergeVirusWindow,
           mergeOverflowMass: cell.mergeOverflowMass,
@@ -4809,6 +4836,9 @@
         cell.birthScale = data.birthScale == null ? 1 : data.birthScale;
         cell.fragmentAge = data.fragmentAge || 0;
         cell.splitBoostAge = data.splitBoostAge || 0;
+        cell.splitHoldAge = data.splitHoldAge || 0;
+        cell.pendingBoostX = data.pendingBoostX || 0;
+        cell.pendingBoostY = data.pendingBoostY || 0;
         cell.virusCooldown = data.virusCooldown || 0;
         cell.mergeVirusWindow = data.mergeVirusWindow || 0;
         cell.mergeOverflowMass = data.mergeOverflowMass || 0;
