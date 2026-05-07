@@ -785,6 +785,12 @@
           <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
         </label>
         <label class="setting-control">
+          <span>惰性距離</span>
+          <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="100" aria-label="分裂惰性の距離">
+          <strong id="splitMomentumValue">100</strong>
+          <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
+        </label>
+        <label class="setting-control">
           <span>ゲーム速度</span>
           <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
           <strong id="gameSpeedValue">1x</strong>
@@ -875,6 +881,9 @@
       const splitMinDistanceSlider = document.getElementById("splitMinDistanceSlider");
       const splitMinDistanceValueEl = document.getElementById("splitMinDistanceValue");
       const splitMinDistanceMaxBox = document.getElementById("splitMinDistanceMaxBox");
+      const splitMomentumSlider = document.getElementById("splitMomentumSlider");
+      const splitMomentumValueEl = document.getElementById("splitMomentumValue");
+      const splitMomentumMaxBox = document.getElementById("splitMomentumMaxBox");
       const gameSpeedSlider = document.getElementById("gameSpeedSlider");
       const gameSpeedValueEl = document.getElementById("gameSpeedValue");
       const gameSpeedMaxBox = document.getElementById("gameSpeedMaxBox");
@@ -908,6 +917,7 @@
       const DEFAULT_SPLIT_RECOIL = 0;
       const DEFAULT_SPLIT_SPEED = 110;
       const DEFAULT_SPLIT_MIN_DISTANCE = 160;
+      const DEFAULT_SPLIT_MOMENTUM = 100;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
       const BOT_SPAWN_MASS = 132;
@@ -944,7 +954,7 @@
       const SPLIT_CATCH_MOMENTUM_SCALE = 0.88;
       const SPLIT_RECOIL_COOLDOWN = 0.22;
       const SPLIT_HOLD_DURATION = 0.035;
-      const QUEUED_SPLIT_INTERVAL = 0.04;
+      const MAX_QUEUED_SPLITS_PER_FRAME = 4;
       const ACTIVE_CONTROL_COLOR = "#fff200";
       const ACTIVE_CONTROL_STROKE = "#111827";
 
@@ -1034,6 +1044,7 @@
           splitRecoil: DEFAULT_SPLIT_RECOIL,
           splitSpeed: DEFAULT_SPLIT_SPEED,
           splitMinDistance: DEFAULT_SPLIT_MIN_DISTANCE,
+          splitMomentum: DEFAULT_SPLIT_MOMENTUM,
           gameSpeed: DEFAULT_GAME_SPEED,
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
@@ -1051,6 +1062,7 @@
             splitRecoil: 40,
             splitSpeed: 300,
             splitMinDistance: 360,
+            splitMomentum: 160,
             gameSpeed: 3,
             mergeCooldown: 60,
             worldSize: 15000
@@ -2650,6 +2662,10 @@
         return Math.max(0.05, state.settings.splitSpeed / 100);
       }
 
+      function splitMomentumScale() {
+        return Math.max(0.05, state.settings.splitMomentum / 100);
+      }
+
       function minSplitBoost() {
         return 0;
       }
@@ -3274,7 +3290,9 @@
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
 
-            const decayRate = cell.fragmentAge > 0 ? 2.6 : (hasSplitMomentum ? SPLIT_BOOST_DECAY : 3.7);
+            const decayRate = cell.fragmentAge > 0
+              ? 2.6
+              : (hasSplitMomentum ? SPLIT_BOOST_DECAY / splitMomentumScale() : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
@@ -3890,13 +3908,14 @@
 
             let remaining = Math.max(1, actor.input.splitCount || 1);
             let didAnySplit = false;
-            if (remaining > 0 && now >= actor.nextQueuedSplitAt && liveCellCount(actor) < MAX_CELLS) {
+            let splitBudget = MAX_QUEUED_SPLITS_PER_FRAME;
+            while (remaining > 0 && splitBudget > 0 && liveCellCount(actor) < MAX_CELLS) {
               if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, now, 0, actor.input.targetX, actor.input.targetY)) {
                 remaining = 0;
               } else {
                 didAnySplit = true;
                 remaining -= 1;
-                actor.nextQueuedSplitAt = now + QUEUED_SPLIT_INTERVAL;
+                splitBudget -= 1;
               }
             }
 
@@ -4602,6 +4621,7 @@
           settings: {
             splitSpeed: state.settings.splitSpeed,
             splitMinDistance: state.settings.splitMinDistance,
+            splitMomentum: state.settings.splitMomentum,
             spawnMass: state.settings.spawnMass,
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
@@ -4931,6 +4951,13 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMinDistance || nextValue !== state.settings.splitMinDistance;
             state.settings.max.splitMinDistance = nextMax;
             state.settings.splitMinDistance = nextValue;
+          }
+          if (Number.isFinite(message.settings.splitMomentum)) {
+            const nextMax = Math.max(state.settings.max.splitMomentum, message.settings.splitMomentum);
+            const nextValue = clamp(message.settings.splitMomentum, 20, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMomentum || nextValue !== state.settings.splitMomentum;
+            state.settings.max.splitMomentum = nextMax;
+            state.settings.splitMomentum = nextValue;
           }
           if (Number.isFinite(message.settings.spawnMass)) {
             const nextMax = Math.max(state.settings.max.spawnMass, message.settings.spawnMass);
@@ -5487,6 +5514,10 @@
         splitMinDistanceSlider.value = String(state.settings.splitMinDistance);
         splitMinDistanceValueEl.textContent = String(state.settings.splitMinDistance);
         splitMinDistanceMaxBox.value = String(state.settings.max.splitMinDistance);
+        splitMomentumSlider.max = String(state.settings.max.splitMomentum);
+        splitMomentumSlider.value = String(state.settings.splitMomentum);
+        splitMomentumValueEl.textContent = String(state.settings.splitMomentum);
+        splitMomentumMaxBox.value = String(state.settings.max.splitMomentum);
         gameSpeedSlider.max = String(state.settings.max.gameSpeed);
         gameSpeedSlider.value = String(state.settings.gameSpeed);
         gameSpeedValueEl.textContent = formatMultiplier(state.settings.gameSpeed);
@@ -5558,6 +5589,7 @@
         if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
         if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
         if (kind === "splitMinDistance") state.settings.splitMinDistance = clamp(Math.round(number / 5) * 5, 0, state.settings.max.splitMinDistance);
+        if (kind === "splitMomentum") state.settings.splitMomentum = clamp(Math.round(number / 5) * 5, 20, state.settings.max.splitMomentum);
         if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
@@ -5613,6 +5645,10 @@
         if (kind === "splitMinDistance") {
           state.settings.max.splitMinDistance = Math.max(0, Math.round(number / 5) * 5);
           state.settings.splitMinDistance = clamp(state.settings.splitMinDistance, 0, state.settings.max.splitMinDistance);
+        }
+        if (kind === "splitMomentum") {
+          state.settings.max.splitMomentum = Math.max(20, Math.round(number / 5) * 5);
+          state.settings.splitMomentum = clamp(state.settings.splitMomentum, 20, state.settings.max.splitMomentum);
         }
         if (kind === "gameSpeed") {
           state.settings.max.gameSpeed = Math.max(0.1, Math.round(rawNumber * 10) / 10);
@@ -5766,6 +5802,7 @@
         splitRecoilSlider.addEventListener("input", () => setWorldSetting("splitRecoil", splitRecoilSlider.value));
         splitSpeedSlider.addEventListener("input", () => setWorldSetting("splitSpeed", splitSpeedSlider.value));
         splitMinDistanceSlider.addEventListener("input", () => setWorldSetting("splitMinDistance", splitMinDistanceSlider.value));
+        splitMomentumSlider.addEventListener("input", () => setWorldSetting("splitMomentum", splitMomentumSlider.value));
         gameSpeedSlider.addEventListener("input", () => setWorldSetting("gameSpeed", gameSpeedSlider.value));
         mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
@@ -5779,6 +5816,7 @@
         splitRecoilMaxBox.addEventListener("change", () => setSliderMax("splitRecoil", splitRecoilMaxBox.value));
         splitSpeedMaxBox.addEventListener("change", () => setSliderMax("splitSpeed", splitSpeedMaxBox.value));
         splitMinDistanceMaxBox.addEventListener("change", () => setSliderMax("splitMinDistance", splitMinDistanceMaxBox.value));
+        splitMomentumMaxBox.addEventListener("change", () => setSliderMax("splitMomentum", splitMomentumMaxBox.value));
         gameSpeedMaxBox.addEventListener("change", () => setSliderMax("gameSpeed", gameSpeedMaxBox.value));
         mergeCooldownMaxBox.addEventListener("change", () => setSliderMax("mergeCooldown", mergeCooldownMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
