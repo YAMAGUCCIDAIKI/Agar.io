@@ -774,8 +774,8 @@
         </label>
         <label class="setting-control">
           <span>惰性距離</span>
-          <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="100" aria-label="分裂惰性の距離">
-          <strong id="splitMomentumValue">100</strong>
+          <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="65" aria-label="分裂惰性の距離">
+          <strong id="splitMomentumValue">65</strong>
           <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
         </label>
         <label class="setting-control">
@@ -966,7 +966,7 @@
       const DEFAULT_SPLIT_RECOIL = 0;
       const DEFAULT_SPLIT_SPEED = 110;
       const DEFAULT_SPLIT_MIN_DISTANCE = 160;
-      const DEFAULT_SPLIT_MOMENTUM = 100;
+      const DEFAULT_SPLIT_MOMENTUM = 65;
       const DEFAULT_SPLIT_INPUT_SPEED = 4;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
@@ -1044,6 +1044,7 @@
       };
 
       const remoteAutoEjectKey = "__remoteAutoEject";
+      const LOCAL_PREFS_KEY = "agarCanvasLocalPreferences:v2";
 
       const state = {
         width: 1,
@@ -1754,6 +1755,7 @@
           actor.name = localProfileName(actor.localClone);
         }
         state.net.lastSnapshotSend = -100;
+        saveLocalPreferences();
       }
 
       function escapeHtml(value) {
@@ -2034,7 +2036,111 @@
         state.keyBindings[state.keyCaptureAction] = code;
         state.keyCaptureAction = null;
         syncKeyBindControls();
+        saveLocalPreferences();
         return true;
+      }
+
+      function localStorageAvailable() {
+        try {
+          return typeof localStorage !== "undefined";
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function saveLocalPreferences() {
+        if (!localStorageAvailable()) return;
+        const prefs = {
+          profile: { ...state.profile },
+          keyBindings: { ...state.keyBindings },
+          viewScale: state.viewScale,
+          settings: {
+            botTarget: state.settings.botTarget,
+            botMode: state.settings.botMode,
+            virusTarget: state.settings.virusTarget,
+            foodTarget: state.settings.foodTarget,
+            spawnMass: state.settings.spawnMass,
+            ejectMass: state.settings.ejectMass,
+            ejectSpeed: state.settings.ejectSpeed,
+            ejectRate: state.settings.ejectRate,
+            splitRecoil: state.settings.splitRecoil,
+            splitSpeed: state.settings.splitSpeed,
+            splitMinDistance: state.settings.splitMinDistance,
+            splitMomentum: state.settings.splitMomentum,
+            splitInputSpeed: state.settings.splitInputSpeed,
+            gameSpeed: state.settings.gameSpeed,
+            mergeCooldown: state.settings.mergeCooldown,
+            worldSize: state.settings.worldSize,
+            cursorLine: state.settings.cursorLine,
+            nRespawnEnabled: state.settings.nRespawnEnabled,
+            activeColorHighlight: state.settings.activeColorHighlight
+          },
+          max: { ...state.settings.max }
+        };
+        try {
+          localStorage.setItem(LOCAL_PREFS_KEY, JSON.stringify(prefs));
+        } catch (error) {}
+      }
+
+      function loadLocalPreferences() {
+        if (!localStorageAvailable()) return;
+        let prefs = null;
+        try {
+          prefs = JSON.parse(localStorage.getItem(LOCAL_PREFS_KEY) || "null");
+        } catch (error) {
+          return;
+        }
+        if (!prefs || typeof prefs !== "object") return;
+        if (prefs.profile) {
+          state.profile.name = sanitizeProfileText(prefs.profile.name, state.profile.name, 18);
+          state.profile.cloneName = sanitizeProfileText(prefs.profile.cloneName, state.profile.cloneName, 18);
+        }
+        if (prefs.keyBindings && typeof prefs.keyBindings === "object") {
+          for (const action of Object.keys(state.keyBindings)) {
+            if (typeof prefs.keyBindings[action] === "string") state.keyBindings[action] = prefs.keyBindings[action];
+          }
+        }
+        if (prefs.max && typeof prefs.max === "object") {
+          const max = prefs.max;
+          if (Number.isFinite(max.bot)) state.settings.max.bot = Math.max(1, Math.round(max.bot));
+          if (Number.isFinite(max.virus)) state.settings.max.virus = Math.max(1, Math.round(max.virus));
+          if (Number.isFinite(max.food)) state.settings.max.food = Math.max(100, Math.round(max.food / 100) * 100);
+          if (Number.isFinite(max.spawnMass)) state.settings.max.spawnMass = Math.max(MIN_CELL_MASS, Math.round(max.spawnMass / 10) * 10);
+          if (Number.isFinite(max.ejectMass)) state.settings.max.ejectMass = Math.max(5, Math.round(max.ejectMass));
+          if (Number.isFinite(max.ejectSpeed)) state.settings.max.ejectSpeed = Math.max(300, Math.round(max.ejectSpeed / 10) * 10);
+          if (Number.isFinite(max.ejectRate)) state.settings.max.ejectRate = Math.max(1, Math.round(max.ejectRate));
+          if (Number.isFinite(max.splitRecoil)) state.settings.max.splitRecoil = Math.max(1, Math.round(max.splitRecoil));
+          if (Number.isFinite(max.splitSpeed)) state.settings.max.splitSpeed = Math.max(10, Math.round(max.splitSpeed / 5) * 5);
+          if (Number.isFinite(max.splitMinDistance)) state.settings.max.splitMinDistance = Math.max(0, Math.round(max.splitMinDistance / 5) * 5);
+          if (Number.isFinite(max.splitMomentum)) state.settings.max.splitMomentum = Math.max(20, Math.round(max.splitMomentum / 5) * 5);
+          if (Number.isFinite(max.splitInputSpeed)) state.settings.max.splitInputSpeed = clamp(Math.round(max.splitInputSpeed), 1, MAX_QUEUED_SPLITS_PER_FRAME);
+          if (Number.isFinite(max.gameSpeed)) state.settings.max.gameSpeed = Math.max(0.1, Math.round(max.gameSpeed * 10) / 10);
+          if (Number.isFinite(max.mergeCooldown)) state.settings.max.mergeCooldown = Math.max(1, Math.round(max.mergeCooldown));
+          if (Number.isFinite(max.worldSize)) state.settings.max.worldSize = Math.max(2000, Math.round(max.worldSize / 100) * 100);
+        }
+        if (prefs.settings && typeof prefs.settings === "object") {
+          const saved = prefs.settings;
+          if (Number.isFinite(saved.botTarget)) state.settings.botTarget = clamp(Math.round(saved.botTarget), 0, state.settings.max.bot);
+          if (["hunt", "chase", "virus", "cursor"].includes(saved.botMode)) state.settings.botMode = saved.botMode;
+          if (Number.isFinite(saved.virusTarget)) state.settings.virusTarget = clamp(Math.round(saved.virusTarget), 0, state.settings.max.virus);
+          if (Number.isFinite(saved.foodTarget)) state.settings.foodTarget = clamp(Math.round(saved.foodTarget / 100) * 100, 0, state.settings.max.food);
+          if (Number.isFinite(saved.spawnMass)) state.settings.spawnMass = clamp(Math.round(saved.spawnMass / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
+          if (Number.isFinite(saved.ejectMass)) state.settings.ejectMass = clamp(Math.round(saved.ejectMass), 5, state.settings.max.ejectMass);
+          if (Number.isFinite(saved.ejectSpeed)) state.settings.ejectSpeed = clamp(Math.round(saved.ejectSpeed / 10) * 10, 300, state.settings.max.ejectSpeed);
+          if (Number.isFinite(saved.ejectRate)) state.settings.ejectRate = clamp(Math.round(saved.ejectRate), 1, state.settings.max.ejectRate);
+          if (Number.isFinite(saved.splitRecoil)) state.settings.splitRecoil = clamp(Math.round(saved.splitRecoil), 0, state.settings.max.splitRecoil);
+          if (Number.isFinite(saved.splitSpeed)) state.settings.splitSpeed = clamp(Math.round(saved.splitSpeed / 5) * 5, 10, state.settings.max.splitSpeed);
+          if (Number.isFinite(saved.splitMinDistance)) state.settings.splitMinDistance = clamp(Math.round(saved.splitMinDistance / 5) * 5, 0, state.settings.max.splitMinDistance);
+          if (Number.isFinite(saved.splitMomentum)) state.settings.splitMomentum = clamp(Math.round(saved.splitMomentum / 5) * 5, 20, state.settings.max.splitMomentum);
+          if (Number.isFinite(saved.splitInputSpeed)) state.settings.splitInputSpeed = clamp(Math.round(saved.splitInputSpeed), 1, state.settings.max.splitInputSpeed);
+          if (Number.isFinite(saved.gameSpeed)) state.settings.gameSpeed = clamp(Math.round(saved.gameSpeed * 10) / 10, 0.1, state.settings.max.gameSpeed);
+          if (Number.isFinite(saved.mergeCooldown)) state.settings.mergeCooldown = clamp(Math.round(saved.mergeCooldown), 0, state.settings.max.mergeCooldown);
+          if (Number.isFinite(saved.worldSize)) state.settings.worldSize = clamp(Math.round(saved.worldSize / 100) * 100, 2000, state.settings.max.worldSize);
+          if (saved.cursorLine != null) state.settings.cursorLine = Boolean(saved.cursorLine);
+          if (saved.nRespawnEnabled != null) state.settings.nRespawnEnabled = Boolean(saved.nRespawnEnabled);
+          if (saved.activeColorHighlight != null) state.settings.activeColorHighlight = Boolean(saved.activeColorHighlight);
+        }
+        if (Number.isFinite(prefs.viewScale)) state.viewScale = clamp(prefs.viewScale, 0.55, 2.2);
       }
 
       function actionForKey(code) {
@@ -5584,6 +5690,7 @@
         const percent = clamp(Number(value) || 100, 55, 220);
         state.viewScale = percent / 100;
         viewValueEl.textContent = `${Math.round(percent)}%`;
+        saveLocalPreferences();
       }
 
       function onWheel(event) {
@@ -5737,6 +5844,7 @@
         }
         syncSettingsControls();
         trimDynamicEntities();
+        saveLocalPreferences();
       }
 
       function setSliderMax(kind, value) {
@@ -5805,6 +5913,7 @@
         }
         syncSettingsControls();
         trimDynamicEntities();
+        saveLocalPreferences();
       }
 
       function resetGameToStart() {
@@ -6031,9 +6140,10 @@
 
       function init() {
         resize();
+        loadLocalPreferences();
         bindInput();
         ensureRelayDefaults();
-        setViewScalePercent(DEFAULT_VIEW_SCALE * 100);
+        setViewScalePercent(state.viewScale * 100);
         syncSettingsControls();
         syncKeyBindControls();
         nameBox.value = state.profile.name;
