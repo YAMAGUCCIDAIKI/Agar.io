@@ -842,6 +842,12 @@
           <input id="gameSpeedMaxBox" class="max-input" type="number" min="0.1" step="0.1" value="3" aria-label="ゲーム速度上限">
         </label>
         <label class="setting-control">
+          <span>描画範囲</span>
+          <input id="renderRangeSlider" type="range" min="35" max="120" step="5" value="65" aria-label="描画候補の見える範囲">
+          <strong id="renderRangeValue">65%</strong>
+          <input id="renderRangeMaxBox" class="max-input" type="number" min="35" step="5" value="120" aria-label="描画範囲上限">
+        </label>
+        <label class="setting-control">
           <span>合体</span>
           <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="30" aria-label="合体までの時間">
           <strong id="mergeCooldownValue">30</strong>
@@ -935,6 +941,9 @@
       const gameSpeedSlider = document.getElementById("gameSpeedSlider");
       const gameSpeedValueEl = document.getElementById("gameSpeedValue");
       const gameSpeedMaxBox = document.getElementById("gameSpeedMaxBox");
+      const renderRangeSlider = document.getElementById("renderRangeSlider");
+      const renderRangeValueEl = document.getElementById("renderRangeValue");
+      const renderRangeMaxBox = document.getElementById("renderRangeMaxBox");
       const mergeCooldownSlider = document.getElementById("mergeCooldownSlider");
       const mergeCooldownValueEl = document.getElementById("mergeCooldownValue");
       const mergeCooldownMaxBox = document.getElementById("mergeCooldownMaxBox");
@@ -969,6 +978,7 @@
       const DEFAULT_SPLIT_MOMENTUM = 65;
       const DEFAULT_SPLIT_INPUT_SPEED = 4;
       const DEFAULT_GAME_SPEED = 1;
+      const DEFAULT_RENDER_RANGE = 65;
       const DEFAULT_MERGE_COOLDOWN = 30;
       const BOT_SPAWN_MASS = 132;
       const CONSUME_MASS_RATIO = 1.325;
@@ -1098,6 +1108,7 @@
           splitMomentum: DEFAULT_SPLIT_MOMENTUM,
           splitInputSpeed: DEFAULT_SPLIT_INPUT_SPEED,
           gameSpeed: DEFAULT_GAME_SPEED,
+          renderRange: DEFAULT_RENDER_RANGE,
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
           cursorLine: true,
@@ -1117,6 +1128,7 @@
             splitMomentum: 160,
             splitInputSpeed: 4,
             gameSpeed: 3,
+            renderRange: 120,
             mergeCooldown: 60,
             worldSize: 15000
           }
@@ -2069,6 +2081,7 @@
             splitMomentum: state.settings.splitMomentum,
             splitInputSpeed: state.settings.splitInputSpeed,
             gameSpeed: state.settings.gameSpeed,
+            renderRange: state.settings.renderRange,
             mergeCooldown: state.settings.mergeCooldown,
             worldSize: state.settings.worldSize,
             cursorLine: state.settings.cursorLine,
@@ -2115,6 +2128,7 @@
           if (Number.isFinite(max.splitMomentum)) state.settings.max.splitMomentum = Math.max(20, Math.round(max.splitMomentum / 5) * 5);
           if (Number.isFinite(max.splitInputSpeed)) state.settings.max.splitInputSpeed = clamp(Math.round(max.splitInputSpeed), 1, MAX_QUEUED_SPLITS_PER_FRAME);
           if (Number.isFinite(max.gameSpeed)) state.settings.max.gameSpeed = Math.max(0.1, Math.round(max.gameSpeed * 10) / 10);
+          if (Number.isFinite(max.renderRange)) state.settings.max.renderRange = Math.max(35, Math.round(max.renderRange / 5) * 5);
           if (Number.isFinite(max.mergeCooldown)) state.settings.max.mergeCooldown = Math.max(1, Math.round(max.mergeCooldown));
           if (Number.isFinite(max.worldSize)) state.settings.max.worldSize = Math.max(2000, Math.round(max.worldSize / 100) * 100);
         }
@@ -2134,6 +2148,7 @@
           if (Number.isFinite(saved.splitMomentum)) state.settings.splitMomentum = clamp(Math.round(saved.splitMomentum / 5) * 5, 20, state.settings.max.splitMomentum);
           if (Number.isFinite(saved.splitInputSpeed)) state.settings.splitInputSpeed = clamp(Math.round(saved.splitInputSpeed), 1, state.settings.max.splitInputSpeed);
           if (Number.isFinite(saved.gameSpeed)) state.settings.gameSpeed = clamp(Math.round(saved.gameSpeed * 10) / 10, 0.1, state.settings.max.gameSpeed);
+          if (Number.isFinite(saved.renderRange)) state.settings.renderRange = clamp(Math.round(saved.renderRange / 5) * 5, 35, state.settings.max.renderRange);
           if (Number.isFinite(saved.mergeCooldown)) state.settings.mergeCooldown = clamp(Math.round(saved.mergeCooldown), 0, state.settings.max.mergeCooldown);
           if (Number.isFinite(saved.worldSize)) state.settings.worldSize = clamp(Math.round(saved.worldSize / 100) * 100, 2000, state.settings.max.worldSize);
           if (saved.cursorLine != null) state.settings.cursorLine = Boolean(saved.cursorLine);
@@ -5269,7 +5284,8 @@
         if (state.spectating) return WORLD_SIZE;
         const mass = Math.max(1, center.mass || 1);
         const spread = Math.max(0, center.spread || 0);
-        return clamp(620 + Math.sqrt(mass) * 24 + spread * 0.48, 820, 2900);
+        const scale = clamp((Number(state.settings.renderRange) || DEFAULT_RENDER_RANGE) / 100, 0.25, 2);
+        return clamp((620 + Math.sqrt(mass) * 24 + spread * 0.48) * scale, 320, 2900);
       }
 
       function renderWorldBounds(visibleBounds) {
@@ -5764,6 +5780,10 @@
         gameSpeedSlider.value = String(state.settings.gameSpeed);
         gameSpeedValueEl.textContent = formatMultiplier(state.settings.gameSpeed);
         gameSpeedMaxBox.value = String(state.settings.max.gameSpeed);
+        renderRangeSlider.max = String(state.settings.max.renderRange);
+        renderRangeSlider.value = String(state.settings.renderRange);
+        renderRangeValueEl.textContent = `${state.settings.renderRange}%`;
+        renderRangeMaxBox.value = String(state.settings.max.renderRange);
         mergeCooldownSlider.max = String(state.settings.max.mergeCooldown);
         mergeCooldownSlider.value = String(state.settings.mergeCooldown);
         mergeCooldownValueEl.textContent = String(state.settings.mergeCooldown);
@@ -5834,6 +5854,7 @@
         if (kind === "splitMomentum") state.settings.splitMomentum = clamp(Math.round(number / 5) * 5, 20, state.settings.max.splitMomentum);
         if (kind === "splitInputSpeed") state.settings.splitInputSpeed = clamp(number, 1, state.settings.max.splitInputSpeed);
         if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
+        if (kind === "renderRange") state.settings.renderRange = clamp(Math.round(number / 5) * 5, 35, state.settings.max.renderRange);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
         if (kind === "nRespawn") state.settings.nRespawnEnabled = Boolean(value);
@@ -5901,6 +5922,10 @@
         if (kind === "gameSpeed") {
           state.settings.max.gameSpeed = Math.max(0.1, Math.round(rawNumber * 10) / 10);
           state.settings.gameSpeed = clamp(state.settings.gameSpeed, 0.1, state.settings.max.gameSpeed);
+        }
+        if (kind === "renderRange") {
+          state.settings.max.renderRange = Math.max(35, Math.round(number / 5) * 5);
+          state.settings.renderRange = clamp(state.settings.renderRange, 35, state.settings.max.renderRange);
         }
         if (kind === "mergeCooldown") {
           state.settings.max.mergeCooldown = Math.max(1, number);
@@ -6052,6 +6077,7 @@
         splitMomentumSlider.addEventListener("input", () => setWorldSetting("splitMomentum", splitMomentumSlider.value));
         splitInputSpeedSlider.addEventListener("input", () => setWorldSetting("splitInputSpeed", splitInputSpeedSlider.value));
         gameSpeedSlider.addEventListener("input", () => setWorldSetting("gameSpeed", gameSpeedSlider.value));
+        renderRangeSlider.addEventListener("input", () => setWorldSetting("renderRange", renderRangeSlider.value));
         mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
@@ -6067,6 +6093,7 @@
         splitMomentumMaxBox.addEventListener("change", () => setSliderMax("splitMomentum", splitMomentumMaxBox.value));
         splitInputSpeedMaxBox.addEventListener("change", () => setSliderMax("splitInputSpeed", splitInputSpeedMaxBox.value));
         gameSpeedMaxBox.addEventListener("change", () => setSliderMax("gameSpeed", gameSpeedMaxBox.value));
+        renderRangeMaxBox.addEventListener("change", () => setSliderMax("renderRange", renderRangeMaxBox.value));
         mergeCooldownMaxBox.addEventListener("change", () => setSliderMax("mergeCooldown", mergeCooldownMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
       }
