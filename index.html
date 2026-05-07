@@ -1570,6 +1570,12 @@
         return actor && (actor.control === "local" || actor.control === "remote");
       }
 
+      function receivesPlayerInput(actor) {
+        if (!actor) return false;
+        if (actor.control === "remote") return true;
+        return actor.control === "local" && actor.id === state.input.activeActorId;
+      }
+
       function isLocalViewActor(actor) {
         return actor && actor.isHuman && (
           actor.control === "local" ||
@@ -2605,11 +2611,10 @@
 
       function syncPointerTarget() {
         updateMouseWorld();
-        for (const actor of localHumanActors()) {
-          if (!isPlayerControlled(actor)) continue;
-          actor.input.targetX = state.input.mouseWorldX;
-          actor.input.targetY = state.input.mouseWorldY;
-        }
+        const actor = state.player && receivesPlayerInput(state.player) ? state.player : actorById(state.input.activeActorId);
+        if (!actor || !receivesPlayerInput(actor)) return;
+        actor.input.targetX = state.input.mouseWorldX;
+        actor.input.targetY = state.input.mouseWorldY;
         state.net.lastInputSend = -100;
       }
 
@@ -3208,12 +3213,15 @@
       function moveCellsStep(dt) {
         for (const actor of state.actors) {
           for (const cell of actor.cells) {
-            if (isPlayerControlled(actor)) {
+            if (receivesPlayerInput(actor)) {
               cell.targetX = actor.input.targetX;
               cell.targetY = actor.input.targetY;
+            } else if (actor.control === "local" && actor.isHuman) {
+              cell.targetX = cell.x;
+              cell.targetY = cell.y;
             }
 
-            const instantControl = isPlayerControlled(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
+            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
             const n = normalized(dx, dy, 0, 0);
