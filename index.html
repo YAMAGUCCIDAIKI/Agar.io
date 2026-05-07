@@ -774,8 +774,8 @@
         </label>
         <label class="setting-control">
           <span>分裂速度</span>
-          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="60" aria-label="分裂速度">
-          <strong id="splitSpeedValue">60</strong>
+          <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="140" aria-label="分裂速度">
+          <strong id="splitSpeedValue">140</strong>
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
@@ -906,7 +906,7 @@
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 0;
-      const DEFAULT_SPLIT_SPEED = 60;
+      const DEFAULT_SPLIT_SPEED = 140;
       const DEFAULT_SPLIT_MIN_DISTANCE = 160;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
@@ -936,8 +936,8 @@
       const CELL_MOVE_SPEED_SCALE = 0.6;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
-      const SPLIT_BOOST_DURATION = 0.9;
-      const SPLIT_BOOST_DECAY = 1.35;
+      const SPLIT_BOOST_DURATION = 0.08;
+      const SPLIT_BOOST_DECAY = 2.25;
       const SPLIT_MAX_BOOST = 680;
       const SPLIT_SPAWN_OFFSET_RATIO = 0.42;
       const SPLIT_SPREAD_ALLOWANCE = 900;
@@ -2635,8 +2635,7 @@
       }
 
       function splitImpulse(radius) {
-        const base = clamp(320 + radius * 0.42, 340, 500) * splitSpeedScale();
-        return Math.max(base, minSplitBoost());
+        return clamp(520 + radius * 0.5, 560, 820) * splitSpeedScale();
       }
 
       function splitSpeedScale() {
@@ -2644,7 +2643,7 @@
       }
 
       function minSplitBoost() {
-        return Math.max(0, state.settings.splitMinDistance * SPLIT_BOOST_DECAY);
+        return 0;
       }
 
       function gameSpeedScale() {
@@ -3237,15 +3236,17 @@
 
             cell.vx += (desiredX - cell.vx) * steer;
             cell.vy += (desiredY - cell.vy) * steer;
+            const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
+            const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? Math.max(SPLIT_MAX_BOOST * splitSpeedScale(), minSplitBoost()) : 720);
+              : (hasSplitMomentum ? SPLIT_MAX_BOOST * splitSpeedScale() : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
 
-            const decayRate = cell.fragmentAge > 0 ? 2.6 : (cell.splitBoostAge > 0 ? SPLIT_BOOST_DECAY : 3.7);
+            const decayRate = cell.fragmentAge > 0 ? 2.6 : (hasSplitMomentum ? SPLIT_BOOST_DECAY : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
