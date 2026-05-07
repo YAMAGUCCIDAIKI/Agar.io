@@ -698,6 +698,12 @@
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
+          <span>最低飛距離</span>
+          <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="160" aria-label="分裂の最低飛距離">
+          <strong id="splitMinDistanceValue">160</strong>
+          <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
+        </label>
+        <label class="setting-control">
           <span>ゲーム速度</span>
           <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
           <strong id="gameSpeedValue">1x</strong>
@@ -775,6 +781,9 @@
       const splitSpeedSlider = document.getElementById("splitSpeedSlider");
       const splitSpeedValueEl = document.getElementById("splitSpeedValue");
       const splitSpeedMaxBox = document.getElementById("splitSpeedMaxBox");
+      const splitMinDistanceSlider = document.getElementById("splitMinDistanceSlider");
+      const splitMinDistanceValueEl = document.getElementById("splitMinDistanceValue");
+      const splitMinDistanceMaxBox = document.getElementById("splitMinDistanceMaxBox");
       const gameSpeedSlider = document.getElementById("gameSpeedSlider");
       const gameSpeedValueEl = document.getElementById("gameSpeedValue");
       const gameSpeedMaxBox = document.getElementById("gameSpeedMaxBox");
@@ -808,6 +817,7 @@
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 8;
       const DEFAULT_SPLIT_SPEED = 200;
+      const DEFAULT_SPLIT_MIN_DISTANCE = 160;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_MERGE_COOLDOWN = 30;
       const BOT_SPAWN_MASS = 132;
@@ -916,6 +926,7 @@
           ejectRate: DEFAULT_EJECT_RATE,
           splitRecoil: DEFAULT_SPLIT_RECOIL,
           splitSpeed: DEFAULT_SPLIT_SPEED,
+          splitMinDistance: DEFAULT_SPLIT_MIN_DISTANCE,
           gameSpeed: DEFAULT_GAME_SPEED,
           mergeCooldown: DEFAULT_MERGE_COOLDOWN,
           worldSize: WORLD_SIZE,
@@ -930,6 +941,7 @@
             ejectRate: 50,
             splitRecoil: 40,
             splitSpeed: 300,
+            splitMinDistance: 360,
             gameSpeed: 3,
             mergeCooldown: 60,
             worldSize: 15000
@@ -1522,11 +1534,38 @@
           if (anchorCell) {
             const angle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
             const maxDistance = Math.max(1, anchorCell.mass * 2);
-            const distance = Math.min(maxDistance, anchorCell.radius + radius + 8);
-            return {
-              x: clamp(anchorCell.x + Math.cos(angle) * distance, margin, WORLD_SIZE - margin),
-              y: clamp(anchorCell.y + Math.sin(angle) * distance, margin, WORLD_SIZE - margin)
+            const minDistance = anchorCell.radius + radius + 8;
+            const maxSearchDistance = Math.max(minDistance, maxDistance);
+            const overlapsAnyCell = (x, y) => {
+              for (const otherActor of state.actors) {
+                for (const otherCell of otherActor.cells) {
+                  if (otherCell.dead) continue;
+                  const gap = otherCell.radius + radius + 2;
+                  if (distSq(x, y, otherCell.x, otherCell.y) < gap * gap) return true;
+                }
+              }
+              return false;
             };
+            for (let ring = 0; ring < 10; ring += 1) {
+              const distance = Math.min(maxSearchDistance, minDistance + ring * Math.max(8, radius * 0.24));
+              for (let i = 0; i < 16; i += 1) {
+                const offset = i === 0 ? 0 : ((i % 2 === 0 ? 1 : -1) * Math.ceil(i / 2) * (TAU / 16));
+                const nextAngle = angle + offset;
+                const x = clamp(anchorCell.x + Math.cos(nextAngle) * distance, margin, WORLD_SIZE - margin);
+                const y = clamp(anchorCell.y + Math.sin(nextAngle) * distance, margin, WORLD_SIZE - margin);
+                if (!overlapsAnyCell(x, y)) return { x, y };
+              }
+              if (distance >= maxSearchDistance) break;
+            }
+            for (let ring = 10; ring < 28; ring += 1) {
+              const distance = minDistance + ring * Math.max(10, radius * 0.36);
+              for (let i = 0; i < 20; i += 1) {
+                const nextAngle = angle + (i / 20) * TAU;
+                const x = clamp(anchorCell.x + Math.cos(nextAngle) * distance, margin, WORLD_SIZE - margin);
+                const y = clamp(anchorCell.y + Math.sin(nextAngle) * distance, margin, WORLD_SIZE - margin);
+                if (!overlapsAnyCell(x, y)) return { x, y };
+              }
+            }
           }
         }
 
@@ -2371,11 +2410,16 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(320 + radius * 0.42, 340, 500) * splitSpeedScale();
+        const base = clamp(320 + radius * 0.42, 340, 500) * splitSpeedScale();
+        return Math.max(base, minSplitBoost());
       }
 
       function splitSpeedScale() {
         return Math.max(0.05, state.settings.splitSpeed / 100);
+      }
+
+      function minSplitBoost() {
+        return Math.max(0, state.settings.splitMinDistance * SPLIT_BOOST_DECAY);
       }
 
       function gameSpeedScale() {
@@ -3046,7 +3090,7 @@
             cell.vy += (desiredY - cell.vy) * steer;
             const maxBoost = cell.fragmentAge > 0
               ? 1120
-              : (cell.splitBoostAge > 0 ? SPLIT_MAX_BOOST * splitSpeedScale() : 720);
+              : (cell.splitBoostAge > 0 ? Math.max(SPLIT_MAX_BOOST * splitSpeedScale(), minSplitBoost()) : 720);
             capVelocity(cell, speed * 1.35);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
@@ -4373,6 +4417,7 @@
           worldSize: WORLD_SIZE,
           settings: {
             splitSpeed: state.settings.splitSpeed,
+            splitMinDistance: state.settings.splitMinDistance,
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
@@ -4691,6 +4736,13 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.splitSpeed || nextValue !== state.settings.splitSpeed;
             state.settings.max.splitSpeed = nextMax;
             state.settings.splitSpeed = nextValue;
+          }
+          if (Number.isFinite(message.settings.splitMinDistance)) {
+            const nextMax = Math.max(state.settings.max.splitMinDistance, message.settings.splitMinDistance);
+            const nextValue = clamp(message.settings.splitMinDistance, 0, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMinDistance || nextValue !== state.settings.splitMinDistance;
+            state.settings.max.splitMinDistance = nextMax;
+            state.settings.splitMinDistance = nextValue;
           }
           if (Number.isFinite(message.settings.gameSpeed)) {
             const nextMax = Math.max(state.settings.max.gameSpeed, message.settings.gameSpeed);
@@ -5227,6 +5279,10 @@
         splitSpeedSlider.value = String(state.settings.splitSpeed);
         splitSpeedValueEl.textContent = String(state.settings.splitSpeed);
         splitSpeedMaxBox.value = String(state.settings.max.splitSpeed);
+        splitMinDistanceSlider.max = String(state.settings.max.splitMinDistance);
+        splitMinDistanceSlider.value = String(state.settings.splitMinDistance);
+        splitMinDistanceValueEl.textContent = String(state.settings.splitMinDistance);
+        splitMinDistanceMaxBox.value = String(state.settings.max.splitMinDistance);
         gameSpeedSlider.max = String(state.settings.max.gameSpeed);
         gameSpeedSlider.value = String(state.settings.gameSpeed);
         gameSpeedValueEl.textContent = formatMultiplier(state.settings.gameSpeed);
@@ -5296,6 +5352,7 @@
         if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
         if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
         if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
+        if (kind === "splitMinDistance") state.settings.splitMinDistance = clamp(Math.round(number / 5) * 5, 0, state.settings.max.splitMinDistance);
         if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
         if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
@@ -5342,6 +5399,10 @@
         if (kind === "splitSpeed") {
           state.settings.max.splitSpeed = Math.max(10, Math.round(number / 5) * 5);
           state.settings.splitSpeed = clamp(state.settings.splitSpeed, 10, state.settings.max.splitSpeed);
+        }
+        if (kind === "splitMinDistance") {
+          state.settings.max.splitMinDistance = Math.max(0, Math.round(number / 5) * 5);
+          state.settings.splitMinDistance = clamp(state.settings.splitMinDistance, 0, state.settings.max.splitMinDistance);
         }
         if (kind === "gameSpeed") {
           state.settings.max.gameSpeed = Math.max(0.1, Math.round(rawNumber * 10) / 10);
@@ -5484,6 +5545,7 @@
         ejectRateSlider.addEventListener("input", () => setWorldSetting("ejectRate", ejectRateSlider.value));
         splitRecoilSlider.addEventListener("input", () => setWorldSetting("splitRecoil", splitRecoilSlider.value));
         splitSpeedSlider.addEventListener("input", () => setWorldSetting("splitSpeed", splitSpeedSlider.value));
+        splitMinDistanceSlider.addEventListener("input", () => setWorldSetting("splitMinDistance", splitMinDistanceSlider.value));
         gameSpeedSlider.addEventListener("input", () => setWorldSetting("gameSpeed", gameSpeedSlider.value));
         mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
@@ -5495,6 +5557,7 @@
         ejectRateMaxBox.addEventListener("change", () => setSliderMax("ejectRate", ejectRateMaxBox.value));
         splitRecoilMaxBox.addEventListener("change", () => setSliderMax("splitRecoil", splitRecoilMaxBox.value));
         splitSpeedMaxBox.addEventListener("change", () => setSliderMax("splitSpeed", splitSpeedMaxBox.value));
+        splitMinDistanceMaxBox.addEventListener("change", () => setSliderMax("splitMinDistance", splitMinDistanceMaxBox.value));
         gameSpeedMaxBox.addEventListener("change", () => setSliderMax("gameSpeed", gameSpeedMaxBox.value));
         mergeCooldownMaxBox.addEventListener("change", () => setSliderMax("mergeCooldown", mergeCooldownMaxBox.value));
         worldSizeMaxBox.addEventListener("change", () => setSliderMax("worldSize", worldSizeMaxBox.value));
