@@ -2834,7 +2834,7 @@
         return child;
       }
 
-      function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null, options = {}) {
+      function splitActor(actor, dirX, dirY, now, interval, targetX = null, targetY = null) {
         if (liveCellCount(actor) >= MAX_CELLS) return false;
         for (const cell of actor.cells) {
           if (!cell.dead) assignSplitPriority(actor, cell);
@@ -2866,21 +2866,16 @@
         if (didSplit) {
           actor.lastSplit = now;
           actor.lastSplitFrame = state.frameIndex;
-          if (!options.predictOnly) sendSplitRenderEvent(actor, dirX, dirY, targetX, targetY);
+          sendSplitRenderEvent(actor);
         }
         return didSplit;
       }
 
-      function sendSplitRenderEvent(actor, dirX, dirY, targetX = null, targetY = null) {
+      function sendSplitRenderEvent(actor) {
         if (state.net.role !== "host" || !state.net.connected || !actor.isHuman) return;
         netSend({
           t: "splitEvent",
-          actorId: actor.id,
-          dirX,
-          dirY,
-          targetX,
-          targetY,
-          now: state.realNow || state.now
+          actor: serializeActor(actor)
         });
       }
 
@@ -4829,7 +4824,7 @@
       }
 
       function updateClientRenderState(dt) {
-        predictClientSplitMotion(dt);
+        predictClientCellMotion(dt);
         for (const actor of state.actors) {
           for (const cell of actor.cells) updateRenderPosition(cell, dt, 20);
         }
@@ -4837,7 +4832,7 @@
         for (const virus of state.viruses) updateRenderPosition(virus, dt, 10);
       }
 
-      function predictClientSplitMotion(dt) {
+      function predictClientCellMotion(dt) {
         for (const actor of state.actors) {
           for (const cell of actor.cells) {
             if (cell.splitHoldAge > 0) {
@@ -4850,12 +4845,16 @@
               }
             }
             const boostSpeed = Math.hypot(cell.boostX || 0, cell.boostY || 0);
-            if (cell.splitBoostAge <= 0 && boostSpeed <= 30) continue;
             cell.x = clamp(cell.x + ((cell.vx || 0) + (cell.boostX || 0)) * dt, cell.radius, WORLD_SIZE - cell.radius);
             cell.y = clamp(cell.y + ((cell.vy || 0) + (cell.boostY || 0)) * dt, cell.radius, WORLD_SIZE - cell.radius);
-            const decay = Math.exp(-dt * (SPLIT_BOOST_DECAY / splitMomentumScale()));
-            cell.boostX *= decay;
-            cell.boostY *= decay;
+            if (boostSpeed > 0.02) {
+              const decayRate = cell.splitBoostAge > 0 || boostSpeed > 30
+                ? SPLIT_BOOST_DECAY / splitMomentumScale()
+                : 3.7;
+              const decay = Math.exp(-dt * decayRate);
+              cell.boostX *= decay;
+              cell.boostY *= decay;
+            }
             if (cell.splitBoostAge > 0) cell.splitBoostAge = Math.max(0, cell.splitBoostAge - dt);
           }
         }
@@ -4872,13 +4871,13 @@
         if (state.net.role === "host" && message.t === "input") {
           const guest = actorById("guest");
           if (!guest) return;
-          let urgentSnapshot = false;
+          let urgentInput = false;
           const cloneSeq = Number(message.cloneSeq) || 0;
           let guestClone = remoteCloneActor("guest");
           if (cloneSeq > guest.input.lastNetCloneSeq) {
             guestClone = handleRemoteCloneToggle(guest);
             guest.input.lastNetCloneSeq = cloneSeq;
-            urgentSnapshot = true;
+            urgentInput = true;
           }
 
           const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : "guest";
@@ -4898,7 +4897,7 @@
           if (ejectSeq > guest.input.lastNetEjectSeq) {
             activeGuest.input.ejectQueued = true;
             guest.input.lastNetEjectSeq = ejectSeq;
-            urgentSnapshot = true;
+            urgentInput = true;
           }
           const splitSeq = Number(message.splitSeq) || 0;
           if (splitSeq > guest.input.lastNetSplitSeq) {
@@ -4906,6 +4905,7 @@
             activeGuest.input.splitQueued = true;
             activeGuest.input.splitCount += splitCount;
             guest.input.lastNetSplitSeq = splitSeq;
+            urgentInput = true;
           }
           const respawnSeq = Number(message.respawnSeq) || 0;
           if (respawnSeq > guest.input.lastNetRespawnSeq) {
@@ -4913,28 +4913,16 @@
               spawnActor(activeGuest, playerSpawnMass());
             }
             guest.input.lastNetRespawnSeq = respawnSeq;
-            urgentSnapshot = true;
+            urgentInput = true;
           }
-          if (urgentSnapshot) state.net.lastSnapshotSend = -100;
+          if (urgentInput) state.net.lastSnapshotSend = -100;
           return;
         }
 
-        if (state.net.role === "client" && message.t === "splitEvent") {
-          if (message.actor) {
-            const actor = applyActorSnapshot(message.actor);
-            if (!state.actors.includes(actor)) state.actors.push(actor);
-            if (isLocalControlledActorId(actor.id) && actor.id === state.input.activeActorId) state.player = actor;
-            updateClientRenderState(1 / 60);
-            return;
-          }
-          const actor = actorById(message.actorId);
-          if (!actor) return;
-          const dir = normalized(Number(message.dirX) || 0, Number(message.dirY) || 0, actor.input.lastAimX, actor.input.lastAimY);
-          const targetX = Number.isFinite(message.targetX) ? message.targetX : null;
-          const targetY = Number.isFinite(message.targetY) ? message.targetY : null;
-          actor.input.lastAimX = dir.x;
-          actor.input.lastAimY = dir.y;
-          splitActor(actor, dir.x, dir.y, state.now, 0, targetX, targetY, { predictOnly: true });
+        if (state.net.role === "client" && message.t === "splitEvent" && message.actor) {
+          const actor = applyActorSnapshot(message.actor);
+          if (!state.actors.includes(actor)) state.actors.push(actor);
+          if (isLocalControlledActorId(actor.id) && actor.id === state.input.activeActorId) state.player = actor;
           updateClientRenderState(1 / 60);
           return;
         }
@@ -5025,28 +5013,7 @@
         actor.localClone = Boolean(data.localClone);
         actor.control = isLocalControlled ? "local" : (actor.isHuman ? "remote" : "bot");
         const cellsById = new Map(actor.cells.map((cell) => [cell.id, cell]));
-        const unmatchedCells = actor.cells.slice();
-        const usedCells = new Set();
-        actor.cells = (data.cells || []).map((cellData) => {
-          let existing = cellsById.get(cellData.id);
-          if (!existing) {
-            let best = null;
-            let bestScore = Infinity;
-            for (const candidate of unmatchedCells) {
-              if (usedCells.has(candidate)) continue;
-              const massRatio = Math.max(candidate.mass, cellData.mass) / Math.max(1, Math.min(candidate.mass, cellData.mass));
-              if (massRatio > 2.2) continue;
-              const score = distSq(candidate.x, candidate.y, cellData.x, cellData.y) + Math.abs(candidate.mass - cellData.mass) * 120;
-              if (score < bestScore) {
-                bestScore = score;
-                best = candidate;
-              }
-            }
-            existing = best;
-          }
-          if (existing) usedCells.add(existing);
-          return applyCellSnapshot(actor, cellData, existing);
-        });
+        actor.cells = (data.cells || []).map((cellData) => applyCellSnapshot(actor, cellData, cellsById.get(cellData.id)));
         refreshNextSplitPriority(actor);
         return actor;
       }
