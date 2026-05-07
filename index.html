@@ -1553,17 +1553,6 @@
         return threshold > 0 ? threshold : 0;
       }
 
-      function actorFamilyId(id) {
-        const text = String(id || "");
-        if (text === "local-clone-1") return state.localActorId || "player";
-        return text.endsWith("-clone-1") ? text.slice(0, -8) : text;
-      }
-
-      function sameCellFamily(a, b) {
-        if (!a || !b) return false;
-        return actorFamilyId(a.ownerId) === actorFamilyId(b.ownerId);
-      }
-
       function canConsume(eater, victim) {
         const threshold = consumeThreshold(eater, victim);
         if (!threshold) return false;
@@ -1633,11 +1622,12 @@
         victim.eatenByOwnerId = eater.ownerId;
         victim.eatenByCellId = eater.id;
         eater.ateCellFrame = state.frameIndex;
+        eater.ateProtectUntil = Math.max(eater.ateProtectUntil || 0, state.now + 0.35);
         addConsumedMass(eater, victim.mass);
       }
 
       function canBeCellVictim(cell) {
-        return !cell.dead && cell.ateCellFrame !== state.frameIndex;
+        return !cell.dead && cell.ateCellFrame !== state.frameIndex && (cell.ateProtectUntil || 0) <= state.now;
       }
 
       function createActor(id, name, color, isHuman = false, control = null) {
@@ -3959,7 +3949,7 @@
           if (eater.dead) continue;
           const nearbyCells = cellGrid.query(eater.x, eater.y, eater.radius + 650, cellQueryScratch);
           for (const victim of nearbyCells) {
-            if (!canBeCellVictim(victim) || sameCellFamily(eater, victim) || victim === eater) continue;
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsume(eater, victim)) continue;
             markCellConsumed(eater, victim);
           }
@@ -3974,7 +3964,7 @@
         for (const eater of cells) {
           if (eater.dead) continue;
           for (const victim of sweptCells) {
-            if (!canBeCellVictim(victim) || sameCellFamily(eater, victim) || victim === eater) continue;
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             markCellConsumed(eater, victim);
           }
@@ -3983,7 +3973,7 @@
         for (const eater of sweptCells) {
           if (eater.dead) continue;
           for (const victim of cells) {
-            if (!canBeCellVictim(victim) || sameCellFamily(eater, victim) || victim === eater) continue;
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             markCellConsumed(eater, victim);
           }
