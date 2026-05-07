@@ -676,7 +676,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.2</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.3</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -955,7 +955,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.2";
+      const APP_VERSION = "v2026.05.08.3";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1018,6 +1018,7 @@
       const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
+      const EATEN_CELL_RESTORE_WINDOW = 0.55;
       const SPLIT_BOOST_DURATION = 0.08;
       const SPLIT_BOOST_DECAY = 0.82;
       const SPLIT_MAX_BOOST = 560;
@@ -1636,7 +1637,7 @@
         }
       }
 
-      function restoreSameFrameFamilyVictims(eater, victim) {
+      function restoreRecentFamilyVictims(eater, victim) {
         const eaterFamily = actorFamilyId(eater.ownerId);
         const victimFamily = actorFamilyId(victim.ownerId);
         if (eaterFamily === victimFamily) return;
@@ -1645,10 +1646,11 @@
         for (const actor of state.actors) {
           if (actorFamilyId(actor.id) !== eaterFamily) continue;
           for (const cell of actor.cells) {
-            if (!cell.dead || cell.eatenFrame !== state.frameIndex) continue;
+            if (!cell.dead || cell.eatenAt == null || state.now - cell.eatenAt > EATEN_CELL_RESTORE_WINDOW) continue;
             if (actorFamilyId(cell.eatenByOwnerId) !== victimFamily) continue;
             cell.dead = false;
             cell.eatenFrame = -1;
+            cell.eatenAt = -1;
             cell.eatenByOwnerId = "";
             cell.eatenByCellId = 0;
             cell.ateProtectUntil = Math.max(cell.ateProtectUntil || 0, state.now + 0.35);
@@ -1663,9 +1665,10 @@
       }
 
       function markCellConsumed(eater, victim) {
-        restoreSameFrameFamilyVictims(eater, victim);
+        restoreRecentFamilyVictims(eater, victim);
         victim.dead = true;
         victim.eatenFrame = state.frameIndex;
+        victim.eatenAt = state.now;
         victim.eatenByOwnerId = eater.ownerId;
         victim.eatenByCellId = eater.id;
         eater.ateCellFrame = state.frameIndex;
@@ -1677,6 +1680,12 @@
 
       function canBeCellVictim(cell) {
         return !cell.dead && cell.ateCellFrame !== state.frameIndex && (cell.ateProtectUntil || 0) <= state.now;
+      }
+
+      function canFinalizeDeadCell(cell) {
+        if (!cell.dead) return false;
+        if (cell.eatenAt != null && state.now - cell.eatenAt <= EATEN_CELL_RESTORE_WINDOW) return false;
+        return true;
       }
 
       function createActor(id, name, color, isHuman = false, control = null) {
@@ -4033,12 +4042,12 @@
         if (state.net.role === "host" && state.net.connected) {
           for (const actor of state.actors) {
             for (const cell of actor.cells) {
-              if (cell.dead && cell.id != null) state.net.removedCellKeys.add(`${actor.id}:${cell.id}`);
+              if (canFinalizeDeadCell(cell) && cell.id != null) state.net.removedCellKeys.add(`${actor.id}:${cell.id}`);
             }
           }
         }
         for (const actor of state.actors) {
-          actor.cells = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_CELL_MASS);
+          actor.cells = actor.cells.filter((cell) => (!cell.dead || !canFinalizeDeadCell(cell)) && cell.mass >= MIN_CELL_MASS);
         }
 
         const guest = actorById("guest");
