@@ -1187,6 +1187,7 @@
           removedFeedIds: new Set(),
           removedVirusIds: new Set(),
           removedCellKeys: new Set(),
+          clientRemovedFeedIds: new Set(),
           clientRemovedVirusIds: new Set()
         },
         foodGridDirty: true,
@@ -4593,6 +4594,7 @@
         state.net.removedFeedIds.clear();
         state.net.removedVirusIds.clear();
         state.net.removedCellKeys.clear();
+        state.net.clientRemovedFeedIds.clear();
         state.net.clientRemovedVirusIds.clear();
         setStatus("OFFLINE");
         if (!keepWorld) resetFreshWorld("player", false);
@@ -5357,9 +5359,23 @@
         if (!removedCells || !removedCells.length) return actors;
         const removed = new Set(removedCells.map((cell) => `${cell.ownerId}:${cell.id}`));
         for (const actor of actors) {
+          if (isLocalViewActor(actor)) continue;
           actor.cells = actor.cells.filter((cell) => !removed.has(`${actor.id}:${cell.id}`));
         }
         return actors.filter((actor) => actor.isHuman || actor.cells.length > 0);
+      }
+
+      function rememberRemovedIds(cache, ids, maxSize = 4000) {
+        if (!ids || !ids.length) return;
+        for (const id of ids) cache.add(id);
+        if (cache.size <= maxSize) return;
+        const overflow = cache.size - maxSize;
+        let removed = 0;
+        for (const id of cache) {
+          cache.delete(id);
+          removed += 1;
+          if (removed >= overflow) break;
+        }
       }
 
       function applySnapshot(message) {
@@ -5438,13 +5454,19 @@
 
         if (Array.isArray(message.removedFeedIds)) {
           state.feeds = removeEntityIds(state.feeds, message.removedFeedIds);
+          rememberRemovedIds(state.net.clientRemovedFeedIds, message.removedFeedIds);
         }
         if (Array.isArray(message.removedVirusIds)) {
           state.viruses = removeEntityIds(state.viruses, message.removedVirusIds);
           for (const id of message.removedVirusIds) state.net.clientRemovedVirusIds.add(id);
         }
         if (Array.isArray(message.feeds)) {
-          state.feeds = mergeEntityListSnapshot(message.feeds, "feed", state.feeds, 10);
+          state.feeds = mergeEntityListSnapshot(
+            message.feeds.filter((feed) => !state.net.clientRemovedFeedIds.has(feed.id)),
+            "feed",
+            state.feeds,
+            10
+          );
         }
       }
 
