@@ -216,10 +216,10 @@
 
     .menu-layout {
       display: grid;
-      grid-template-columns: minmax(190px, 0.8fr) minmax(310px, 1.2fr);
+      grid-template-columns: minmax(220px, 0.72fr) minmax(430px, 1.28fr);
       align-items: start;
       gap: 6px;
-      width: min(620px, calc(100vw - 28px));
+      width: min(780px, calc(100vw - 28px));
       max-height: calc(100vh - 126px);
       margin: 0;
       padding: 6px;
@@ -321,7 +321,7 @@
     .view-panel {
       position: fixed;
       inset: auto 14px 14px auto;
-      width: min(300px, calc(100vw - 190px));
+      width: min(430px, calc(100vw - 190px));
       max-height: calc(100vh - 28px);
       overflow-y: auto;
       padding: 10px 12px;
@@ -381,7 +381,7 @@
 
     .setting-control {
       display: grid;
-      grid-template-columns: 72px minmax(0, 1fr) 48px 56px;
+      grid-template-columns: 92px minmax(150px, 1fr) 58px 72px;
       align-items: center;
       gap: 8px;
       min-height: 28px;
@@ -558,7 +558,7 @@
       }
 
       .view-panel {
-        width: min(270px, calc(100vw - 158px));
+        width: min(380px, calc(100vw - 158px));
       }
 
       .menu-screen {
@@ -692,6 +692,12 @@
           <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="ペレット上限">
         </label>
         <label class="setting-control">
+          <span>初期マス</span>
+          <input id="spawnMassSlider" type="range" min="12" max="5000" step="10" value="132" aria-label="初期スポーンマス">
+          <strong id="spawnMassValue">132</strong>
+          <input id="spawnMassMaxBox" class="max-input" type="number" min="12" step="10" value="5000" aria-label="初期マス上限">
+        </label>
+        <label class="setting-control">
           <span>吐く量</span>
           <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="21" aria-label="吐く粒の大きさ">
           <strong id="ejectMassValue">21</strong>
@@ -791,6 +797,9 @@
       const foodSlider = document.getElementById("foodSlider");
       const foodValueEl = document.getElementById("foodValue");
       const foodMaxBox = document.getElementById("foodMaxBox");
+      const spawnMassSlider = document.getElementById("spawnMassSlider");
+      const spawnMassValueEl = document.getElementById("spawnMassValue");
+      const spawnMassMaxBox = document.getElementById("spawnMassMaxBox");
       const ejectMassSlider = document.getElementById("ejectMassSlider");
       const ejectMassValueEl = document.getElementById("ejectMassValue");
       const ejectMassMaxBox = document.getElementById("ejectMassMaxBox");
@@ -835,8 +844,7 @@
       const DEFAULT_EJECT_MASS = 21;
       const DEFAULT_EJECT_SPEED = 710;
       const DEFAULT_EJECT_RATE = 11;
-      const PLAYER_START_MASS = 132;
-      const PLAYER_RESPAWN_MASS = 132;
+      const DEFAULT_SPAWN_MASS = 132;
       const DEFAULT_FOOD_TARGET = 1200;
       const DEFAULT_VIRUS_TARGET = 36;
       const DEFAULT_BOT_COUNT = 100;
@@ -949,6 +957,7 @@
           botMode: "hunt",
           virusTarget: DEFAULT_VIRUS_TARGET,
           foodTarget: DEFAULT_FOOD_TARGET,
+          spawnMass: DEFAULT_SPAWN_MASS,
           ejectMass: DEFAULT_EJECT_MASS,
           ejectSpeed: DEFAULT_EJECT_SPEED,
           ejectRate: DEFAULT_EJECT_RATE,
@@ -964,6 +973,7 @@
             bot: 200,
             virus: 500,
             food: 100000,
+            spawnMass: 5000,
             ejectMass: 80,
             ejectSpeed: 1400,
             ejectRate: 50,
@@ -1556,6 +1566,10 @@
         return `${name}${suffix}`;
       }
 
+      function playerSpawnMass() {
+        return clamp(Math.round(Number(state.settings.spawnMass) || DEFAULT_SPAWN_MASS), MIN_CELL_MASS, state.settings.max.spawnMass);
+      }
+
       function applyLocalProfile() {
         syncProfileFromInputs();
         for (const actor of localHumanActors()) {
@@ -1661,8 +1675,9 @@
       }
 
       function spawnLocalActorBeside(actor, anchorActor) {
-        const pos = findLocalActorSpawnPosition(actor, anchorActor, PLAYER_RESPAWN_MASS);
-        spawnActor(actor, PLAYER_RESPAWN_MASS, pos.x, pos.y);
+        const mass = playerSpawnMass();
+        const pos = findLocalActorSpawnPosition(actor, anchorActor, mass);
+        spawnActor(actor, mass, pos.x, pos.y);
         state.flashUntil = state.now + 1.0;
         state.net.lastSnapshotSend = -100;
         rebuildSpatialHashes();
@@ -3597,7 +3612,7 @@
               if (state.actors[i].id === localCloneId("guest")) state.actors.splice(i, 1);
             }
             guest.localClone = false;
-            spawnActor(guest, PLAYER_RESPAWN_MASS);
+            spawnActor(guest, playerSpawnMass());
             state.flashUntil = state.now + 1.25;
           }
         }
@@ -3612,7 +3627,7 @@
             }
             if (main) {
               main.localClone = false;
-              spawnActor(main, PLAYER_RESPAWN_MASS);
+              spawnActor(main, playerSpawnMass());
               setActiveLocalActor(main);
               state.flashUntil = state.now + 1.25;
             }
@@ -3626,7 +3641,7 @@
           if (actor.id === "guest" || actor.id === localCloneId("guest")) continue;
           if (actor.cells.length === 0) {
             if (actor.isHuman) {
-              spawnActor(actor, PLAYER_RESPAWN_MASS);
+              spawnActor(actor, playerSpawnMass());
               state.flashUntil = state.now + 1.25;
             } else {
               if (actor.respawnAt <= 0) {
@@ -4103,8 +4118,8 @@
           state.actors.push(host, guest);
           state.player = localId === "guest" ? guest : host;
           if (localId === "host") {
-            spawnActor(host, PLAYER_START_MASS);
-            spawnActor(guest, PLAYER_START_MASS);
+            spawnActor(host, playerSpawnMass());
+            spawnActor(guest, playerSpawnMass());
             const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
             while (state.foods.length < initialFood) addFood();
             const center = actorCenter(host);
@@ -4114,7 +4129,7 @@
           const player = createActor("player", localProfileName(), "#2e90fa", true, "local");
           state.player = player;
           state.actors.push(player);
-          spawnActor(player, PLAYER_START_MASS);
+          spawnActor(player, playerSpawnMass());
           ensureBotPopulation();
           const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
           while (state.foods.length < initialFood) addFood();
@@ -4476,6 +4491,7 @@
           settings: {
             splitSpeed: state.settings.splitSpeed,
             splitMinDistance: state.settings.splitMinDistance,
+            spawnMass: state.settings.spawnMass,
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
@@ -4642,7 +4658,7 @@
           const respawnSeq = Number(message.respawnSeq) || 0;
           if (respawnSeq > guest.input.lastNetRespawnSeq) {
             if (state.settings.nRespawnEnabled) {
-              spawnActor(activeGuest, PLAYER_RESPAWN_MASS);
+              spawnActor(activeGuest, playerSpawnMass());
             }
             guest.input.lastNetRespawnSeq = respawnSeq;
             urgentInput = true;
@@ -4801,6 +4817,13 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMinDistance || nextValue !== state.settings.splitMinDistance;
             state.settings.max.splitMinDistance = nextMax;
             state.settings.splitMinDistance = nextValue;
+          }
+          if (Number.isFinite(message.settings.spawnMass)) {
+            const nextMax = Math.max(state.settings.max.spawnMass, message.settings.spawnMass);
+            const nextValue = clamp(message.settings.spawnMass, MIN_CELL_MASS, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.spawnMass || nextValue !== state.settings.spawnMass;
+            state.settings.max.spawnMass = nextMax;
+            state.settings.spawnMass = nextValue;
           }
           if (Number.isFinite(message.settings.gameSpeed)) {
             const nextMax = Math.max(state.settings.max.gameSpeed, message.settings.gameSpeed);
@@ -5317,6 +5340,10 @@
         foodSlider.value = String(state.settings.foodTarget);
         foodValueEl.textContent = String(state.settings.foodTarget);
         foodMaxBox.value = String(state.settings.max.food);
+        spawnMassSlider.max = String(state.settings.max.spawnMass);
+        spawnMassSlider.value = String(state.settings.spawnMass);
+        spawnMassValueEl.textContent = String(state.settings.spawnMass);
+        spawnMassMaxBox.value = String(state.settings.max.spawnMass);
         ejectMassSlider.max = String(state.settings.max.ejectMass);
         ejectMassSlider.value = String(state.settings.ejectMass);
         ejectMassValueEl.textContent = String(state.settings.ejectMass);
@@ -5405,6 +5432,7 @@
         if (kind === "botMode") state.settings.botMode = ["hunt", "chase", "virus", "cursor"].includes(value) ? value : "hunt";
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
+        if (kind === "spawnMass") state.settings.spawnMass = clamp(Math.round(number / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
         if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
         if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, state.settings.max.ejectSpeed);
         if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
@@ -5437,6 +5465,10 @@
         if (kind === "food") {
           state.settings.max.food = Math.max(100, Math.round(number / 100) * 100);
           state.settings.foodTarget = clamp(state.settings.foodTarget, 0, state.settings.max.food);
+        }
+        if (kind === "spawnMass") {
+          state.settings.max.spawnMass = Math.max(MIN_CELL_MASS, Math.round(number / 10) * 10);
+          state.settings.spawnMass = clamp(state.settings.spawnMass, MIN_CELL_MASS, state.settings.max.spawnMass);
         }
         if (kind === "ejectMass") {
           state.settings.max.ejectMass = Math.max(5, number);
@@ -5508,7 +5540,7 @@
           state.input.respawnSeq += 1;
           return;
         }
-        spawnActor(state.player, PLAYER_RESPAWN_MASS);
+        spawnActor(state.player, playerSpawnMass());
         state.flashUntil = state.now + 1.0;
         state.net.lastSnapshotSend = -100;
         rebuildSpatialHashes();
@@ -5602,6 +5634,7 @@
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
+        spawnMassSlider.addEventListener("input", () => setWorldSetting("spawnMass", spawnMassSlider.value));
         ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
         ejectSpeedSlider.addEventListener("input", () => setWorldSetting("ejectSpeed", ejectSpeedSlider.value));
         ejectRateSlider.addEventListener("input", () => setWorldSetting("ejectRate", ejectRateSlider.value));
@@ -5614,6 +5647,7 @@
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
         virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
         foodMaxBox.addEventListener("change", () => setSliderMax("food", foodMaxBox.value));
+        spawnMassMaxBox.addEventListener("change", () => setSliderMax("spawnMass", spawnMassMaxBox.value));
         ejectMassMaxBox.addEventListener("change", () => setSliderMax("ejectMass", ejectMassMaxBox.value));
         ejectSpeedMaxBox.addEventListener("change", () => setSliderMax("ejectSpeed", ejectSpeedMaxBox.value));
         ejectRateMaxBox.addEventListener("change", () => setSliderMax("ejectRate", ejectRateMaxBox.value));
