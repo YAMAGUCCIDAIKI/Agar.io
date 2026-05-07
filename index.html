@@ -2603,6 +2603,16 @@
         state.input.mouseWorldY = clamp(world.y, 0, WORLD_SIZE);
       }
 
+      function syncPointerTarget() {
+        updateMouseWorld();
+        for (const actor of localHumanActors()) {
+          if (!isPlayerControlled(actor)) continue;
+          actor.input.targetX = state.input.mouseWorldX;
+          actor.input.targetY = state.input.mouseWorldY;
+        }
+        state.net.lastInputSend = -100;
+      }
+
       function actorAimDirection(actor) {
         const center = actorCenter(actor);
         const n = normalized(
@@ -3097,6 +3107,11 @@
       }
 
       function turnCellFacing(cell, targetDir, dt) {
+        if (cell.instantFacing) {
+          cell.faceX = targetDir.x;
+          cell.faceY = targetDir.y;
+          return;
+        }
         const current = normalized(
           Number.isFinite(cell.faceX) ? cell.faceX : 1,
           Number.isFinite(cell.faceY) ? cell.faceY : 0,
@@ -3198,15 +3213,18 @@
               cell.targetY = actor.input.targetY;
             }
 
+            const instantControl = isPlayerControlled(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
             const n = normalized(dx, dy, 0, 0);
             const speed = cellSpeed(cell);
             const throttle = clamp(n.length / Math.max(35, cell.radius * 1.8), 0, 1);
+            cell.instantFacing = instantControl;
             if (n.length > 0.001) turnCellFacing(cell, n, dt);
+            cell.instantFacing = false;
             const desiredX = (Number.isFinite(cell.faceX) ? cell.faceX : n.x) * speed * throttle;
             const desiredY = (Number.isFinite(cell.faceY) ? cell.faceY : n.y) * speed * throttle;
-            const steer = 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
+            const steer = instantControl ? 1 : 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
 
             cell.vx += (desiredX - cell.vx) * steer;
             cell.vy += (desiredY - cell.vy) * steer;
@@ -4605,7 +4623,7 @@
       function sendLocalInput(now) {
         if (state.net.role !== "client" || !state.net.connected || !state.player) return;
         const urgent = state.player.input.splitQueued || state.player.input.ejectQueued || state.input.respawnQueued || state.input.cloneQueued;
-        if (!urgent && now - state.net.lastInputSend < 1 / 30) return;
+        if (!urgent && now - state.net.lastInputSend < 1 / 60) return;
         netSend({
           t: "input",
           activeActorId: state.input.activeActorId || state.player.id,
@@ -5347,6 +5365,7 @@
       function onPointerMove(event) {
         state.input.mouseX = event.clientX;
         state.input.mouseY = event.clientY;
+        syncPointerTarget();
       }
 
       function onTouch(event) {
@@ -5354,6 +5373,7 @@
         const touch = event.touches[0];
         state.input.mouseX = touch.clientX;
         state.input.mouseY = touch.clientY;
+        syncPointerTarget();
         event.preventDefault();
       }
 
