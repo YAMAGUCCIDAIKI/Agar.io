@@ -343,12 +343,6 @@
       color: #13f6ff;
     }
 
-    .profile-fields {
-      display: grid;
-      grid-template-columns: 86px minmax(0, 1fr);
-      gap: 6px;
-    }
-
     .profile-panel input {
       min-height: 34px;
       border: 1px solid rgba(0, 220, 255, 0.65);
@@ -357,26 +351,6 @@
       background: rgba(255, 255, 255, 0.96);
       color: #111827;
       font: 700 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
-    }
-
-    .tag-presets {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
-    }
-
-    .tag-presets button {
-      min-height: 28px;
-      border: 1px solid rgba(0, 220, 255, 0.62);
-      border-radius: 3px;
-      background: rgba(0, 126, 255, 0.34);
-      color: #13f6ff;
-      font: 800 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
-      cursor: pointer;
-    }
-
-    .tag-presets button:hover {
-      background: rgba(0, 170, 255, 0.5);
     }
 
     .view-row {
@@ -637,16 +611,7 @@
     </div>
     <div class="menu-layout">
       <section class="profile-panel" aria-label="プロフィール">
-        <div class="profile-fields">
-          <input id="teamBox" maxlength="8" spellcheck="false" aria-label="チームタグ" placeholder="team">
-          <input id="nameBox" maxlength="18" spellcheck="false" aria-label="名前" placeholder="name">
-        </div>
-        <div class="tag-presets" aria-label="チームタグ">
-          <button type="button" data-team-tag="">なし</button>
-          <button type="button" data-team-tag="先輩">先輩</button>
-          <button type="button" data-team-tag="敵">敵</button>
-          <button type="button" data-team-tag="紅">紅</button>
-        </div>
+        <input id="nameBox" maxlength="18" spellcheck="false" aria-label="名前" placeholder="name">
       </section>
 
       <section class="online-panel" aria-label="オンライン">
@@ -797,9 +762,7 @@
       const flashEl = document.getElementById("flash");
       const menuBtn = document.getElementById("menuBtn");
       const playBtn = document.getElementById("playBtn");
-      const teamBox = document.getElementById("teamBox");
       const nameBox = document.getElementById("nameBox");
-      const teamPresetButtons = Array.from(document.querySelectorAll("[data-team-tag]"));
       const onlineStatusEl = document.getElementById("onlineStatus");
       const hostBtn = document.getElementById("hostBtn");
       const joinBtn = document.getElementById("joinBtn");
@@ -979,7 +942,6 @@
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
         profile: {
-          team: "",
           name: "YOU"
         },
         settings: {
@@ -1586,14 +1548,12 @@
       }
 
       function syncProfileFromInputs() {
-        state.profile.team = sanitizeProfileText(teamBox.value, "", 8);
         state.profile.name = sanitizeProfileText(nameBox.value, "YOU", 18);
       }
 
       function localProfileName(suffix = "") {
         const name = sanitizeProfileText(state.profile.name, "YOU", 18);
-        const team = sanitizeProfileText(state.profile.team, "", 8);
-        return `${team ? `[${team}] ` : ""}${name}${suffix}`;
+        return `${name}${suffix}`;
       }
 
       function applyLocalProfile() {
@@ -5619,13 +5579,6 @@
           setMenuOpen(false);
         });
         nameBox.addEventListener("input", applyLocalProfile);
-        teamBox.addEventListener("input", applyLocalProfile);
-        for (const button of teamPresetButtons) {
-          button.addEventListener("click", () => {
-            teamBox.value = button.dataset.teamTag || "";
-            applyLocalProfile();
-          });
-        }
         for (const button of keyBindButtons) {
           button.addEventListener("click", () => beginKeyCapture(button.dataset.keybind));
         }
@@ -5731,7 +5684,6 @@
         setViewScalePercent(DEFAULT_VIEW_SCALE * 100);
         syncSettingsControls();
         syncKeyBindControls();
-        teamBox.value = state.profile.team;
         nameBox.value = state.profile.name;
         setMenuOpen(true);
 
