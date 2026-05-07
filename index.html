@@ -995,7 +995,7 @@
       const MAX_SYNC_FOODS = 1800;
       const MAX_SYNC_FEEDS = 520;
       const MAX_SYNC_VIRUSES = 600;
-      const MAX_SYNC_BOTS = 160;
+      const MAX_SYNC_BOTS = 120;
       const NETWORK_RENDER_RANGE = 2600;
       const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
@@ -1010,7 +1010,7 @@
       const CLIENT_INPUT_SEND_RATE = 1 / TARGET_FPS;
       const HOST_SNAPSHOT_RATE = 1 / 60;
       const HOST_FEED_SNAPSHOT_RATE = 1 / 12;
-      const HOST_BOT_SNAPSHOT_RATE = 1 / 24;
+      const HOST_BOT_SNAPSHOT_RATE = 1 / 15;
       const HOST_WORLD_SYNC_RATE = 2.0;
       const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
@@ -4891,19 +4891,32 @@
         return false;
       }
 
+      function nearestHumanDistanceSq(x, y) {
+        let best = Infinity;
+        for (const human of state.actors) {
+          if (!human.isHuman || human.cells.length <= 0) continue;
+          const center = actorCenter(human);
+          const d2 = distSq(x, y, center.x, center.y);
+          if (d2 < best) best = d2;
+        }
+        return best;
+      }
+
       function actorsForNetwork(sendBots) {
         const actors = [];
-        let botCount = 0;
+        const bots = [];
         for (const actor of state.actors) {
           if (actor.isHuman) {
             actors.push(actor);
             continue;
           }
-          if (!sendBots || botCount >= MAX_SYNC_BOTS) continue;
+          if (!sendBots) continue;
           if (!actorNearAnyHuman(actor, NETWORK_RENDER_RANGE)) continue;
-          actors.push(actor);
-          botCount += 1;
+          const center = actorCenter(actor);
+          bots.push({ actor, d2: nearestHumanDistanceSq(center.x, center.y) });
         }
+        bots.sort((a, b) => a.d2 - b.d2);
+        for (const item of bots.slice(0, MAX_SYNC_BOTS)) actors.push(item.actor);
         return actors;
       }
 
@@ -4990,20 +5003,22 @@
       }
 
       function networkEntitiesNearHumans(grid, limit, range) {
-        const items = [];
-        const seen = new Set();
+        const byId = new Map();
         for (const actor of state.actors) {
           if (!actor || !actor.isHuman) continue;
           const center = actorCenter(actor);
           const nearby = grid.queryRect(center.x - range, center.y - range, center.x + range, center.y + range, aiEntityScratch);
           for (const item of nearby) {
-            if (item.dead || seen.has(item.id)) continue;
-            seen.add(item.id);
-            items.push(item);
-            if (items.length >= limit) return items;
+            if (item.dead) continue;
+            const d2 = distSq(item.x, item.y, center.x, center.y);
+            const existing = byId.get(item.id);
+            if (!existing || d2 < existing.d2) byId.set(item.id, { item, d2 });
           }
         }
-        return items;
+        return Array.from(byId.values())
+          .sort((a, b) => a.d2 - b.d2)
+          .slice(0, limit)
+          .map((entry) => entry.item);
       }
 
       function sendWorldChunks(kind, items, seq) {
@@ -5081,7 +5096,7 @@
 
       function predictClientCellMotion(dt) {
         for (const actor of state.actors) {
-          if (!isLocalViewActor(actor)) continue;
+          if (!isLocalViewActor(actor) && actor.control !== "bot") continue;
           for (const cell of actor.cells) {
             if (cell.splitHoldAge > 0) {
               cell.splitHoldAge = Math.max(0, cell.splitHoldAge - dt);
@@ -5093,8 +5108,9 @@
               }
             }
             const boostSpeed = Math.hypot(cell.boostX || 0, cell.boostY || 0);
-            cell.x = clamp(cell.x + ((cell.vx || 0) + (cell.boostX || 0)) * dt, cell.radius, WORLD_SIZE - cell.radius);
-            cell.y = clamp(cell.y + ((cell.vy || 0) + (cell.boostY || 0)) * dt, cell.radius, WORLD_SIZE - cell.radius);
+            const predictScale = actor.control === "bot" ? 0.62 : 1;
+            cell.x = clamp(cell.x + ((cell.vx || 0) + (cell.boostX || 0)) * dt * predictScale, cell.radius, WORLD_SIZE - cell.radius);
+            cell.y = clamp(cell.y + ((cell.vy || 0) + (cell.boostY || 0)) * dt * predictScale, cell.radius, WORLD_SIZE - cell.radius);
             if (boostSpeed > 0.02) {
               const decayRate = cell.splitBoostAge > 0 || boostSpeed > 30
                 ? SPLIT_BOOST_DECAY / splitMomentumScale()
@@ -5310,7 +5326,7 @@
         const incoming = (items || []).map(applyActorSnapshot);
         const byId = new Map(existingList.map((actor) => [actor.id, actor]));
         for (const actor of incoming) byId.set(actor.id, actor);
-        return Array.from(byId.values()).filter((actor) => actor.isHuman || now - (actor.netSeenAt == null ? 0 : actor.netSeenAt) <= 5);
+        return Array.from(byId.values()).filter((actor) => actor.isHuman || now - (actor.netSeenAt == null ? 0 : actor.netSeenAt) <= 12);
       }
 
       function removeEntityIds(existingList, ids) {
@@ -5398,7 +5414,7 @@
           for (const id of message.removedVirusIds) state.net.clientRemovedVirusIds.add(id);
         }
         if (Array.isArray(message.feeds)) {
-          state.feeds = mergeEntityListSnapshot(message.feeds, "feed", state.feeds, 3.5);
+          state.feeds = mergeEntityListSnapshot(message.feeds, "feed", state.feeds, 10);
         }
       }
 
