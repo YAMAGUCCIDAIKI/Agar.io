@@ -999,8 +999,6 @@
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 450;
       const MAX_VIRUS_SPAWNS_PER_FRAME = 8;
-      const RENDER_SIMPLE_CELL_COUNT = 280;
-      const RENDER_FAST_CELL_COUNT = 480;
       const FOOD_AVOID_LIMIT = 2400;
       const DEFAULT_VIEW_SCALE = 1;
       const CELL_MOVE_SPEED_SCALE = 0.52;
@@ -5564,14 +5562,6 @@
         ctx.restore();
       }
 
-      function renderModeForVisibleCells(count, boostedCount = 0) {
-        if (boostedCount >= 180) return 2;
-        if (boostedCount >= 70) return 1;
-        if (count >= RENDER_FAST_CELL_COUNT || state.fps < 45) return 2;
-        if (count >= RENDER_SIMPLE_CELL_COUNT || state.fps < 55) return 1;
-        return 0;
-      }
-
       function queryRenderableCells(bounds) {
         renderCellsScratch.length = 0;
         const queryPad = 220;
@@ -5584,13 +5574,10 @@
             bounds.bottom + queryPad,
             renderCellQueryScratch
           );
-        let boostedVisibleCells = 0;
         for (const cell of candidates) {
           if (!isVisible(cell, bounds, 80)) continue;
           renderCellsScratch.push(cell);
-          if (!isLocalViewActor(cell.actor) && cell.splitBoostAge > 0) boostedVisibleCells += 1;
         }
-        return boostedVisibleCells;
       }
 
       function queryRenderableFeeds(bounds) {
@@ -5618,8 +5605,8 @@
         detailCellsScratch.length = 0;
         foodRenderScratch.length = 0;
         feedRenderScratch.length = 0;
-        const boostedVisibleCells = queryRenderableCells(bounds);
-        const renderMode = renderModeForVisibleCells(renderCellsScratch.length, boostedVisibleCells);
+        queryRenderableCells(bounds);
+        const renderMode = 0;
         state.lastRenderMode = renderMode;
         drawGrid(viewBounds, renderMode);
 
@@ -6208,8 +6195,7 @@
             update(stepDt, state.simTime, realNow);
           }
         }
-        const skipRender = state.lastRenderMode >= 2 && state.fps < 42 && state.frameIndex % 2 === 1;
-        if (!skipRender) draw();
+        draw();
         requestAnimationFrame(loop);
       }
 
