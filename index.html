@@ -995,7 +995,7 @@
       const MAX_SYNC_FOODS = 1800;
       const MAX_SYNC_FEEDS = 520;
       const MAX_SYNC_VIRUSES = 600;
-      const MAX_SYNC_BOTS = 80;
+      const MAX_SYNC_BOTS = 160;
       const NETWORK_RENDER_RANGE = 2600;
       const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
@@ -1010,7 +1010,7 @@
       const CLIENT_INPUT_SEND_RATE = 1 / TARGET_FPS;
       const HOST_SNAPSHOT_RATE = 1 / 60;
       const HOST_FEED_SNAPSHOT_RATE = 1 / 12;
-      const HOST_BOT_SNAPSHOT_RATE = 1 / 8;
+      const HOST_BOT_SNAPSHOT_RATE = 1 / 24;
       const HOST_WORLD_SYNC_RATE = 2.0;
       const CELL_MOVE_SPEED_SCALE = 0.52;
       const MERGE_SWAP_RESET_TIME = 0.22;
@@ -1184,7 +1184,9 @@
           lastFeedSnapshotSend: -100,
           lastBotSnapshotSend: -100,
           lastWorldSend: -100,
-          removedFeedIds: new Set()
+          removedFeedIds: new Set(),
+          removedVirusIds: new Set(),
+          clientRemovedVirusIds: new Set()
         },
         foodGridDirty: true,
         flashUntil: 0,
@@ -2574,6 +2576,13 @@
         return hasSweepPath(cell) && sweptPointDistSq(cell, virus.x, virus.y) <= thresholdSq;
       }
 
+      function canBurstVirus(cell, virus) {
+        const threshold = mergeVirusHitRadius(cell) + virus.radius * 0.72;
+        const thresholdSq = threshold * threshold;
+        if (distSq(cell.x, cell.y, virus.x, virus.y) <= thresholdSq) return true;
+        return hasSweepPath(cell) && sweptPointDistSq(cell, virus.x, virus.y) <= thresholdSq;
+      }
+
       function virusCollisionPriority(cell) {
         if (cell.mass > MAX_CELL_MASS) {
           return 100000000 + cell.mass;
@@ -3909,7 +3918,7 @@
 
             if (cell.virusCooldown > 0) continue;
             if (mergeVirusHitMass(cell) < VIRUS_EXPLODE_MASS) continue;
-            if (eatsVirus) {
+            if (canBurstVirus(cell, virus)) {
               explodeCellOnVirus(cell.actor, cell, virus);
               virus.dead = true;
               break;
@@ -4018,6 +4027,9 @@
         if (state.net.role === "host" && state.net.connected) {
           for (const feed of state.feeds) {
             if (feed.dead && feed.id != null) state.net.removedFeedIds.add(feed.id);
+          }
+          for (const virus of state.viruses) {
+            if (virus.dead && virus.id != null) state.net.removedVirusIds.add(virus.id);
           }
         }
         state.foods = state.foods.filter((food) => !food.dead);
@@ -4571,6 +4583,8 @@
         state.net.lastBotSnapshotSend = -100;
         state.net.lastWorldSend = -100;
         state.net.removedFeedIds.clear();
+        state.net.removedVirusIds.clear();
+        state.net.clientRemovedVirusIds.clear();
         setStatus("OFFLINE");
         if (!keepWorld) resetFreshWorld("player", false);
       }
@@ -4936,6 +4950,8 @@
         };
         const removedFeedIds = Array.from(state.net.removedFeedIds);
         if (removedFeedIds.length) message.removedFeedIds = removedFeedIds;
+        const removedVirusIds = Array.from(state.net.removedVirusIds);
+        if (removedVirusIds.length) message.removedVirusIds = removedVirusIds;
         if (sendFeeds) {
           message.feeds = feedsForNetworkSync().map(serializeCircle);
         }
@@ -4944,6 +4960,7 @@
           if (sendFeeds) state.net.lastFeedSnapshotSend = now;
           if (sendBots) state.net.lastBotSnapshotSend = now;
           for (const id of removedFeedIds) state.net.removedFeedIds.delete(id);
+          for (const id of removedVirusIds) state.net.removedVirusIds.delete(id);
         }
         if (sendWorld) {
           state.net.worldSeq += 1;
@@ -5376,6 +5393,10 @@
         if (Array.isArray(message.removedFeedIds)) {
           state.feeds = removeEntityIds(state.feeds, message.removedFeedIds);
         }
+        if (Array.isArray(message.removedVirusIds)) {
+          state.viruses = removeEntityIds(state.viruses, message.removedVirusIds);
+          for (const id of message.removedVirusIds) state.net.clientRemovedVirusIds.add(id);
+        }
         if (Array.isArray(message.feeds)) {
           state.feeds = mergeEntityListSnapshot(message.feeds, "feed", state.feeds, 3.5);
         }
@@ -5407,7 +5428,11 @@
           state.foodGridDirty = true;
           rebuildFoodGridOnly();
         } else {
-          state.viruses = applyEntityListSnapshot(merged, "virus", state.viruses);
+          state.viruses = applyEntityListSnapshot(
+            merged.filter((virus) => !state.net.clientRemovedVirusIds.has(virus.id)),
+            "virus",
+            state.viruses
+          );
         }
       }
 
