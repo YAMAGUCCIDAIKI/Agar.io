@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.39</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.40</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -849,18 +849,11 @@
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
-          <span>最低飛距離</span>
-          <input id="splitMinDistanceMinBox" class="max-input" type="number" min="0" step="5" value="0" aria-label="最低飛距離下限">
-          <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="160" aria-label="分裂の最低飛距離">
-          <strong id="splitMinDistanceValue">160</strong>
-          <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
-        </label>
-        <label class="setting-control">
-          <span>惰性距離</span>
-          <input id="splitMomentumMinBox" class="max-input" type="number" min="20" step="5" value="20" aria-label="惰性距離下限">
-          <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="65" aria-label="分裂惰性の距離">
-          <strong id="splitMomentumValue">65</strong>
-          <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
+          <span>減速時間</span>
+          <input id="splitDecayTimeMinBox" class="max-input" type="number" min="0.1" step="0.1" value="0.1" aria-label="分裂減速時間下限">
+          <input id="splitDecayTimeSlider" type="range" min="0.1" max="2" step="0.1" value="0.7" aria-label="分裂速度が移動速度まで下がる時間">
+          <strong id="splitDecayTimeValue">0.7秒</strong>
+          <input id="splitDecayTimeMaxBox" class="max-input" type="number" min="0.1" step="0.1" value="2" aria-label="分裂減速時間上限">
         </label>
         <label class="setting-control">
           <span>分裂入力</span>
@@ -1023,14 +1016,10 @@
       const splitSpeedValueEl = document.getElementById("splitSpeedValue");
       const splitSpeedMinBox = document.getElementById("splitSpeedMinBox");
       const splitSpeedMaxBox = document.getElementById("splitSpeedMaxBox");
-      const splitMinDistanceSlider = document.getElementById("splitMinDistanceSlider");
-      const splitMinDistanceValueEl = document.getElementById("splitMinDistanceValue");
-      const splitMinDistanceMinBox = document.getElementById("splitMinDistanceMinBox");
-      const splitMinDistanceMaxBox = document.getElementById("splitMinDistanceMaxBox");
-      const splitMomentumSlider = document.getElementById("splitMomentumSlider");
-      const splitMomentumValueEl = document.getElementById("splitMomentumValue");
-      const splitMomentumMinBox = document.getElementById("splitMomentumMinBox");
-      const splitMomentumMaxBox = document.getElementById("splitMomentumMaxBox");
+      const splitDecayTimeSlider = document.getElementById("splitDecayTimeSlider");
+      const splitDecayTimeValueEl = document.getElementById("splitDecayTimeValue");
+      const splitDecayTimeMinBox = document.getElementById("splitDecayTimeMinBox");
+      const splitDecayTimeMaxBox = document.getElementById("splitDecayTimeMaxBox");
       const splitInputSpeedSlider = document.getElementById("splitInputSpeedSlider");
       const splitInputSpeedValueEl = document.getElementById("splitInputSpeedValue");
       const splitInputSpeedMinBox = document.getElementById("splitInputSpeedMinBox");
@@ -1054,7 +1043,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.39";
+      const APP_VERSION = "v2026.05.08.40";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1076,8 +1065,7 @@
       const DEFAULT_BOT_COUNT = 100;
       const DEFAULT_SPLIT_RECOIL = 0;
       const DEFAULT_SPLIT_SPEED = 110;
-      const DEFAULT_SPLIT_MIN_DISTANCE = 160;
-      const DEFAULT_SPLIT_MOMENTUM = 65;
+      const DEFAULT_SPLIT_DECAY_TIME = 0.7;
       const DEFAULT_SPLIT_INPUT_SPEED = 4;
       const DEFAULT_GAME_SPEED = 1;
       const DEFAULT_RENDER_RANGE = 65;
@@ -1218,8 +1206,7 @@
           ejectRate: DEFAULT_EJECT_RATE,
           splitRecoil: DEFAULT_SPLIT_RECOIL,
           splitSpeed: DEFAULT_SPLIT_SPEED,
-          splitMinDistance: DEFAULT_SPLIT_MIN_DISTANCE,
-          splitMomentum: DEFAULT_SPLIT_MOMENTUM,
+          splitDecayTime: DEFAULT_SPLIT_DECAY_TIME,
           splitInputSpeed: DEFAULT_SPLIT_INPUT_SPEED,
           gameSpeed: DEFAULT_GAME_SPEED,
           renderRange: DEFAULT_RENDER_RANGE,
@@ -1239,8 +1226,7 @@
             ejectRate: 1,
             splitRecoil: 0,
             splitSpeed: 10,
-            splitMinDistance: 0,
-            splitMomentum: 20,
+            splitDecayTime: 0.1,
             splitInputSpeed: 1,
             gameSpeed: 0.1,
             renderRange: 35,
@@ -1257,8 +1243,7 @@
             ejectRate: 50,
             splitRecoil: 40,
             splitSpeed: 300,
-            splitMinDistance: 360,
-            splitMomentum: 160,
+            splitDecayTime: 2,
             splitInputSpeed: 4,
             gameSpeed: 3,
             renderRange: 120,
@@ -2278,8 +2263,7 @@
             ejectRate: state.settings.ejectRate,
             splitRecoil: state.settings.splitRecoil,
             splitSpeed: state.settings.splitSpeed,
-            splitMinDistance: state.settings.splitMinDistance,
-            splitMomentum: state.settings.splitMomentum,
+            splitDecayTime: state.settings.splitDecayTime,
             splitInputSpeed: state.settings.splitInputSpeed,
             gameSpeed: state.settings.gameSpeed,
             renderRange: state.settings.renderRange,
@@ -2338,8 +2322,8 @@
           if (Number.isFinite(saved.ejectRate)) state.settings.ejectRate = clamp(roundSliderValue("ejectRate", saved.ejectRate), state.settings.min.ejectRate, state.settings.max.ejectRate);
           if (Number.isFinite(saved.splitRecoil)) state.settings.splitRecoil = clamp(roundSliderValue("splitRecoil", saved.splitRecoil), state.settings.min.splitRecoil, state.settings.max.splitRecoil);
           if (Number.isFinite(saved.splitSpeed)) state.settings.splitSpeed = clamp(roundSliderValue("splitSpeed", saved.splitSpeed), state.settings.min.splitSpeed, state.settings.max.splitSpeed);
-          if (Number.isFinite(saved.splitMinDistance)) state.settings.splitMinDistance = clamp(roundSliderValue("splitMinDistance", saved.splitMinDistance), state.settings.min.splitMinDistance, state.settings.max.splitMinDistance);
-          if (Number.isFinite(saved.splitMomentum)) state.settings.splitMomentum = clamp(roundSliderValue("splitMomentum", saved.splitMomentum), state.settings.min.splitMomentum, state.settings.max.splitMomentum);
+          if (Number.isFinite(saved.splitDecayTime)) state.settings.splitDecayTime = clamp(roundSliderValue("splitDecayTime", saved.splitDecayTime), state.settings.min.splitDecayTime, state.settings.max.splitDecayTime);
+          else if (Number.isFinite(saved.splitMomentum)) state.settings.splitDecayTime = clamp(roundSliderValue("splitDecayTime", saved.splitMomentum / 100), state.settings.min.splitDecayTime, state.settings.max.splitDecayTime);
           if (Number.isFinite(saved.splitInputSpeed)) state.settings.splitInputSpeed = clamp(roundSliderValue("splitInputSpeed", saved.splitInputSpeed), state.settings.min.splitInputSpeed, state.settings.max.splitInputSpeed);
           if (Number.isFinite(saved.gameSpeed)) state.settings.gameSpeed = clamp(roundSliderValue("gameSpeed", saved.gameSpeed), state.settings.min.gameSpeed, state.settings.max.gameSpeed);
           if (Number.isFinite(saved.renderRange)) state.settings.renderRange = clamp(roundSliderValue("renderRange", saved.renderRange), state.settings.min.renderRange, state.settings.max.renderRange);
@@ -3097,12 +3081,8 @@
         return Math.max(0.05, state.settings.splitSpeed / 100);
       }
 
-      function splitMomentumScale() {
-        return Math.max(0.05, state.settings.splitMomentum / 100);
-      }
-
       function launchVelocityDuration() {
-        return clamp(0.16 + splitMomentumScale() * 0.75, 0.28, 1.15);
+        return Math.max(0.1, state.settings.splitDecayTime);
       }
 
       function minSplitBoost() {
@@ -3365,7 +3345,7 @@
         const firstDirY = Math.sin(baseAngle);
         cell.faceX = firstDirX;
         cell.faceY = firstDirY;
-        const firstBurst = rand(260, 380) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.45, 0.9) * splitMomentumScale();
+        const firstBurst = rand(260, 380) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.45, 0.9);
         cell.vx += firstDirX * firstBurst;
         cell.vy += firstDirY * firstBurst;
         cell.launchVelocityAge = launchVelocityDuration();
@@ -3392,7 +3372,7 @@
           child.faceX = dirX;
           child.faceY = dirY;
           const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.45, 0.92);
-          const burst = rand(300, 440) * massDrag * splitMomentumScale();
+          const burst = rand(300, 440) * massDrag;
           child.vx += dirX * burst;
           child.vy += dirY * burst;
           child.launchVelocityAge = launchVelocityDuration();
@@ -3775,7 +3755,9 @@
             const inputImpulse = 1 - Math.exp(-dt * inputRate);
             cell.vx += desiredX * inputImpulse;
             cell.vy += desiredY * inputImpulse;
-            const velocityDragRate = cell.launchVelocityAge > 0 ? 0.52 : (cell.splitBoostAge > 0 ? 1.5 : 8.5);
+            const velocityDragRate = cell.launchVelocityAge > 0
+              ? Math.max(0.12, Math.log(Math.max(1.05, Math.hypot(cell.vx, cell.vy)) / Math.max(1, speed)) / Math.max(0.1, cell.launchVelocityAge))
+              : (cell.splitBoostAge > 0 ? 1.5 : 8.5);
             const velocityDrag = Math.exp(-dt * velocityDragRate);
             cell.vx *= velocityDrag;
             cell.vy *= velocityDrag;
@@ -3794,7 +3776,7 @@
 
             const decayRate = cell.fragmentAge > 0
               ? 2.6
-              : (hasSplitMomentum ? SPLIT_BOOST_DECAY / splitMomentumScale() : 3.7);
+              : (hasSplitMomentum ? SPLIT_BOOST_DECAY / Math.max(0.1, state.settings.splitDecayTime) : 3.7);
             const decay = Math.exp(-dt * decayRate);
             cell.boostX *= decay;
             cell.boostY *= decay;
@@ -5236,8 +5218,7 @@
           worldSize: WORLD_SIZE,
           settings: {
             splitSpeed: state.settings.splitSpeed,
-            splitMinDistance: state.settings.splitMinDistance,
-            splitMomentum: state.settings.splitMomentum,
+            splitDecayTime: state.settings.splitDecayTime,
             splitInputSpeed: state.settings.splitInputSpeed,
             spawnMass: state.settings.spawnMass,
             gameSpeed: state.settings.gameSpeed,
@@ -5420,7 +5401,7 @@
             cell.y = clamp(cell.y + ((cell.vy || 0) + (cell.boostY || 0)) * dt * predictScale, cell.radius, WORLD_SIZE - cell.radius);
             if (boostSpeed > 0.02) {
               const decayRate = cell.splitBoostAge > 0 || boostSpeed > 30
-                ? SPLIT_BOOST_DECAY / splitMomentumScale()
+                ? SPLIT_BOOST_DECAY / Math.max(0.1, state.settings.splitDecayTime)
                 : 3.7;
               const decay = Math.exp(-dt * decayRate);
               cell.boostX *= decay;
@@ -5691,19 +5672,12 @@
             state.settings.max.splitSpeed = nextMax;
             state.settings.splitSpeed = nextValue;
           }
-          if (Number.isFinite(message.settings.splitMinDistance)) {
-            const nextMax = Math.max(state.settings.max.splitMinDistance, message.settings.splitMinDistance);
-            const nextValue = clamp(message.settings.splitMinDistance, 0, nextMax);
-            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMinDistance || nextValue !== state.settings.splitMinDistance;
-            state.settings.max.splitMinDistance = nextMax;
-            state.settings.splitMinDistance = nextValue;
-          }
-          if (Number.isFinite(message.settings.splitMomentum)) {
-            const nextMax = Math.max(state.settings.max.splitMomentum, message.settings.splitMomentum);
-            const nextValue = clamp(message.settings.splitMomentum, 20, nextMax);
-            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitMomentum || nextValue !== state.settings.splitMomentum;
-            state.settings.max.splitMomentum = nextMax;
-            state.settings.splitMomentum = nextValue;
+          if (Number.isFinite(message.settings.splitDecayTime)) {
+            const nextMax = Math.max(state.settings.max.splitDecayTime, message.settings.splitDecayTime);
+            const nextValue = clamp(Math.round(message.settings.splitDecayTime * 10) / 10, state.settings.min.splitDecayTime, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.splitDecayTime || nextValue !== state.settings.splitDecayTime;
+            state.settings.max.splitDecayTime = nextMax;
+            state.settings.splitDecayTime = nextValue;
           }
           if (Number.isFinite(message.settings.splitInputSpeed)) {
             const nextMax = Math.max(state.settings.max.splitInputSpeed, message.settings.splitInputSpeed);
@@ -6281,8 +6255,7 @@
         ejectRate: { slider: ejectRateSlider, minBox: ejectRateMinBox, maxBox: ejectRateMaxBox, valueEl: ejectRateValueEl, setting: "ejectRate", absoluteMin: 1 },
         splitRecoil: { slider: splitRecoilSlider, minBox: splitRecoilMinBox, maxBox: splitRecoilMaxBox, valueEl: splitRecoilValueEl, setting: "splitRecoil", absoluteMin: 0 },
         splitSpeed: { slider: splitSpeedSlider, minBox: splitSpeedMinBox, maxBox: splitSpeedMaxBox, valueEl: splitSpeedValueEl, setting: "splitSpeed", absoluteMin: 10 },
-        splitMinDistance: { slider: splitMinDistanceSlider, minBox: splitMinDistanceMinBox, maxBox: splitMinDistanceMaxBox, valueEl: splitMinDistanceValueEl, setting: "splitMinDistance", absoluteMin: 0 },
-        splitMomentum: { slider: splitMomentumSlider, minBox: splitMomentumMinBox, maxBox: splitMomentumMaxBox, valueEl: splitMomentumValueEl, setting: "splitMomentum", absoluteMin: 20 },
+        splitDecayTime: { slider: splitDecayTimeSlider, minBox: splitDecayTimeMinBox, maxBox: splitDecayTimeMaxBox, valueEl: splitDecayTimeValueEl, setting: "splitDecayTime", absoluteMin: 0.1, format: (value) => `${Number(value).toFixed(1)}秒` },
         splitInputSpeed: { slider: splitInputSpeedSlider, minBox: splitInputSpeedMinBox, maxBox: splitInputSpeedMaxBox, valueEl: splitInputSpeedValueEl, setting: "splitInputSpeed", absoluteMin: 1 },
         gameSpeed: { slider: gameSpeedSlider, minBox: gameSpeedMinBox, maxBox: gameSpeedMaxBox, valueEl: gameSpeedValueEl, setting: "gameSpeed", absoluteMin: 0.1, format: formatMultiplier },
         renderRange: { slider: renderRangeSlider, minBox: renderRangeMinBox, maxBox: renderRangeMaxBox, valueEl: renderRangeValueEl, setting: "renderRange", absoluteMin: 35, format: (value) => `${value}%` },
@@ -6295,7 +6268,8 @@
         if (!Number.isFinite(raw)) return sliderControls[kind]?.absoluteMin ?? 0;
         if (kind === "food") return Math.round(raw / 100) * 100;
         if (kind === "ejectSpeed") return Math.round(raw / 10) * 10;
-        if (kind === "splitSpeed" || kind === "splitMinDistance" || kind === "splitMomentum" || kind === "renderRange") return Math.round(raw / 5) * 5;
+        if (kind === "splitSpeed" || kind === "renderRange") return Math.round(raw / 5) * 5;
+        if (kind === "splitDecayTime") return Math.round(raw * 10) / 10;
         if (kind === "gameSpeed") return Math.round(raw * 10) / 10;
         if (kind === "worldSize") return Math.round(raw / 100) * 100;
         return Math.round(raw);
@@ -6559,8 +6533,7 @@
         ejectRateSlider.addEventListener("input", () => setWorldSetting("ejectRate", ejectRateSlider.value));
         splitRecoilSlider.addEventListener("input", () => setWorldSetting("splitRecoil", splitRecoilSlider.value));
         splitSpeedSlider.addEventListener("input", () => setWorldSetting("splitSpeed", splitSpeedSlider.value));
-        splitMinDistanceSlider.addEventListener("input", () => setWorldSetting("splitMinDistance", splitMinDistanceSlider.value));
-        splitMomentumSlider.addEventListener("input", () => setWorldSetting("splitMomentum", splitMomentumSlider.value));
+        splitDecayTimeSlider.addEventListener("input", () => setWorldSetting("splitDecayTime", splitDecayTimeSlider.value));
         splitInputSpeedSlider.addEventListener("input", () => setWorldSetting("splitInputSpeed", splitInputSpeedSlider.value));
         gameSpeedSlider.addEventListener("input", () => setWorldSetting("gameSpeed", gameSpeedSlider.value));
         renderRangeSlider.addEventListener("input", () => setWorldSetting("renderRange", renderRangeSlider.value));
@@ -6575,8 +6548,7 @@
         ejectRateMinBox.addEventListener("change", () => setSliderMin("ejectRate", ejectRateMinBox.value));
         splitRecoilMinBox.addEventListener("change", () => setSliderMin("splitRecoil", splitRecoilMinBox.value));
         splitSpeedMinBox.addEventListener("change", () => setSliderMin("splitSpeed", splitSpeedMinBox.value));
-        splitMinDistanceMinBox.addEventListener("change", () => setSliderMin("splitMinDistance", splitMinDistanceMinBox.value));
-        splitMomentumMinBox.addEventListener("change", () => setSliderMin("splitMomentum", splitMomentumMinBox.value));
+        splitDecayTimeMinBox.addEventListener("change", () => setSliderMin("splitDecayTime", splitDecayTimeMinBox.value));
         splitInputSpeedMinBox.addEventListener("change", () => setSliderMin("splitInputSpeed", splitInputSpeedMinBox.value));
         gameSpeedMinBox.addEventListener("change", () => setSliderMin("gameSpeed", gameSpeedMinBox.value));
         renderRangeMinBox.addEventListener("change", () => setSliderMin("renderRange", renderRangeMinBox.value));
@@ -6591,8 +6563,7 @@
         ejectRateMaxBox.addEventListener("change", () => setSliderMax("ejectRate", ejectRateMaxBox.value));
         splitRecoilMaxBox.addEventListener("change", () => setSliderMax("splitRecoil", splitRecoilMaxBox.value));
         splitSpeedMaxBox.addEventListener("change", () => setSliderMax("splitSpeed", splitSpeedMaxBox.value));
-        splitMinDistanceMaxBox.addEventListener("change", () => setSliderMax("splitMinDistance", splitMinDistanceMaxBox.value));
-        splitMomentumMaxBox.addEventListener("change", () => setSliderMax("splitMomentum", splitMomentumMaxBox.value));
+        splitDecayTimeMaxBox.addEventListener("change", () => setSliderMax("splitDecayTime", splitDecayTimeMaxBox.value));
         splitInputSpeedMaxBox.addEventListener("change", () => setSliderMax("splitInputSpeed", splitInputSpeedMaxBox.value));
         gameSpeedMaxBox.addEventListener("change", () => setSliderMax("gameSpeed", gameSpeedMaxBox.value));
         renderRangeMaxBox.addEventListener("change", () => setSliderMax("renderRange", renderRangeMaxBox.value));
