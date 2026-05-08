@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.29</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.30</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.29";
+      const APP_VERSION = "v2026.05.08.30";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1162,6 +1162,7 @@
         },
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
+        spectatorMode: "leader",
         waitingForPlay: true,
         profile: {
           name: "YOU",
@@ -2368,6 +2369,7 @@
 
       function setSpectating(enabled) {
         state.spectating = Boolean(enabled) && localPlayerIsDead();
+        if (state.spectating) state.spectatorMode = "leader";
         syncSpectateButton();
         if (!state.spectating) return;
         state.input.keys.clear();
@@ -2385,6 +2387,11 @@
         if (!localPlayerIsDead()) return;
         setSpectating(!state.spectating);
         if (state.spectating) setMenuOpen(false);
+      }
+
+      function toggleSpectatorCameraMode() {
+        if (!state.spectating) return;
+        state.spectatorMode = state.spectatorMode === "leader" ? "cursor" : "leader";
       }
 
       function playLocalPlayer() {
@@ -4248,6 +4255,20 @@
       }
 
       function spectatorCenter() {
+        if (state.spectatorMode === "cursor") {
+          const dx = state.input.mouseX - state.width * 0.5;
+          const dy = state.input.mouseY - state.height * 0.5;
+          const distance = Math.hypot(dx, dy);
+          if (distance > 8) {
+            const speed = clamp(distance / Math.max(1, Math.min(state.width, state.height) * 0.5), 0, 1) * 520;
+            return {
+              x: clamp(state.camera.x + (dx / distance) * speed, 0, WORLD_SIZE),
+              y: clamp(state.camera.y + (dy / distance) * speed, 0, WORLD_SIZE),
+              mass: 1
+            };
+          }
+          return { x: state.camera.x, y: state.camera.y, mass: 1 };
+        }
         let best = null;
         let bestMass = -1;
         for (const actor of state.actors) {
@@ -6425,6 +6446,11 @@
           if (event.code === "Escape") {
             event.preventDefault();
             setMenuOpen(true);
+            return;
+          }
+          if (state.spectating && event.code === "KeyQ") {
+            event.preventDefault();
+            if (!event.repeat) toggleSpectatorCameraMode();
             return;
           }
           if (isTextEditingTarget(event.target)) return;
