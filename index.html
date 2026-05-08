@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.21</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.22</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -866,12 +866,6 @@
           <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="自然発生とげ上限">
         </label>
         <label class="setting-control">
-          <span>棘給餌</span>
-          <input id="virusFeedLimitSlider" type="range" min="1" max="8" step="1" value="1" aria-label="棘が1粒を受け付けるフレーム間隔">
-          <strong id="virusFeedLimitValue">1</strong>
-          <input id="virusFeedLimitMaxBox" class="max-input" type="number" min="1" step="1" value="8" aria-label="棘給餌フレーム間隔の最大値">
-        </label>
-        <label class="setting-control">
           <span>ペレット</span>
           <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="ペレット数">
           <strong id="foodValue">1200</strong>
@@ -976,9 +970,6 @@
       const virusSlider = document.getElementById("virusSlider");
       const virusValueEl = document.getElementById("virusValue");
       const virusMaxBox = document.getElementById("virusMaxBox");
-      const virusFeedLimitSlider = document.getElementById("virusFeedLimitSlider");
-      const virusFeedLimitValueEl = document.getElementById("virusFeedLimitValue");
-      const virusFeedLimitMaxBox = document.getElementById("virusFeedLimitMaxBox");
       const foodSlider = document.getElementById("foodSlider");
       const foodValueEl = document.getElementById("foodValue");
       const foodMaxBox = document.getElementById("foodMaxBox");
@@ -1024,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.21";
+      const APP_VERSION = "v2026.05.08.22";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1058,7 +1049,6 @@
       const MASS_DECAY_PER_SECOND = 0.002;
       const MASS_CAP_SETTLE_FRAMES = 10;
       const VIRUS_FEED_LIMIT = 7;
-      const VIRUS_FEED_MASSES = [100, 112, 127, 141, 156, 171, 184];
       const VIRUS_RESPAWN_DELAY = 0.5;
       const BOT_AI_SCAN_RANGE = 1050;
       const VIRUS_CORE_SPLIT_MASS = 700;
@@ -1180,7 +1170,6 @@
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
           virusTarget: DEFAULT_VIRUS_TARGET,
-          virusFeedLimitPerFrame: 1,
           foodTarget: DEFAULT_FOOD_TARGET,
           spawnMass: DEFAULT_SPAWN_MASS,
           ejectMass: DEFAULT_EJECT_MASS,
@@ -1201,7 +1190,6 @@
           max: {
             bot: 200,
             virus: 500,
-            virusFeedLimitPerFrame: 8,
             food: 100000,
             spawnMass: 5000,
             ejectMass: 80,
@@ -2241,7 +2229,6 @@
             botTarget: state.settings.botTarget,
             botMode: state.settings.botMode,
             virusTarget: state.settings.virusTarget,
-            virusFeedLimitPerFrame: state.settings.virusFeedLimitPerFrame,
             foodTarget: state.settings.foodTarget,
             spawnMass: state.settings.spawnMass,
             ejectMass: state.settings.ejectMass,
@@ -2289,7 +2276,6 @@
           const max = prefs.max;
           if (Number.isFinite(max.bot)) state.settings.max.bot = Math.max(1, Math.round(max.bot));
           if (Number.isFinite(max.virus)) state.settings.max.virus = Math.max(1, Math.round(max.virus));
-          if (Number.isFinite(max.virusFeedLimitPerFrame)) state.settings.max.virusFeedLimitPerFrame = Math.max(1, Math.round(max.virusFeedLimitPerFrame));
           if (Number.isFinite(max.food)) state.settings.max.food = Math.max(100, Math.round(max.food / 100) * 100);
           if (Number.isFinite(max.spawnMass)) state.settings.max.spawnMass = Math.max(MIN_CELL_MASS, Math.round(max.spawnMass / 10) * 10);
           if (Number.isFinite(max.ejectMass)) state.settings.max.ejectMass = Math.max(5, Math.round(max.ejectMass));
@@ -2310,7 +2296,6 @@
           if (Number.isFinite(saved.botTarget)) state.settings.botTarget = clamp(Math.round(saved.botTarget), 0, state.settings.max.bot);
           if (["hunt", "chase", "virus", "cursor"].includes(saved.botMode)) state.settings.botMode = saved.botMode;
           if (Number.isFinite(saved.virusTarget)) state.settings.virusTarget = clamp(Math.round(saved.virusTarget), 0, state.settings.max.virus);
-          if (Number.isFinite(saved.virusFeedLimitPerFrame)) state.settings.virusFeedLimitPerFrame = clamp(Math.round(saved.virusFeedLimitPerFrame), 1, state.settings.max.virusFeedLimitPerFrame);
           if (Number.isFinite(saved.foodTarget)) state.settings.foodTarget = clamp(Math.round(saved.foodTarget / 100) * 100, 0, state.settings.max.food);
           if (Number.isFinite(saved.spawnMass)) state.settings.spawnMass = clamp(Math.round(saved.spawnMass / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
           if (Number.isFinite(saved.ejectMass)) state.settings.ejectMass = clamp(Math.round(saved.ejectMass), 5, state.settings.max.ejectMass);
@@ -2902,17 +2887,9 @@
           vx: 0,
           vy: 0,
           feedCount: 0,
-          lastFeedFrame: -1,
           natural,
           dead: false
         };
-      }
-
-      function updateVirusFeedMass(virus) {
-        const feedCount = clamp(Math.round(virus.feedCount || 0), 0, VIRUS_FEED_LIMIT - 1);
-        virus.feedCount = feedCount;
-        virus.mass = VIRUS_FEED_MASSES[feedCount] || VIRUS_MASS;
-        virus.radius = radiusFromMass(virus.mass);
       }
 
       function spawnVirusSafely(avoidX = null, avoidY = null) {
@@ -4004,7 +3981,7 @@
       }
 
       function handleFoodEating() {
-        const cells = allCells(scratch);
+        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
         const nearby = [];
         for (const cell of cells) {
           queryAlongCellPath(foodGrid, cell, cell.radius + 36, nearby);
@@ -4020,7 +3997,6 @@
 
       function handleFeedVirusCollisions() {
         const nearby = [];
-        const feedFrameInterval = Math.max(1, Math.round(state.settings.virusFeedLimitPerFrame || 1));
         for (const feed of state.feeds) {
           if (feed.dead) continue;
           virusGrid.query(feed.x, feed.y, 90, nearby);
@@ -4028,8 +4004,6 @@
             if (virus.dead) continue;
             const hit = virus.radius + feed.radius * 0.4;
             if (distSq(feed.x, feed.y, virus.x, virus.y) > hit * hit) continue;
-            if (state.frameIndex - (virus.lastFeedFrame ?? -Infinity) < feedFrameInterval) continue;
-            virus.lastFeedFrame = state.frameIndex;
 
             feed.dead = true;
             const owner = actorById(feed.ownerId);
@@ -4038,15 +4012,12 @@
               const n = normalized(feed.vx, feed.vy, feed.x - virus.x, feed.y - virus.y);
               if (virus.feedCount >= VIRUS_FEED_LIMIT) {
                 virus.feedCount = 0;
-                updateVirusFeedMass(virus);
                 const spawnX = clamp(virus.x + n.x * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
                 const spawnY = clamp(virus.y + n.y * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
                 const newVirus = createVirus(spawnX, spawnY, false);
                 newVirus.vx = n.x * 540;
                 newVirus.vy = n.y * 540;
                 state.viruses.push(newVirus);
-              } else {
-                updateVirusFeedMass(virus);
               }
             }
             break;
@@ -4055,7 +4026,7 @@
       }
 
       function handleFeedEating() {
-        const cells = allCells(scratch);
+        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
         const nearby = [];
         for (const cell of cells) {
           queryAlongCellPath(feedGrid, cell, cell.radius + 60, nearby);
@@ -4106,9 +4077,32 @@
         const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
         for (const eater of cells) {
           if (eater.dead) continue;
-          const largestConsumableRadius = eater.radius / CONSUME_RADIUS_RATIO;
-          const nearbyCells = queryAlongCellPath(cellGrid, eater, eater.radius + largestConsumableRadius + 48, cellQueryScratch);
+          const nearbyCells = cellGrid.query(eater.x, eater.y, eater.radius + 650, cellQueryScratch);
           for (const victim of nearbyCells) {
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canConsume(eater, victim)) continue;
+            markCellConsumed(eater, victim);
+          }
+        }
+        handleSweptCellEating(cells);
+      }
+
+      function handleSweptCellEating(cells) {
+        const sweptCells = cells.filter((cell) => !cell.dead && hasSweepPath(cell));
+        if (!sweptCells.length) return;
+
+        for (const eater of cells) {
+          if (eater.dead) continue;
+          for (const victim of sweptCells) {
+            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canConsumeSwept(eater, victim)) continue;
+            markCellConsumed(eater, victim);
+          }
+        }
+
+        for (const eater of sweptCells) {
+          if (eater.dead) continue;
+          for (const victim of cells) {
             if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             markCellConsumed(eater, victim);
@@ -4303,7 +4297,7 @@
           if (!isPlayerControlled(actor)) continue;
           if (state.spectating && actor.control === "local") continue;
           if (actor.input.ejectQueued) {
-            if (ejectMass(actor, now, true) || now - actor.lastEject >= ejectInterval()) {
+            if (ejectMass(actor, now) || now - actor.lastEject >= ejectInterval()) {
               actor.input.ejectQueued = false;
             }
           } else if (actorAutoEjectHeld(actor)) {
@@ -5116,7 +5110,6 @@
             splitMomentum: state.settings.splitMomentum,
             splitInputSpeed: state.settings.splitInputSpeed,
             spawnMass: state.settings.spawnMass,
-            virusFeedLimitPerFrame: state.settings.virusFeedLimitPerFrame,
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
@@ -5594,13 +5587,6 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.spawnMass || nextValue !== state.settings.spawnMass;
             state.settings.max.spawnMass = nextMax;
             state.settings.spawnMass = nextValue;
-          }
-          if (Number.isFinite(message.settings.virusFeedLimitPerFrame)) {
-            const nextMax = Math.max(state.settings.max.virusFeedLimitPerFrame, message.settings.virusFeedLimitPerFrame);
-            const nextValue = clamp(Math.round(message.settings.virusFeedLimitPerFrame), 1, nextMax);
-            settingsChanged = settingsChanged || nextMax !== state.settings.max.virusFeedLimitPerFrame || nextValue !== state.settings.virusFeedLimitPerFrame;
-            state.settings.max.virusFeedLimitPerFrame = nextMax;
-            state.settings.virusFeedLimitPerFrame = nextValue;
           }
           if (Number.isFinite(message.settings.gameSpeed)) {
             const nextMax = Math.max(state.settings.max.gameSpeed, message.settings.gameSpeed);
@@ -6165,10 +6151,6 @@
         virusSlider.value = String(state.settings.virusTarget);
         virusValueEl.textContent = String(state.settings.virusTarget);
         virusMaxBox.value = String(state.settings.max.virus);
-        virusFeedLimitSlider.max = String(state.settings.max.virusFeedLimitPerFrame);
-        virusFeedLimitSlider.value = String(state.settings.virusFeedLimitPerFrame);
-        virusFeedLimitValueEl.textContent = `${state.settings.virusFeedLimitPerFrame}F`;
-        virusFeedLimitMaxBox.value = String(state.settings.max.virusFeedLimitPerFrame);
         foodSlider.max = String(state.settings.max.food);
         foodSlider.value = String(state.settings.foodTarget);
         foodValueEl.textContent = String(state.settings.foodTarget);
@@ -6276,7 +6258,6 @@
         if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
         if (kind === "botMode") state.settings.botMode = ["hunt", "chase", "virus", "cursor"].includes(value) ? value : "hunt";
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
-        if (kind === "virusFeedLimit") state.settings.virusFeedLimitPerFrame = clamp(number, 1, state.settings.max.virusFeedLimitPerFrame);
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
         if (kind === "spawnMass") state.settings.spawnMass = clamp(Math.round(number / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
         if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
@@ -6312,10 +6293,6 @@
         if (kind === "virus") {
           state.settings.max.virus = Math.max(1, number);
           state.settings.virusTarget = clamp(state.settings.virusTarget, 0, state.settings.max.virus);
-        }
-        if (kind === "virusFeedLimit") {
-          state.settings.max.virusFeedLimitPerFrame = Math.max(1, number);
-          state.settings.virusFeedLimitPerFrame = clamp(state.settings.virusFeedLimitPerFrame, 1, state.settings.max.virusFeedLimitPerFrame);
         }
         if (kind === "food") {
           state.settings.max.food = Math.max(100, Math.round(number / 100) * 100);
@@ -6507,7 +6484,6 @@
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
-        virusFeedLimitSlider.addEventListener("input", () => setWorldSetting("virusFeedLimit", virusFeedLimitSlider.value));
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
         spawnMassSlider.addEventListener("input", () => setWorldSetting("spawnMass", spawnMassSlider.value));
         ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
@@ -6524,7 +6500,6 @@
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
         virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
-        virusFeedLimitMaxBox.addEventListener("change", () => setSliderMax("virusFeedLimit", virusFeedLimitMaxBox.value));
         foodMaxBox.addEventListener("change", () => setSliderMax("food", foodMaxBox.value));
         spawnMassMaxBox.addEventListener("change", () => setSliderMax("spawnMass", spawnMassMaxBox.value));
         ejectMassMaxBox.addEventListener("change", () => setSliderMax("ejectMass", ejectMassMaxBox.value));
