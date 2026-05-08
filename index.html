@@ -504,7 +504,7 @@
 
     .setting-control {
       display: grid;
-      grid-template-columns: 92px minmax(150px, 1fr) 58px 72px;
+      grid-template-columns: 92px 64px minmax(120px, 1fr) 58px 72px;
       align-items: center;
       gap: 8px;
       min-height: 36px;
@@ -714,7 +714,7 @@
       }
 
       .setting-control {
-        grid-template-columns: 76px minmax(94px, 1fr) 44px 58px;
+        grid-template-columns: 76px 50px minmax(76px, 1fr) 44px 58px;
         gap: 6px;
         padding: 5px;
       }
@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.31</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.32</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -814,6 +814,7 @@
         <div class="settings-category">BOT</div>
         <label class="setting-control">
           <span>ボット</span>
+          <input id="botMinBox" class="max-input" type="number" min="0" step="1" value="0" aria-label="ボット下限">
           <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
           <strong id="botValue">100</strong>
           <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="ボット上限">
@@ -830,30 +831,35 @@
         <div class="settings-category">分裂</div>
         <label class="setting-control">
           <span>反動</span>
+          <input id="splitRecoilMinBox" class="max-input" type="number" min="0" step="1" value="0" aria-label="反動下限">
           <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="0" aria-label="分裂反動の大きさ">
           <strong id="splitRecoilValue">0</strong>
           <input id="splitRecoilMaxBox" class="max-input" type="number" min="1" step="1" value="40" aria-label="反動上限">
         </label>
         <label class="setting-control">
           <span>分裂速度</span>
+          <input id="splitSpeedMinBox" class="max-input" type="number" min="10" step="5" value="10" aria-label="分裂速度下限">
           <input id="splitSpeedSlider" type="range" min="10" max="300" step="5" value="110" aria-label="分裂速度">
           <strong id="splitSpeedValue">110</strong>
           <input id="splitSpeedMaxBox" class="max-input" type="number" min="10" step="5" value="300" aria-label="分裂速度上限">
         </label>
         <label class="setting-control">
           <span>最低飛距離</span>
+          <input id="splitMinDistanceMinBox" class="max-input" type="number" min="0" step="5" value="0" aria-label="最低飛距離下限">
           <input id="splitMinDistanceSlider" type="range" min="0" max="360" step="5" value="160" aria-label="分裂の最低飛距離">
           <strong id="splitMinDistanceValue">160</strong>
           <input id="splitMinDistanceMaxBox" class="max-input" type="number" min="0" step="5" value="360" aria-label="最低飛距離上限">
         </label>
         <label class="setting-control">
           <span>惰性距離</span>
+          <input id="splitMomentumMinBox" class="max-input" type="number" min="20" step="5" value="20" aria-label="惰性距離下限">
           <input id="splitMomentumSlider" type="range" min="20" max="160" step="5" value="65" aria-label="分裂惰性の距離">
           <strong id="splitMomentumValue">65</strong>
           <input id="splitMomentumMaxBox" class="max-input" type="number" min="20" step="5" value="160" aria-label="惰性距離上限">
         </label>
         <label class="setting-control">
           <span>分裂入力</span>
+          <input id="splitInputSpeedMinBox" class="max-input" type="number" min="1" max="4" step="1" value="1" aria-label="分裂入力速度下限">
           <input id="splitInputSpeedSlider" type="range" min="1" max="4" step="1" value="4" aria-label="GRT分裂入力速度">
           <strong id="splitInputSpeedValue">4</strong>
           <input id="splitInputSpeedMaxBox" class="max-input" type="number" min="1" max="4" step="1" value="4" aria-label="分裂入力速度上限">
@@ -861,36 +867,42 @@
         <div class="settings-category">棘・粒</div>
         <label class="setting-control">
           <span>自然とげ</span>
+          <input id="virusMinBox" class="max-input" type="number" min="0" step="1" value="0" aria-label="自然発生とげ下限">
           <input id="virusSlider" type="range" min="0" max="500" step="1" value="36" aria-label="自然発生とげ数">
           <strong id="virusValue">36</strong>
           <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="自然発生とげ上限">
         </label>
         <label class="setting-control">
           <span>ペレット</span>
+          <input id="foodMinBox" class="max-input" type="number" min="0" step="100" value="0" aria-label="ペレット下限">
           <input id="foodSlider" type="range" min="0" max="100000" step="100" value="1200" aria-label="ペレット数">
           <strong id="foodValue">1200</strong>
           <input id="foodMaxBox" class="max-input" type="number" min="100" step="100" value="100000" aria-label="ペレット上限">
         </label>
         <label class="setting-control">
           <span>初期マス</span>
-          <input id="spawnMassSlider" type="range" min="12" max="5000" step="10" value="132" aria-label="初期スポーンマス">
+          <input id="spawnMassMinBox" class="max-input" type="number" min="132" step="1" value="132" aria-label="初期マス下限">
+          <input id="spawnMassSlider" type="range" min="132" max="5000" step="1" value="132" aria-label="初期スポーンマス">
           <strong id="spawnMassValue">132</strong>
-          <input id="spawnMassMaxBox" class="max-input" type="number" min="12" step="10" value="5000" aria-label="初期マス上限">
+          <input id="spawnMassMaxBox" class="max-input" type="number" min="132" step="1" value="5000" aria-label="初期マス上限">
         </label>
         <label class="setting-control">
           <span>吐く量</span>
+          <input id="ejectMassMinBox" class="max-input" type="number" min="5" step="1" value="5" aria-label="吐く量下限">
           <input id="ejectMassSlider" type="range" min="5" max="80" step="1" value="21" aria-label="吐く粒の大きさ">
           <strong id="ejectMassValue">21</strong>
           <input id="ejectMassMaxBox" class="max-input" type="number" min="5" step="1" value="80" aria-label="吐く量上限">
         </label>
         <label class="setting-control">
           <span>粒速度</span>
+          <input id="ejectSpeedMinBox" class="max-input" type="number" min="300" step="10" value="300" aria-label="粒速度下限">
           <input id="ejectSpeedSlider" type="range" min="300" max="1400" step="10" value="710" aria-label="吐く粒の速度">
           <strong id="ejectSpeedValue">710</strong>
           <input id="ejectSpeedMaxBox" class="max-input" type="number" min="300" step="10" value="1400" aria-label="粒速度上限">
         </label>
         <label class="setting-control">
           <span>連射</span>
+          <input id="ejectRateMinBox" class="max-input" type="number" min="1" step="1" value="1" aria-label="連射下限">
           <input id="ejectRateSlider" type="range" min="1" max="50" step="1" value="11" aria-label="粒の連射速度">
           <strong id="ejectRateValue">11</strong>
           <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="連射上限">
@@ -898,24 +910,28 @@
         <div class="settings-category">ゲーム</div>
         <label class="setting-control">
           <span>ゲーム速度</span>
+          <input id="gameSpeedMinBox" class="max-input" type="number" min="0.1" step="0.1" value="0.1" aria-label="ゲーム速度下限">
           <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
           <strong id="gameSpeedValue">1x</strong>
           <input id="gameSpeedMaxBox" class="max-input" type="number" min="0.1" step="0.1" value="3" aria-label="ゲーム速度上限">
         </label>
         <label class="setting-control">
           <span>描画範囲</span>
+          <input id="renderRangeMinBox" class="max-input" type="number" min="35" step="5" value="35" aria-label="描画範囲下限">
           <input id="renderRangeSlider" type="range" min="35" max="120" step="5" value="65" aria-label="描画候補の見える範囲">
           <strong id="renderRangeValue">65%</strong>
           <input id="renderRangeMaxBox" class="max-input" type="number" min="35" step="5" value="120" aria-label="描画範囲上限">
         </label>
         <label class="setting-control">
           <span>合体</span>
+          <input id="mergeCooldownMinBox" class="max-input" type="number" min="0" step="1" value="0" aria-label="合体時間下限">
           <input id="mergeCooldownSlider" type="range" min="0" max="60" step="1" value="30" aria-label="合体までの時間">
           <strong id="mergeCooldownValue">30</strong>
           <input id="mergeCooldownMaxBox" class="max-input" type="number" min="1" step="1" value="60" aria-label="合体時間上限">
         </label>
         <label class="setting-control">
           <span>広さ</span>
+          <input id="worldSizeMinBox" class="max-input" type="number" min="2000" step="100" value="2000" aria-label="広さ下限">
           <input id="worldSizeSlider" type="range" min="2000" max="15000" step="100" value="5000" aria-label="サーバーの広さ">
           <strong id="worldSizeValue">5000</strong>
           <input id="worldSizeMaxBox" class="max-input" type="number" min="2000" step="100" value="15000" aria-label="広さ上限">
@@ -965,57 +981,73 @@
       const activeColorValueEl = document.getElementById("activeColorValue");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
+      const botMinBox = document.getElementById("botMinBox");
       const botMaxBox = document.getElementById("botMaxBox");
       const botModeSelect = document.getElementById("botModeSelect");
       const virusSlider = document.getElementById("virusSlider");
       const virusValueEl = document.getElementById("virusValue");
+      const virusMinBox = document.getElementById("virusMinBox");
       const virusMaxBox = document.getElementById("virusMaxBox");
       const foodSlider = document.getElementById("foodSlider");
       const foodValueEl = document.getElementById("foodValue");
+      const foodMinBox = document.getElementById("foodMinBox");
       const foodMaxBox = document.getElementById("foodMaxBox");
       const spawnMassSlider = document.getElementById("spawnMassSlider");
       const spawnMassValueEl = document.getElementById("spawnMassValue");
+      const spawnMassMinBox = document.getElementById("spawnMassMinBox");
       const spawnMassMaxBox = document.getElementById("spawnMassMaxBox");
       const ejectMassSlider = document.getElementById("ejectMassSlider");
       const ejectMassValueEl = document.getElementById("ejectMassValue");
+      const ejectMassMinBox = document.getElementById("ejectMassMinBox");
       const ejectMassMaxBox = document.getElementById("ejectMassMaxBox");
       const ejectSpeedSlider = document.getElementById("ejectSpeedSlider");
       const ejectSpeedValueEl = document.getElementById("ejectSpeedValue");
+      const ejectSpeedMinBox = document.getElementById("ejectSpeedMinBox");
       const ejectSpeedMaxBox = document.getElementById("ejectSpeedMaxBox");
       const ejectRateSlider = document.getElementById("ejectRateSlider");
       const ejectRateValueEl = document.getElementById("ejectRateValue");
+      const ejectRateMinBox = document.getElementById("ejectRateMinBox");
       const ejectRateMaxBox = document.getElementById("ejectRateMaxBox");
       const splitRecoilSlider = document.getElementById("splitRecoilSlider");
       const splitRecoilValueEl = document.getElementById("splitRecoilValue");
+      const splitRecoilMinBox = document.getElementById("splitRecoilMinBox");
       const splitRecoilMaxBox = document.getElementById("splitRecoilMaxBox");
       const splitSpeedSlider = document.getElementById("splitSpeedSlider");
       const splitSpeedValueEl = document.getElementById("splitSpeedValue");
+      const splitSpeedMinBox = document.getElementById("splitSpeedMinBox");
       const splitSpeedMaxBox = document.getElementById("splitSpeedMaxBox");
       const splitMinDistanceSlider = document.getElementById("splitMinDistanceSlider");
       const splitMinDistanceValueEl = document.getElementById("splitMinDistanceValue");
+      const splitMinDistanceMinBox = document.getElementById("splitMinDistanceMinBox");
       const splitMinDistanceMaxBox = document.getElementById("splitMinDistanceMaxBox");
       const splitMomentumSlider = document.getElementById("splitMomentumSlider");
       const splitMomentumValueEl = document.getElementById("splitMomentumValue");
+      const splitMomentumMinBox = document.getElementById("splitMomentumMinBox");
       const splitMomentumMaxBox = document.getElementById("splitMomentumMaxBox");
       const splitInputSpeedSlider = document.getElementById("splitInputSpeedSlider");
       const splitInputSpeedValueEl = document.getElementById("splitInputSpeedValue");
+      const splitInputSpeedMinBox = document.getElementById("splitInputSpeedMinBox");
       const splitInputSpeedMaxBox = document.getElementById("splitInputSpeedMaxBox");
       const gameSpeedSlider = document.getElementById("gameSpeedSlider");
       const gameSpeedValueEl = document.getElementById("gameSpeedValue");
+      const gameSpeedMinBox = document.getElementById("gameSpeedMinBox");
       const gameSpeedMaxBox = document.getElementById("gameSpeedMaxBox");
       const renderRangeSlider = document.getElementById("renderRangeSlider");
       const renderRangeValueEl = document.getElementById("renderRangeValue");
+      const renderRangeMinBox = document.getElementById("renderRangeMinBox");
       const renderRangeMaxBox = document.getElementById("renderRangeMaxBox");
       const mergeCooldownSlider = document.getElementById("mergeCooldownSlider");
       const mergeCooldownValueEl = document.getElementById("mergeCooldownValue");
+      const mergeCooldownMinBox = document.getElementById("mergeCooldownMinBox");
       const mergeCooldownMaxBox = document.getElementById("mergeCooldownMaxBox");
       const worldSizeSlider = document.getElementById("worldSizeSlider");
       const worldSizeValueEl = document.getElementById("worldSizeValue");
+      const worldSizeMinBox = document.getElementById("worldSizeMinBox");
       const worldSizeMaxBox = document.getElementById("worldSizeMaxBox");
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.31";
+      const APP_VERSION = "v2026.05.08.32";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1189,6 +1221,24 @@
           cursorLine: true,
           nRespawnEnabled: true,
           activeColorHighlight: true,
+          min: {
+            bot: 0,
+            virus: 0,
+            food: 0,
+            spawnMass: 132,
+            ejectMass: 5,
+            ejectSpeed: 300,
+            ejectRate: 1,
+            splitRecoil: 0,
+            splitSpeed: 10,
+            splitMinDistance: 0,
+            splitMomentum: 20,
+            splitInputSpeed: 1,
+            gameSpeed: 0.1,
+            renderRange: 35,
+            mergeCooldown: 0,
+            worldSize: 2000
+          },
           max: {
             bot: 200,
             virus: 500,
@@ -2219,6 +2269,7 @@
             nRespawnEnabled: state.settings.nRespawnEnabled,
             activeColorHighlight: state.settings.activeColorHighlight
           },
+          min: { ...state.settings.min },
           max: { ...state.settings.max }
         };
         try {
@@ -2244,44 +2295,35 @@
             if (typeof prefs.keyBindings[action] === "string") state.keyBindings[action] = prefs.keyBindings[action];
           }
         }
+        if (prefs.min && typeof prefs.min === "object") {
+          for (const kind of Object.keys(state.settings.min)) {
+            if (Number.isFinite(prefs.min[kind])) setSliderBound(kind, "min", prefs.min[kind], false);
+          }
+        }
         if (prefs.max && typeof prefs.max === "object") {
-          const max = prefs.max;
-          if (Number.isFinite(max.bot)) state.settings.max.bot = Math.max(1, Math.round(max.bot));
-          if (Number.isFinite(max.virus)) state.settings.max.virus = Math.max(1, Math.round(max.virus));
-          if (Number.isFinite(max.food)) state.settings.max.food = Math.max(100, Math.round(max.food / 100) * 100);
-          if (Number.isFinite(max.spawnMass)) state.settings.max.spawnMass = Math.max(MIN_CELL_MASS, Math.round(max.spawnMass / 10) * 10);
-          if (Number.isFinite(max.ejectMass)) state.settings.max.ejectMass = Math.max(5, Math.round(max.ejectMass));
-          if (Number.isFinite(max.ejectSpeed)) state.settings.max.ejectSpeed = Math.max(300, Math.round(max.ejectSpeed / 10) * 10);
-          if (Number.isFinite(max.ejectRate)) state.settings.max.ejectRate = Math.max(1, Math.round(max.ejectRate));
-          if (Number.isFinite(max.splitRecoil)) state.settings.max.splitRecoil = Math.max(1, Math.round(max.splitRecoil));
-          if (Number.isFinite(max.splitSpeed)) state.settings.max.splitSpeed = Math.max(10, Math.round(max.splitSpeed / 5) * 5);
-          if (Number.isFinite(max.splitMinDistance)) state.settings.max.splitMinDistance = Math.max(0, Math.round(max.splitMinDistance / 5) * 5);
-          if (Number.isFinite(max.splitMomentum)) state.settings.max.splitMomentum = Math.max(20, Math.round(max.splitMomentum / 5) * 5);
-          if (Number.isFinite(max.splitInputSpeed)) state.settings.max.splitInputSpeed = clamp(Math.round(max.splitInputSpeed), 1, MAX_QUEUED_SPLITS_PER_FRAME);
-          if (Number.isFinite(max.gameSpeed)) state.settings.max.gameSpeed = Math.max(0.1, Math.round(max.gameSpeed * 10) / 10);
-          if (Number.isFinite(max.renderRange)) state.settings.max.renderRange = Math.max(35, Math.round(max.renderRange / 5) * 5);
-          if (Number.isFinite(max.mergeCooldown)) state.settings.max.mergeCooldown = Math.max(1, Math.round(max.mergeCooldown));
-          if (Number.isFinite(max.worldSize)) state.settings.max.worldSize = Math.max(2000, Math.round(max.worldSize / 100) * 100);
+          for (const kind of Object.keys(state.settings.max)) {
+            if (Number.isFinite(prefs.max[kind])) setSliderBound(kind, "max", prefs.max[kind], false);
+          }
         }
         if (prefs.settings && typeof prefs.settings === "object") {
           const saved = prefs.settings;
-          if (Number.isFinite(saved.botTarget)) state.settings.botTarget = clamp(Math.round(saved.botTarget), 0, state.settings.max.bot);
+          if (Number.isFinite(saved.botTarget)) state.settings.botTarget = clamp(roundSliderValue("bot", saved.botTarget), state.settings.min.bot, state.settings.max.bot);
           if (["hunt", "chase", "virus", "cursor"].includes(saved.botMode)) state.settings.botMode = saved.botMode;
-          if (Number.isFinite(saved.virusTarget)) state.settings.virusTarget = clamp(Math.round(saved.virusTarget), 0, state.settings.max.virus);
-          if (Number.isFinite(saved.foodTarget)) state.settings.foodTarget = clamp(Math.round(saved.foodTarget / 100) * 100, 0, state.settings.max.food);
-          if (Number.isFinite(saved.spawnMass)) state.settings.spawnMass = clamp(Math.round(saved.spawnMass / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
-          if (Number.isFinite(saved.ejectMass)) state.settings.ejectMass = clamp(Math.round(saved.ejectMass), 5, state.settings.max.ejectMass);
-          if (Number.isFinite(saved.ejectSpeed)) state.settings.ejectSpeed = clamp(Math.round(saved.ejectSpeed / 10) * 10, 300, state.settings.max.ejectSpeed);
-          if (Number.isFinite(saved.ejectRate)) state.settings.ejectRate = clamp(Math.round(saved.ejectRate), 1, state.settings.max.ejectRate);
-          if (Number.isFinite(saved.splitRecoil)) state.settings.splitRecoil = clamp(Math.round(saved.splitRecoil), 0, state.settings.max.splitRecoil);
-          if (Number.isFinite(saved.splitSpeed)) state.settings.splitSpeed = clamp(Math.round(saved.splitSpeed / 5) * 5, 10, state.settings.max.splitSpeed);
-          if (Number.isFinite(saved.splitMinDistance)) state.settings.splitMinDistance = clamp(Math.round(saved.splitMinDistance / 5) * 5, 0, state.settings.max.splitMinDistance);
-          if (Number.isFinite(saved.splitMomentum)) state.settings.splitMomentum = clamp(Math.round(saved.splitMomentum / 5) * 5, 20, state.settings.max.splitMomentum);
-          if (Number.isFinite(saved.splitInputSpeed)) state.settings.splitInputSpeed = clamp(Math.round(saved.splitInputSpeed), 1, state.settings.max.splitInputSpeed);
-          if (Number.isFinite(saved.gameSpeed)) state.settings.gameSpeed = clamp(Math.round(saved.gameSpeed * 10) / 10, 0.1, state.settings.max.gameSpeed);
-          if (Number.isFinite(saved.renderRange)) state.settings.renderRange = clamp(Math.round(saved.renderRange / 5) * 5, 35, state.settings.max.renderRange);
-          if (Number.isFinite(saved.mergeCooldown)) state.settings.mergeCooldown = clamp(Math.round(saved.mergeCooldown), 0, state.settings.max.mergeCooldown);
-          if (Number.isFinite(saved.worldSize)) state.settings.worldSize = clamp(Math.round(saved.worldSize / 100) * 100, 2000, state.settings.max.worldSize);
+          if (Number.isFinite(saved.virusTarget)) state.settings.virusTarget = clamp(roundSliderValue("virus", saved.virusTarget), state.settings.min.virus, state.settings.max.virus);
+          if (Number.isFinite(saved.foodTarget)) state.settings.foodTarget = clamp(roundSliderValue("food", saved.foodTarget), state.settings.min.food, state.settings.max.food);
+          if (Number.isFinite(saved.spawnMass)) state.settings.spawnMass = clamp(roundSliderValue("spawnMass", saved.spawnMass), state.settings.min.spawnMass, state.settings.max.spawnMass);
+          if (Number.isFinite(saved.ejectMass)) state.settings.ejectMass = clamp(roundSliderValue("ejectMass", saved.ejectMass), state.settings.min.ejectMass, state.settings.max.ejectMass);
+          if (Number.isFinite(saved.ejectSpeed)) state.settings.ejectSpeed = clamp(roundSliderValue("ejectSpeed", saved.ejectSpeed), state.settings.min.ejectSpeed, state.settings.max.ejectSpeed);
+          if (Number.isFinite(saved.ejectRate)) state.settings.ejectRate = clamp(roundSliderValue("ejectRate", saved.ejectRate), state.settings.min.ejectRate, state.settings.max.ejectRate);
+          if (Number.isFinite(saved.splitRecoil)) state.settings.splitRecoil = clamp(roundSliderValue("splitRecoil", saved.splitRecoil), state.settings.min.splitRecoil, state.settings.max.splitRecoil);
+          if (Number.isFinite(saved.splitSpeed)) state.settings.splitSpeed = clamp(roundSliderValue("splitSpeed", saved.splitSpeed), state.settings.min.splitSpeed, state.settings.max.splitSpeed);
+          if (Number.isFinite(saved.splitMinDistance)) state.settings.splitMinDistance = clamp(roundSliderValue("splitMinDistance", saved.splitMinDistance), state.settings.min.splitMinDistance, state.settings.max.splitMinDistance);
+          if (Number.isFinite(saved.splitMomentum)) state.settings.splitMomentum = clamp(roundSliderValue("splitMomentum", saved.splitMomentum), state.settings.min.splitMomentum, state.settings.max.splitMomentum);
+          if (Number.isFinite(saved.splitInputSpeed)) state.settings.splitInputSpeed = clamp(roundSliderValue("splitInputSpeed", saved.splitInputSpeed), state.settings.min.splitInputSpeed, state.settings.max.splitInputSpeed);
+          if (Number.isFinite(saved.gameSpeed)) state.settings.gameSpeed = clamp(roundSliderValue("gameSpeed", saved.gameSpeed), state.settings.min.gameSpeed, state.settings.max.gameSpeed);
+          if (Number.isFinite(saved.renderRange)) state.settings.renderRange = clamp(roundSliderValue("renderRange", saved.renderRange), state.settings.min.renderRange, state.settings.max.renderRange);
+          if (Number.isFinite(saved.mergeCooldown)) state.settings.mergeCooldown = clamp(roundSliderValue("mergeCooldown", saved.mergeCooldown), state.settings.min.mergeCooldown, state.settings.max.mergeCooldown);
+          if (Number.isFinite(saved.worldSize)) state.settings.worldSize = clamp(roundSliderValue("worldSize", saved.worldSize), state.settings.min.worldSize, state.settings.max.worldSize);
           if (saved.cursorLine != null) state.settings.cursorLine = Boolean(saved.cursorLine);
           if (saved.nRespawnEnabled != null) state.settings.nRespawnEnabled = Boolean(saved.nRespawnEnabled);
           if (saved.activeColorHighlight != null) state.settings.activeColorHighlight = Boolean(saved.activeColorHighlight);
@@ -6160,6 +6202,57 @@
         return `${Number(value).toFixed(1).replace(/\.0$/, "")}x`;
       }
 
+      const sliderControls = {
+        bot: { slider: botSlider, minBox: botMinBox, maxBox: botMaxBox, valueEl: botValueEl, setting: "botTarget", absoluteMin: 0 },
+        virus: { slider: virusSlider, minBox: virusMinBox, maxBox: virusMaxBox, valueEl: virusValueEl, setting: "virusTarget", absoluteMin: 0 },
+        food: { slider: foodSlider, minBox: foodMinBox, maxBox: foodMaxBox, valueEl: foodValueEl, setting: "foodTarget", absoluteMin: 0 },
+        spawnMass: { slider: spawnMassSlider, minBox: spawnMassMinBox, maxBox: spawnMassMaxBox, valueEl: spawnMassValueEl, setting: "spawnMass", absoluteMin: 132 },
+        ejectMass: { slider: ejectMassSlider, minBox: ejectMassMinBox, maxBox: ejectMassMaxBox, valueEl: ejectMassValueEl, setting: "ejectMass", absoluteMin: 5 },
+        ejectSpeed: { slider: ejectSpeedSlider, minBox: ejectSpeedMinBox, maxBox: ejectSpeedMaxBox, valueEl: ejectSpeedValueEl, setting: "ejectSpeed", absoluteMin: 300 },
+        ejectRate: { slider: ejectRateSlider, minBox: ejectRateMinBox, maxBox: ejectRateMaxBox, valueEl: ejectRateValueEl, setting: "ejectRate", absoluteMin: 1 },
+        splitRecoil: { slider: splitRecoilSlider, minBox: splitRecoilMinBox, maxBox: splitRecoilMaxBox, valueEl: splitRecoilValueEl, setting: "splitRecoil", absoluteMin: 0 },
+        splitSpeed: { slider: splitSpeedSlider, minBox: splitSpeedMinBox, maxBox: splitSpeedMaxBox, valueEl: splitSpeedValueEl, setting: "splitSpeed", absoluteMin: 10 },
+        splitMinDistance: { slider: splitMinDistanceSlider, minBox: splitMinDistanceMinBox, maxBox: splitMinDistanceMaxBox, valueEl: splitMinDistanceValueEl, setting: "splitMinDistance", absoluteMin: 0 },
+        splitMomentum: { slider: splitMomentumSlider, minBox: splitMomentumMinBox, maxBox: splitMomentumMaxBox, valueEl: splitMomentumValueEl, setting: "splitMomentum", absoluteMin: 20 },
+        splitInputSpeed: { slider: splitInputSpeedSlider, minBox: splitInputSpeedMinBox, maxBox: splitInputSpeedMaxBox, valueEl: splitInputSpeedValueEl, setting: "splitInputSpeed", absoluteMin: 1 },
+        gameSpeed: { slider: gameSpeedSlider, minBox: gameSpeedMinBox, maxBox: gameSpeedMaxBox, valueEl: gameSpeedValueEl, setting: "gameSpeed", absoluteMin: 0.1, format: formatMultiplier },
+        renderRange: { slider: renderRangeSlider, minBox: renderRangeMinBox, maxBox: renderRangeMaxBox, valueEl: renderRangeValueEl, setting: "renderRange", absoluteMin: 35, format: (value) => `${value}%` },
+        mergeCooldown: { slider: mergeCooldownSlider, minBox: mergeCooldownMinBox, maxBox: mergeCooldownMaxBox, valueEl: mergeCooldownValueEl, setting: "mergeCooldown", absoluteMin: 0 },
+        worldSize: { slider: worldSizeSlider, minBox: worldSizeMinBox, maxBox: worldSizeMaxBox, valueEl: worldSizeValueEl, setting: "worldSize", absoluteMin: 2000 }
+      };
+
+      function roundSliderValue(kind, value) {
+        const raw = Number(value);
+        if (!Number.isFinite(raw)) return sliderControls[kind]?.absoluteMin ?? 0;
+        if (kind === "food") return Math.round(raw / 100) * 100;
+        if (kind === "ejectSpeed") return Math.round(raw / 10) * 10;
+        if (kind === "splitSpeed" || kind === "splitMinDistance" || kind === "splitMomentum" || kind === "renderRange") return Math.round(raw / 5) * 5;
+        if (kind === "gameSpeed") return Math.round(raw * 10) / 10;
+        if (kind === "worldSize") return Math.round(raw / 100) * 100;
+        return Math.round(raw);
+      }
+
+      function setSliderBound(kind, side, value, shouldSync = true) {
+        const config = sliderControls[kind];
+        if (!config) return;
+        const absoluteMin = config.absoluteMin;
+        let next = Math.max(absoluteMin, roundSliderValue(kind, value));
+        if (kind === "splitInputSpeed") next = clamp(next, absoluteMin, MAX_QUEUED_SPLITS_PER_FRAME);
+        if (side === "min") {
+          state.settings.min[kind] = next;
+          if (state.settings.max[kind] < next) state.settings.max[kind] = next;
+        } else {
+          state.settings.max[kind] = Math.max(state.settings.min[kind], next);
+        }
+        const settingKey = config.setting;
+        state.settings[settingKey] = clamp(roundSliderValue(kind, state.settings[settingKey]), state.settings.min[kind], state.settings.max[kind]);
+        if (kind === "worldSize") clampWorldEntities();
+        if (!shouldSync) return;
+        syncSettingsControls();
+        trimDynamicEntities();
+        saveLocalPreferences();
+      }
+
       function syncSettingsControls() {
         cursorLineToggle.checked = state.settings.cursorLine;
         cursorLineValueEl.textContent = state.settings.cursorLine ? "表示" : "非表示";
@@ -6167,71 +6260,18 @@
         nRespawnValueEl.textContent = state.settings.nRespawnEnabled ? "許可" : "禁止";
         activeColorToggle.checked = state.settings.activeColorHighlight;
         activeColorValueEl.textContent = state.settings.activeColorHighlight ? "表示" : "通常";
-        botSlider.max = String(state.settings.max.bot);
-        botSlider.value = String(state.settings.botTarget);
-        botValueEl.textContent = String(state.settings.botTarget);
-        botMaxBox.value = String(state.settings.max.bot);
+        for (const [kind, config] of Object.entries(sliderControls)) {
+          const value = state.settings[config.setting];
+          config.slider.min = String(state.settings.min[kind]);
+          config.slider.max = String(state.settings.max[kind]);
+          config.slider.value = String(value);
+          config.valueEl.textContent = config.format ? config.format(value) : String(value);
+          config.minBox.max = String(state.settings.max[kind]);
+          config.minBox.value = String(state.settings.min[kind]);
+          config.maxBox.min = String(state.settings.min[kind]);
+          config.maxBox.value = String(state.settings.max[kind]);
+        }
         botModeSelect.value = state.settings.botMode;
-        virusSlider.max = String(state.settings.max.virus);
-        virusSlider.value = String(state.settings.virusTarget);
-        virusValueEl.textContent = String(state.settings.virusTarget);
-        virusMaxBox.value = String(state.settings.max.virus);
-        foodSlider.max = String(state.settings.max.food);
-        foodSlider.value = String(state.settings.foodTarget);
-        foodValueEl.textContent = String(state.settings.foodTarget);
-        foodMaxBox.value = String(state.settings.max.food);
-        spawnMassSlider.max = String(state.settings.max.spawnMass);
-        spawnMassSlider.value = String(state.settings.spawnMass);
-        spawnMassValueEl.textContent = String(state.settings.spawnMass);
-        spawnMassMaxBox.value = String(state.settings.max.spawnMass);
-        ejectMassSlider.max = String(state.settings.max.ejectMass);
-        ejectMassSlider.value = String(state.settings.ejectMass);
-        ejectMassValueEl.textContent = String(state.settings.ejectMass);
-        ejectMassMaxBox.value = String(state.settings.max.ejectMass);
-        ejectSpeedSlider.max = String(state.settings.max.ejectSpeed);
-        ejectSpeedSlider.value = String(state.settings.ejectSpeed);
-        ejectSpeedValueEl.textContent = String(state.settings.ejectSpeed);
-        ejectSpeedMaxBox.value = String(state.settings.max.ejectSpeed);
-        ejectRateSlider.max = String(state.settings.max.ejectRate);
-        ejectRateSlider.value = String(state.settings.ejectRate);
-        ejectRateValueEl.textContent = String(state.settings.ejectRate);
-        ejectRateMaxBox.value = String(state.settings.max.ejectRate);
-        splitRecoilSlider.max = String(state.settings.max.splitRecoil);
-        splitRecoilSlider.value = String(state.settings.splitRecoil);
-        splitRecoilValueEl.textContent = String(state.settings.splitRecoil);
-        splitRecoilMaxBox.value = String(state.settings.max.splitRecoil);
-        splitSpeedSlider.max = String(state.settings.max.splitSpeed);
-        splitSpeedSlider.value = String(state.settings.splitSpeed);
-        splitSpeedValueEl.textContent = String(state.settings.splitSpeed);
-        splitSpeedMaxBox.value = String(state.settings.max.splitSpeed);
-        splitMinDistanceSlider.max = String(state.settings.max.splitMinDistance);
-        splitMinDistanceSlider.value = String(state.settings.splitMinDistance);
-        splitMinDistanceValueEl.textContent = String(state.settings.splitMinDistance);
-        splitMinDistanceMaxBox.value = String(state.settings.max.splitMinDistance);
-        splitMomentumSlider.max = String(state.settings.max.splitMomentum);
-        splitMomentumSlider.value = String(state.settings.splitMomentum);
-        splitMomentumValueEl.textContent = String(state.settings.splitMomentum);
-        splitMomentumMaxBox.value = String(state.settings.max.splitMomentum);
-        splitInputSpeedSlider.max = String(state.settings.max.splitInputSpeed);
-        splitInputSpeedSlider.value = String(state.settings.splitInputSpeed);
-        splitInputSpeedValueEl.textContent = String(state.settings.splitInputSpeed);
-        splitInputSpeedMaxBox.value = String(state.settings.max.splitInputSpeed);
-        gameSpeedSlider.max = String(state.settings.max.gameSpeed);
-        gameSpeedSlider.value = String(state.settings.gameSpeed);
-        gameSpeedValueEl.textContent = formatMultiplier(state.settings.gameSpeed);
-        gameSpeedMaxBox.value = String(state.settings.max.gameSpeed);
-        renderRangeSlider.max = String(state.settings.max.renderRange);
-        renderRangeSlider.value = String(state.settings.renderRange);
-        renderRangeValueEl.textContent = `${state.settings.renderRange}%`;
-        renderRangeMaxBox.value = String(state.settings.max.renderRange);
-        mergeCooldownSlider.max = String(state.settings.max.mergeCooldown);
-        mergeCooldownSlider.value = String(state.settings.mergeCooldown);
-        mergeCooldownValueEl.textContent = String(state.settings.mergeCooldown);
-        mergeCooldownMaxBox.value = String(state.settings.max.mergeCooldown);
-        worldSizeSlider.max = String(state.settings.max.worldSize);
-        worldSizeSlider.value = String(state.settings.worldSize);
-        worldSizeValueEl.textContent = String(state.settings.worldSize);
-        worldSizeMaxBox.value = String(state.settings.max.worldSize);
       }
 
       function trimDynamicEntities() {
@@ -6278,29 +6318,15 @@
       }
 
       function setWorldSetting(kind, value) {
-        const rawNumber = Number(value) || 0;
-        const number = Math.round(rawNumber);
-        if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
         if (kind === "botMode") state.settings.botMode = ["hunt", "chase", "virus", "cursor"].includes(value) ? value : "hunt";
-        if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
-        if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
-        if (kind === "spawnMass") state.settings.spawnMass = clamp(Math.round(number / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
-        if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
-        if (kind === "ejectSpeed") state.settings.ejectSpeed = clamp(Math.round(number / 10) * 10, 300, state.settings.max.ejectSpeed);
-        if (kind === "ejectRate") state.settings.ejectRate = clamp(number, 1, state.settings.max.ejectRate);
-        if (kind === "splitRecoil") state.settings.splitRecoil = clamp(number, 0, state.settings.max.splitRecoil);
-        if (kind === "splitSpeed") state.settings.splitSpeed = clamp(Math.round(number / 5) * 5, 10, state.settings.max.splitSpeed);
-        if (kind === "splitMinDistance") state.settings.splitMinDistance = clamp(Math.round(number / 5) * 5, 0, state.settings.max.splitMinDistance);
-        if (kind === "splitMomentum") state.settings.splitMomentum = clamp(Math.round(number / 5) * 5, 20, state.settings.max.splitMomentum);
-        if (kind === "splitInputSpeed") state.settings.splitInputSpeed = clamp(number, 1, state.settings.max.splitInputSpeed);
-        if (kind === "gameSpeed") state.settings.gameSpeed = clamp(Math.round(rawNumber * 10) / 10, 0.1, state.settings.max.gameSpeed);
-        if (kind === "renderRange") state.settings.renderRange = clamp(Math.round(number / 5) * 5, 35, state.settings.max.renderRange);
-        if (kind === "mergeCooldown") state.settings.mergeCooldown = clamp(number, 0, state.settings.max.mergeCooldown);
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
         if (kind === "nRespawn") state.settings.nRespawnEnabled = Boolean(value);
         if (kind === "activeColor") state.settings.activeColorHighlight = Boolean(value);
+        if (sliderControls[kind]) {
+          const config = sliderControls[kind];
+          state.settings[config.setting] = clamp(roundSliderValue(kind, value), state.settings.min[kind], state.settings.max[kind]);
+        }
         if (kind === "worldSize") {
-          state.settings.worldSize = clamp(Math.round(number / 100) * 100, 2000, state.settings.max.worldSize);
           clampWorldEntities();
         }
         syncSettingsControls();
@@ -6309,76 +6335,11 @@
       }
 
       function setSliderMax(kind, value) {
-        const rawNumber = Number(value) || 0;
-        const number = Math.round(rawNumber);
-        if (kind === "bot") {
-          state.settings.max.bot = Math.max(1, number);
-          state.settings.botTarget = clamp(state.settings.botTarget, 0, state.settings.max.bot);
-        }
-        if (kind === "virus") {
-          state.settings.max.virus = Math.max(1, number);
-          state.settings.virusTarget = clamp(state.settings.virusTarget, 0, state.settings.max.virus);
-        }
-        if (kind === "food") {
-          state.settings.max.food = Math.max(100, Math.round(number / 100) * 100);
-          state.settings.foodTarget = clamp(state.settings.foodTarget, 0, state.settings.max.food);
-        }
-        if (kind === "spawnMass") {
-          state.settings.max.spawnMass = Math.max(MIN_CELL_MASS, Math.round(number / 10) * 10);
-          state.settings.spawnMass = clamp(state.settings.spawnMass, MIN_CELL_MASS, state.settings.max.spawnMass);
-        }
-        if (kind === "ejectMass") {
-          state.settings.max.ejectMass = Math.max(5, number);
-          state.settings.ejectMass = clamp(state.settings.ejectMass, 5, state.settings.max.ejectMass);
-        }
-        if (kind === "ejectSpeed") {
-          state.settings.max.ejectSpeed = Math.max(300, Math.round(number / 10) * 10);
-          state.settings.ejectSpeed = clamp(state.settings.ejectSpeed, 300, state.settings.max.ejectSpeed);
-        }
-        if (kind === "ejectRate") {
-          state.settings.max.ejectRate = Math.max(1, number);
-          state.settings.ejectRate = clamp(state.settings.ejectRate, 1, state.settings.max.ejectRate);
-        }
-        if (kind === "splitRecoil") {
-          state.settings.max.splitRecoil = Math.max(1, number);
-          state.settings.splitRecoil = clamp(state.settings.splitRecoil, 0, state.settings.max.splitRecoil);
-        }
-        if (kind === "splitSpeed") {
-          state.settings.max.splitSpeed = Math.max(10, Math.round(number / 5) * 5);
-          state.settings.splitSpeed = clamp(state.settings.splitSpeed, 10, state.settings.max.splitSpeed);
-        }
-        if (kind === "splitMinDistance") {
-          state.settings.max.splitMinDistance = Math.max(0, Math.round(number / 5) * 5);
-          state.settings.splitMinDistance = clamp(state.settings.splitMinDistance, 0, state.settings.max.splitMinDistance);
-        }
-        if (kind === "splitMomentum") {
-          state.settings.max.splitMomentum = Math.max(20, Math.round(number / 5) * 5);
-          state.settings.splitMomentum = clamp(state.settings.splitMomentum, 20, state.settings.max.splitMomentum);
-        }
-        if (kind === "splitInputSpeed") {
-          state.settings.max.splitInputSpeed = clamp(number, 1, MAX_QUEUED_SPLITS_PER_FRAME);
-          state.settings.splitInputSpeed = clamp(state.settings.splitInputSpeed, 1, state.settings.max.splitInputSpeed);
-        }
-        if (kind === "gameSpeed") {
-          state.settings.max.gameSpeed = Math.max(0.1, Math.round(rawNumber * 10) / 10);
-          state.settings.gameSpeed = clamp(state.settings.gameSpeed, 0.1, state.settings.max.gameSpeed);
-        }
-        if (kind === "renderRange") {
-          state.settings.max.renderRange = Math.max(35, Math.round(number / 5) * 5);
-          state.settings.renderRange = clamp(state.settings.renderRange, 35, state.settings.max.renderRange);
-        }
-        if (kind === "mergeCooldown") {
-          state.settings.max.mergeCooldown = Math.max(1, number);
-          state.settings.mergeCooldown = clamp(state.settings.mergeCooldown, 0, state.settings.max.mergeCooldown);
-        }
-        if (kind === "worldSize") {
-          state.settings.max.worldSize = Math.max(2000, Math.round(number / 100) * 100);
-          state.settings.worldSize = clamp(state.settings.worldSize, 2000, state.settings.max.worldSize);
-          clampWorldEntities();
-        }
-        syncSettingsControls();
-        trimDynamicEntities();
-        saveLocalPreferences();
+        setSliderBound(kind, "max", value);
+      }
+
+      function setSliderMin(kind, value) {
+        setSliderBound(kind, "min", value);
       }
 
       function resetGameToStart() {
@@ -6532,6 +6493,22 @@
         renderRangeSlider.addEventListener("input", () => setWorldSetting("renderRange", renderRangeSlider.value));
         mergeCooldownSlider.addEventListener("input", () => setWorldSetting("mergeCooldown", mergeCooldownSlider.value));
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
+        botMinBox.addEventListener("change", () => setSliderMin("bot", botMinBox.value));
+        virusMinBox.addEventListener("change", () => setSliderMin("virus", virusMinBox.value));
+        foodMinBox.addEventListener("change", () => setSliderMin("food", foodMinBox.value));
+        spawnMassMinBox.addEventListener("change", () => setSliderMin("spawnMass", spawnMassMinBox.value));
+        ejectMassMinBox.addEventListener("change", () => setSliderMin("ejectMass", ejectMassMinBox.value));
+        ejectSpeedMinBox.addEventListener("change", () => setSliderMin("ejectSpeed", ejectSpeedMinBox.value));
+        ejectRateMinBox.addEventListener("change", () => setSliderMin("ejectRate", ejectRateMinBox.value));
+        splitRecoilMinBox.addEventListener("change", () => setSliderMin("splitRecoil", splitRecoilMinBox.value));
+        splitSpeedMinBox.addEventListener("change", () => setSliderMin("splitSpeed", splitSpeedMinBox.value));
+        splitMinDistanceMinBox.addEventListener("change", () => setSliderMin("splitMinDistance", splitMinDistanceMinBox.value));
+        splitMomentumMinBox.addEventListener("change", () => setSliderMin("splitMomentum", splitMomentumMinBox.value));
+        splitInputSpeedMinBox.addEventListener("change", () => setSliderMin("splitInputSpeed", splitInputSpeedMinBox.value));
+        gameSpeedMinBox.addEventListener("change", () => setSliderMin("gameSpeed", gameSpeedMinBox.value));
+        renderRangeMinBox.addEventListener("change", () => setSliderMin("renderRange", renderRangeMinBox.value));
+        mergeCooldownMinBox.addEventListener("change", () => setSliderMin("mergeCooldown", mergeCooldownMinBox.value));
+        worldSizeMinBox.addEventListener("change", () => setSliderMin("worldSize", worldSizeMinBox.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
         virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
         foodMaxBox.addEventListener("change", () => setSliderMax("food", foodMaxBox.value));
