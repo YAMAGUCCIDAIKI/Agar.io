@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.19</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.20</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -867,9 +867,9 @@
         </label>
         <label class="setting-control">
           <span>棘給餌</span>
-          <input id="virusFeedLimitSlider" type="range" min="1" max="8" step="1" value="1" aria-label="1フレームの棘給餌上限">
+          <input id="virusFeedLimitSlider" type="range" min="1" max="8" step="1" value="1" aria-label="棘が1粒を受け付けるフレーム間隔">
           <strong id="virusFeedLimitValue">1</strong>
-          <input id="virusFeedLimitMaxBox" class="max-input" type="number" min="1" step="1" value="8" aria-label="棘給餌上限の最大値">
+          <input id="virusFeedLimitMaxBox" class="max-input" type="number" min="1" step="1" value="8" aria-label="棘給餌フレーム間隔の最大値">
         </label>
         <label class="setting-control">
           <span>ペレット</span>
@@ -1024,7 +1024,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.19";
+      const APP_VERSION = "v2026.05.08.20";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -2902,7 +2902,6 @@
           vx: 0,
           vy: 0,
           feedCount: 0,
-          feedFrameCount: 0,
           lastFeedFrame: -1,
           natural,
           dead: false
@@ -4021,7 +4020,7 @@
 
       function handleFeedVirusCollisions() {
         const nearby = [];
-        const feedLimit = Math.max(1, Math.round(state.settings.virusFeedLimitPerFrame || 1));
+        const feedFrameInterval = Math.max(1, Math.round(state.settings.virusFeedLimitPerFrame || 1));
         for (const feed of state.feeds) {
           if (feed.dead) continue;
           virusGrid.query(feed.x, feed.y, 90, nearby);
@@ -4029,12 +4028,8 @@
             if (virus.dead) continue;
             const hit = virus.radius + feed.radius * 0.4;
             if (distSq(feed.x, feed.y, virus.x, virus.y) > hit * hit) continue;
-            if (virus.lastFeedFrame !== state.frameIndex) {
-              virus.lastFeedFrame = state.frameIndex;
-              virus.feedFrameCount = 0;
-            }
-            if (virus.feedFrameCount >= feedLimit) continue;
-            virus.feedFrameCount += 1;
+            if (state.frameIndex - (virus.lastFeedFrame ?? -Infinity) < feedFrameInterval) continue;
+            virus.lastFeedFrame = state.frameIndex;
 
             feed.dead = true;
             const owner = actorById(feed.ownerId);
@@ -6195,7 +6190,7 @@
         virusMaxBox.value = String(state.settings.max.virus);
         virusFeedLimitSlider.max = String(state.settings.max.virusFeedLimitPerFrame);
         virusFeedLimitSlider.value = String(state.settings.virusFeedLimitPerFrame);
-        virusFeedLimitValueEl.textContent = String(state.settings.virusFeedLimitPerFrame);
+        virusFeedLimitValueEl.textContent = `${state.settings.virusFeedLimitPerFrame}F`;
         virusFeedLimitMaxBox.value = String(state.settings.max.virusFeedLimitPerFrame);
         foodSlider.max = String(state.settings.max.food);
         foodSlider.value = String(state.settings.foodTarget);
