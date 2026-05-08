@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.34</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.35</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1054,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.34";
+      const APP_VERSION = "v2026.05.08.35";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -3169,12 +3169,14 @@
         child.faceX = dirX;
         child.faceY = dirY;
         const impulse = splitImpulse(child.radius);
-        child.pendingBoostX = dirX * impulse;
-        child.pendingBoostY = dirY * impulse;
-        child.splitHoldAge = SPLIT_HOLD_DURATION;
+        child.vx += dirX * impulse;
+        child.vy += dirY * impulse;
+        child.pendingBoostX = 0;
+        child.pendingBoostY = 0;
+        child.splitHoldAge = 0;
         child.boostX = 0;
         child.boostY = 0;
-        child.splitBoostAge = SPLIT_BOOST_DURATION;
+        child.splitBoostAge = 0;
         child.splitPriority = actor.nextSplitPriority;
         actor.nextSplitPriority += 1;
         source.separationGraceUntil = state.now + 0.14;
@@ -3357,10 +3359,12 @@
         cell.faceX = firstDirX;
         cell.faceY = firstDirY;
         const firstBurst = rand(260, 380) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.45, 0.9) * splitMomentumScale();
-        cell.pendingBoostX = firstDirX * firstBurst;
-        cell.pendingBoostY = firstDirY * firstBurst;
-        cell.splitHoldAge = SPLIT_HOLD_DURATION * 0.9;
-        cell.splitBoostAge = SPLIT_BOOST_DURATION * 0.65;
+        cell.vx += firstDirX * firstBurst;
+        cell.vy += firstDirY * firstBurst;
+        cell.pendingBoostX = 0;
+        cell.pendingBoostY = 0;
+        cell.splitHoldAge = 0;
+        cell.splitBoostAge = 0;
         for (let i = 1; i < pieces; i += 1) {
           const spreadIndex = i - 1;
           const angle = baseAngle + (TAU * spreadIndex / Math.max(1, pieces - 1)) + rand(-0.16, 0.16);
@@ -3381,12 +3385,14 @@
           child.faceY = dirY;
           const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.45, 0.92);
           const burst = rand(300, 440) * massDrag * splitMomentumScale();
-          child.pendingBoostX = dirX * burst;
-          child.pendingBoostY = dirY * burst;
-          child.splitHoldAge = SPLIT_HOLD_DURATION * 0.9;
+          child.vx += dirX * burst;
+          child.vy += dirY * burst;
+          child.pendingBoostX = 0;
+          child.pendingBoostY = 0;
+          child.splitHoldAge = 0;
           child.boostX = 0;
           child.boostY = 0;
-          child.splitBoostAge = SPLIT_BOOST_DURATION * 0.65;
+          child.splitBoostAge = 0;
           child.fragmentAge = VIRUS_FRAGMENT_LIFE;
           child.virusCooldown = 0.42;
           setMergeCooldown(child);
@@ -3745,7 +3751,7 @@
               cell.targetY = actor.input.targetY;
             }
 
-            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0 && cell.fragmentAge <= 0;
+            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
             const n = normalized(dx, dy, 0, 0);
@@ -3754,8 +3760,8 @@
             cell.instantFacing = instantControl;
             if (n.length > 0.001) turnCellFacing(cell, n, dt);
             cell.instantFacing = false;
-            const desiredX = (Number.isFinite(cell.faceX) ? cell.faceX : n.x) * speed * throttle;
-            const desiredY = (Number.isFinite(cell.faceY) ? cell.faceY : n.y) * speed * throttle;
+            const desiredX = n.x * speed * throttle;
+            const desiredY = n.y * speed * throttle;
             const steer = instantControl ? 1 : 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
 
             cell.vx += (desiredX - cell.vx) * steer;
