@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.30</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.31</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.30";
+      const APP_VERSION = "v2026.05.08.31";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -4161,8 +4161,7 @@
               setActiveLocalActor(main);
             }
             state.waitingForPlay = true;
-            setSpectating(false);
-            setMenuOpen(true);
+            if (!state.spectating) setMenuOpen(true);
           } else if (!state.player || state.player.control !== "local" || state.player.cells.length === 0) {
             setActiveLocalActor(liveLocalActors[0]);
           }
