@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.20</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.21</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1024,7 +1024,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.20";
+      const APP_VERSION = "v2026.05.08.21";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -4004,7 +4004,7 @@
       }
 
       function handleFoodEating() {
-        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
+        const cells = allCells(scratch);
         const nearby = [];
         for (const cell of cells) {
           queryAlongCellPath(foodGrid, cell, cell.radius + 36, nearby);
@@ -4055,7 +4055,7 @@
       }
 
       function handleFeedEating() {
-        const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
+        const cells = allCells(scratch);
         const nearby = [];
         for (const cell of cells) {
           queryAlongCellPath(feedGrid, cell, cell.radius + 60, nearby);
@@ -4106,32 +4106,9 @@
         const cells = allCells(scratch).sort((a, b) => b.radius - a.radius);
         for (const eater of cells) {
           if (eater.dead) continue;
-          const nearbyCells = cellGrid.query(eater.x, eater.y, eater.radius + 650, cellQueryScratch);
+          const largestConsumableRadius = eater.radius / CONSUME_RADIUS_RATIO;
+          const nearbyCells = queryAlongCellPath(cellGrid, eater, eater.radius + largestConsumableRadius + 48, cellQueryScratch);
           for (const victim of nearbyCells) {
-            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
-            if (!canConsume(eater, victim)) continue;
-            markCellConsumed(eater, victim);
-          }
-        }
-        handleSweptCellEating(cells);
-      }
-
-      function handleSweptCellEating(cells) {
-        const sweptCells = cells.filter((cell) => !cell.dead && hasSweepPath(cell));
-        if (!sweptCells.length) return;
-
-        for (const eater of cells) {
-          if (eater.dead) continue;
-          for (const victim of sweptCells) {
-            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
-            if (!canConsumeSwept(eater, victim)) continue;
-            markCellConsumed(eater, victim);
-          }
-        }
-
-        for (const eater of sweptCells) {
-          if (eater.dead) continue;
-          for (const victim of cells) {
             if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             markCellConsumed(eater, victim);
