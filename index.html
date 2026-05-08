@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.32</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.33</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -797,6 +797,11 @@
           <span>操作色</span>
           <input id="activeColorToggle" class="toggle-input" type="checkbox" checked aria-label="操作中の細胞色">
           <strong id="activeColorValue" class="toggle-value">表示</strong>
+        </label>
+        <label class="setting-control">
+          <span>他人マス</span>
+          <input id="otherMassToggle" class="toggle-input" type="checkbox" aria-label="自分以外のマス表示">
+          <strong id="otherMassValue" class="toggle-value">非表示</strong>
         </label>
         <div class="keybind-title">キー</div>
         <div class="keybind-grid">
@@ -979,6 +984,8 @@
       const nRespawnValueEl = document.getElementById("nRespawnValue");
       const activeColorToggle = document.getElementById("activeColorToggle");
       const activeColorValueEl = document.getElementById("activeColorValue");
+      const otherMassToggle = document.getElementById("otherMassToggle");
+      const otherMassValueEl = document.getElementById("otherMassValue");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
       const botMinBox = document.getElementById("botMinBox");
@@ -1047,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.32";
+      const APP_VERSION = "v2026.05.08.33";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1221,6 +1228,7 @@
           cursorLine: true,
           nRespawnEnabled: true,
           activeColorHighlight: true,
+          showOtherMass: false,
           min: {
             bot: 0,
             virus: 0,
@@ -2267,7 +2275,8 @@
             worldSize: state.settings.worldSize,
             cursorLine: state.settings.cursorLine,
             nRespawnEnabled: state.settings.nRespawnEnabled,
-            activeColorHighlight: state.settings.activeColorHighlight
+            activeColorHighlight: state.settings.activeColorHighlight,
+            showOtherMass: state.settings.showOtherMass
           },
           min: { ...state.settings.min },
           max: { ...state.settings.max }
@@ -2327,6 +2336,7 @@
           if (saved.cursorLine != null) state.settings.cursorLine = Boolean(saved.cursorLine);
           if (saved.nRespawnEnabled != null) state.settings.nRespawnEnabled = Boolean(saved.nRespawnEnabled);
           if (saved.activeColorHighlight != null) state.settings.activeColorHighlight = Boolean(saved.activeColorHighlight);
+          if (saved.showOtherMass != null) state.settings.showOtherMass = Boolean(saved.showOtherMass);
         }
         if (Number.isFinite(prefs.viewScale)) state.viewScale = clamp(prefs.viewScale, 0.55, 2.2);
       }
@@ -3413,7 +3423,7 @@
             const d2 = dx * dx + dy * dy;
             const dist = Math.sqrt(d2) || 1;
 
-            if (other.mass > cell.mass * 1.03 && dist < 1180) {
+            if (state.settings.botMode !== "virus" && other.mass > cell.mass * 1.03 && dist < 1180) {
               const danger = Math.max(0, 1 - dist / 1180) * clamp(other.mass / Math.max(1, cell.mass), 1, 5);
               avoidCellX -= dx / dist * danger;
               avoidCellY -= dy / dist * danger;
@@ -5974,7 +5984,7 @@
           ctx.strokeText(label, drawX, drawY - nameSize * 0.12);
           ctx.fillText(label, drawX, drawY - nameSize * 0.12);
 
-          if (r * state.camera.zoom > 32) {
+          if (r * state.camera.zoom > 32 && (isLocalActor(actor) || state.settings.showOtherMass)) {
             const massSize = clamp(r * 0.2, 10, 25);
             ctx.font = `700 ${massSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
             ctx.lineWidth = Math.max(2, massSize * 0.14);
@@ -6260,6 +6270,8 @@
         nRespawnValueEl.textContent = state.settings.nRespawnEnabled ? "許可" : "禁止";
         activeColorToggle.checked = state.settings.activeColorHighlight;
         activeColorValueEl.textContent = state.settings.activeColorHighlight ? "表示" : "通常";
+        otherMassToggle.checked = state.settings.showOtherMass;
+        otherMassValueEl.textContent = state.settings.showOtherMass ? "表示" : "非表示";
         for (const [kind, config] of Object.entries(sliderControls)) {
           const value = state.settings[config.setting];
           config.slider.min = String(state.settings.min[kind]);
@@ -6322,6 +6334,7 @@
         if (kind === "cursorLine") state.settings.cursorLine = Boolean(value);
         if (kind === "nRespawn") state.settings.nRespawnEnabled = Boolean(value);
         if (kind === "activeColor") state.settings.activeColorHighlight = Boolean(value);
+        if (kind === "showOtherMass") state.settings.showOtherMass = Boolean(value);
         if (sliderControls[kind]) {
           const config = sliderControls[kind];
           state.settings[config.setting] = clamp(roundSliderValue(kind, value), state.settings.min[kind], state.settings.max[kind]);
@@ -6476,6 +6489,7 @@
         cursorLineToggle.addEventListener("change", () => setWorldSetting("cursorLine", cursorLineToggle.checked));
         nRespawnToggle.addEventListener("change", () => setWorldSetting("nRespawn", nRespawnToggle.checked));
         activeColorToggle.addEventListener("change", () => setWorldSetting("activeColor", activeColorToggle.checked));
+        otherMassToggle.addEventListener("change", () => setWorldSetting("showOtherMass", otherMassToggle.checked));
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
