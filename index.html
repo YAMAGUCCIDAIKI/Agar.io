@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>アガーキャンバス</title>
-  <meta name="description" content="HTML5 Canvasで遊べるAgar.io風のブラウザゲーム">
+  <title>Tain.io</title>
+  <meta name="description" content="HTML5 Canvasで遊べるTain.ioブラウザゲーム">
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -161,10 +161,52 @@
       inset: 0;
       display: none;
       overflow-y: auto;
-      place-items: start center;
-      padding: 56px 14px 18px;
-      background: rgba(18, 32, 70, 0.2);
+      place-items: center;
+      align-content: center;
+      padding: 28px 14px 18px;
+      background:
+        radial-gradient(circle at 5% 12%, rgba(31, 232, 15, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 16% 43%, rgba(255, 31, 14, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 24% 18%, rgba(0, 132, 255, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 33% 65%, rgba(255, 224, 0, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 44% 30%, rgba(180, 0, 255, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 57% 76%, rgba(45, 235, 0, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 66% 26%, rgba(255, 100, 0, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 78% 54%, rgba(0, 194, 255, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 91% 20%, rgba(255, 230, 0, 0.96) 0 6px, transparent 7px),
+        linear-gradient(rgba(233, 243, 249, 0.78), rgba(233, 243, 249, 0.78)),
+        linear-gradient(rgba(126, 146, 158, 0.19) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(126, 146, 158, 0.19) 1px, transparent 1px);
+      background-size:
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        100% 100%,
+        42px 42px,
+        42px 42px;
       z-index: 20;
+      pointer-events: none;
+    }
+
+    .menu-screen::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(circle at 11% 79%, rgba(16, 204, 255, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 18% 24%, rgba(255, 118, 0, 0.96) 0 5px, transparent 6px),
+        radial-gradient(circle at 39% 86%, rgba(255, 0, 170, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 52% 16%, rgba(0, 225, 215, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 71% 82%, rgba(130, 245, 0, 0.96) 0 7px, transparent 8px),
+        radial-gradient(circle at 85% 37%, rgba(20, 110, 255, 0.96) 0 6px, transparent 7px),
+        radial-gradient(circle at 96% 70%, rgba(255, 46, 11, 0.96) 0 6px, transparent 7px);
+      opacity: 0.9;
       pointer-events: none;
     }
 
@@ -179,55 +221,54 @@
     .menu-head {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      width: min(780px, calc(100vw - 28px));
-      min-height: 56px;
-      margin: 0;
-      padding: 8px 10px;
-      border: 1px solid rgba(0, 220, 255, 0.85);
-      border-bottom: 0;
-      border-radius: 4px 4px 0 0;
-      background:
-        linear-gradient(128deg, rgba(0, 25, 64, 0.9), rgba(0, 116, 158, 0.72)),
-        repeating-linear-gradient(117deg, rgba(0, 241, 255, 0.14) 0 8px, transparent 8px 18px);
-      box-shadow: 0 18px 34px rgba(7, 18, 38, 0.28);
+      flex-direction: column;
+      justify-content: center;
+      width: min(690px, calc(100vw - 28px));
+      min-height: 150px;
+      margin: 0 0 10px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
       pointer-events: auto;
     }
 
     .menu-head strong {
-      color: #13f6ff;
-      font-size: 27px;
-      font-weight: 800;
+      color: rgba(68, 68, 73, 0.88);
+      font-size: clamp(54px, 9vw, 88px);
+      font-weight: 900;
       letter-spacing: 0;
-      text-shadow: 0 0 14px rgba(19, 246, 255, 0.42);
+      line-height: 1;
+      text-shadow: 0 2px 0 rgba(255, 255, 255, 0.75);
     }
 
     .menu-head button {
-      min-width: 100px;
-      min-height: 32px;
-      border: 1px solid rgba(255, 255, 255, 0.62);
-      border-radius: 3px;
-      background: #ff1694;
+      min-width: min(270px, calc(100vw - 74px));
+      min-height: 84px;
+      margin-top: 24px;
+      border: 3px solid rgba(184, 62, 0, 0.72);
+      border-radius: 8px;
+      background: #fb5a09;
       color: #ffffff;
-      font: 800 13px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      font: 900 26px/1 Inter, ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      box-shadow: 0 5px 0 rgba(133, 44, 0, 0.55), 0 12px 22px rgba(64, 74, 91, 0.18);
     }
 
     .menu-layout {
       display: flex;
       flex-direction: column;
-      width: min(780px, calc(100vw - 28px));
-      height: min(760px, calc(100vh - 150px));
-      min-height: 320px;
+      width: min(690px, calc(100vw - 28px));
+      height: min(520px, calc(100vh - 255px));
+      min-height: 260px;
       margin: 0;
-      padding: 6px;
-      border: 1px solid rgba(0, 220, 255, 0.85);
-      border-radius: 0 0 4px 4px;
-      background:
-        linear-gradient(135deg, rgba(0, 17, 48, 0.92), rgba(0, 110, 150, 0.66)),
-        repeating-linear-gradient(126deg, rgba(20, 240, 255, 0.13) 0 7px, transparent 7px 17px);
-      box-shadow: 0 18px 34px rgba(7, 18, 38, 0.28);
+      padding: 10px;
+      border: 0;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.48);
+      box-shadow: 0 12px 28px rgba(82, 94, 112, 0.18);
+      backdrop-filter: blur(3px);
       overflow: hidden;
       pointer-events: auto;
     }
@@ -241,19 +282,21 @@
     }
 
     .menu-tab {
-      min-height: 32px;
-      border: 1px solid rgba(0, 220, 255, 0.58);
-      border-radius: 3px;
-      background: rgba(0, 126, 255, 0.34);
-      color: #8feeff;
-      font: 800 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      min-height: 44px;
+      border: 2px solid rgba(18, 122, 196, 0.68);
+      border-radius: 8px;
+      background: #2176e8;
+      color: #ffffff;
+      font: 900 15px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      text-shadow: 0 1px 0 rgba(0, 42, 102, 0.28);
       cursor: pointer;
+      box-shadow: 0 4px 0 rgba(16, 83, 165, 0.46);
     }
 
     .menu-tab.active {
-      background: #0095ff;
+      background: #18c8db;
       color: #ffffff;
-      border-color: rgba(255, 255, 255, 0.72);
+      border-color: rgba(9, 151, 171, 0.78);
     }
 
     .menu-page {
@@ -393,10 +436,10 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       padding: 10px;
-      border: 1px solid rgba(0, 220, 255, 0.7);
-      border-radius: 4px;
-      background: rgba(0, 13, 38, 0.58);
-      color: #13f6ff;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #444449;
     }
 
     .menu-screen .profile-panel,
@@ -405,11 +448,11 @@
       position: static;
       width: 100%;
       max-height: none;
-      border-color: rgba(0, 220, 255, 0.72);
-      border-radius: 3px;
-      background: rgba(0, 18, 52, 0.62);
-      color: #dffbff;
-      box-shadow: none;
+      border-color: rgba(150, 161, 171, 0.36);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.64);
+      color: #3f4552;
+      box-shadow: 0 5px 12px rgba(84, 94, 110, 0.12);
       backdrop-filter: none;
     }
 
@@ -423,13 +466,14 @@
     }
 
     .profile-panel input {
-      min-height: 34px;
-      border: 1px solid rgba(0, 220, 255, 0.65);
-      border-radius: 3px;
-      padding: 6px 8px;
-      background: rgba(255, 255, 255, 0.96);
-      color: #111827;
-      font: 700 13px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+      min-height: 52px;
+      border: 3px solid rgba(169, 169, 169, 0.78);
+      border-radius: 8px;
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.82);
+      color: #40444d;
+      font: 900 26px/1.1 Inter, ui-sans-serif, system-ui, sans-serif;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.07);
     }
 
     .view-row {
@@ -582,13 +626,13 @@
     .menu-screen .setting-control,
     .menu-screen .keybind-title,
     .menu-screen .keybind-control {
-      color: #8feeff;
+      color: #4f5b68;
     }
 
     .menu-screen .view-row strong,
     .menu-screen .setting-control strong,
     .menu-screen .online-status {
-      color: #17f5ff;
+      color: #177ddc;
     }
 
     .menu-screen input:not([type="range"]):not([type="checkbox"]),
@@ -598,7 +642,7 @@
     .menu-screen .online-controls button,
     .menu-screen .view-controls button {
       border-color: rgba(0, 220, 255, 0.54);
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.86);
     }
 
     .menu-screen .online-controls button,
@@ -676,7 +720,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.14</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.15</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -690,7 +734,7 @@
 
   <section id="menuScreen" class="menu-screen" aria-label="メニュー">
     <div class="menu-head">
-      <strong>AGAR CANVAS</strong>
+      <strong>Tain.io</strong>
       <button id="playBtn" type="button">PLAY</button>
     </div>
     <div class="menu-layout">
@@ -955,7 +999,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.14";
+      const APP_VERSION = "v2026.05.08.15";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
