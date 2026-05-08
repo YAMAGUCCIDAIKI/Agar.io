@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.22</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.23</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.22";
+      const APP_VERSION = "v2026.05.08.23";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1746,6 +1746,14 @@
 
       function canBeCellVictim(cell) {
         return !cell.dead && cell.ateCellFrame !== state.frameIndex && (cell.ateProtectUntil || 0) <= state.now;
+      }
+
+      function canBeCellVictimFor(eater, victim) {
+        if (!victim || victim.dead || victim.ateCellFrame === state.frameIndex) return false;
+        if ((victim.ateProtectUntil || 0) <= state.now) return true;
+        return eater
+          && eater.ownerId !== victim.ownerId
+          && actorFamilyId(eater.ownerId) === actorFamilyId(victim.ownerId);
       }
 
       function canFinalizeDeadCell(cell) {
@@ -4079,7 +4087,7 @@
           if (eater.dead) continue;
           const nearbyCells = cellGrid.query(eater.x, eater.y, eater.radius + 650, cellQueryScratch);
           for (const victim of nearbyCells) {
-            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canBeCellVictimFor(eater, victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsume(eater, victim)) continue;
             markCellConsumed(eater, victim);
           }
@@ -4094,7 +4102,7 @@
         for (const eater of cells) {
           if (eater.dead) continue;
           for (const victim of sweptCells) {
-            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canBeCellVictimFor(eater, victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             markCellConsumed(eater, victim);
           }
@@ -4103,7 +4111,7 @@
         for (const eater of sweptCells) {
           if (eater.dead) continue;
           for (const victim of cells) {
-            if (!canBeCellVictim(victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
+            if (!canBeCellVictimFor(eater, victim) || victim.ownerId === eater.ownerId || victim === eater) continue;
             if (!canConsumeSwept(eater, victim)) continue;
             markCellConsumed(eater, victim);
           }
