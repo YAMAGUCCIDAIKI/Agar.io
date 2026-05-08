@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.36</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.37</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1054,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.36";
+      const APP_VERSION = "v2026.05.08.37";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -3766,11 +3766,14 @@
             cell.instantFacing = false;
             const desiredX = n.x * speed * throttle;
             const desiredY = n.y * speed * throttle;
-            const steerRate = cell.launchVelocityAge > 0 ? 2.1 : (cell.splitBoostAge > 0 ? 1.35 : 4.7);
-            const steer = instantControl ? 1 : 1 - Math.exp(-dt * steerRate);
-
-            cell.vx += (desiredX - cell.vx) * steer;
-            cell.vy += (desiredY - cell.vy) * steer;
+            const inputRate = instantControl ? 18 : (cell.launchVelocityAge > 0 ? 4.2 : (cell.splitBoostAge > 0 ? 2.4 : 8.5));
+            const inputImpulse = 1 - Math.exp(-dt * inputRate);
+            cell.vx += desiredX * inputImpulse;
+            cell.vy += desiredY * inputImpulse;
+            const velocityDragRate = cell.launchVelocityAge > 0 ? 1.15 : (cell.splitBoostAge > 0 ? 1.5 : 8.5);
+            const velocityDrag = Math.exp(-dt * velocityDragRate);
+            cell.vx *= velocityDrag;
+            cell.vy *= velocityDrag;
             const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
             const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
             const maxBoost = cell.fragmentAge > 0
