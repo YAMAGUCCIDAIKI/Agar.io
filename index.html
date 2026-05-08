@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.35</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.36</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1054,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.35";
+      const APP_VERSION = "v2026.05.08.36";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -2542,6 +2542,7 @@
           birthY: y,
           birthScale: 1,
           fragmentAge: 0,
+          launchVelocityAge: 0,
           splitBoostAge: 0,
           splitHoldAge: 0,
           pendingBoostX: 0,
@@ -3171,6 +3172,7 @@
         const impulse = splitImpulse(child.radius);
         child.vx += dirX * impulse;
         child.vy += dirY * impulse;
+        child.launchVelocityAge = 0.22;
         child.pendingBoostX = 0;
         child.pendingBoostY = 0;
         child.splitHoldAge = 0;
@@ -3361,6 +3363,7 @@
         const firstBurst = rand(260, 380) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.45, 0.9) * splitMomentumScale();
         cell.vx += firstDirX * firstBurst;
         cell.vy += firstDirY * firstBurst;
+        cell.launchVelocityAge = 0.22;
         cell.pendingBoostX = 0;
         cell.pendingBoostY = 0;
         cell.splitHoldAge = 0;
@@ -3387,6 +3390,7 @@
           const burst = rand(300, 440) * massDrag * splitMomentumScale();
           child.vx += dirX * burst;
           child.vy += dirY * burst;
+          child.launchVelocityAge = 0.24;
           child.pendingBoostX = 0;
           child.pendingBoostY = 0;
           child.splitHoldAge = 0;
@@ -3668,7 +3672,7 @@
           for (const cell of actor.cells) {
             if (cell.dead) continue;
             const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
-            cell.sweepActive = cell.splitBoostAge > 0 || cell.fragmentAge > 0 || boostSpeed > 30;
+            cell.sweepActive = cell.launchVelocityAge > 0 || cell.splitBoostAge > 0 || cell.fragmentAge > 0 || boostSpeed > 30;
             cell.sweepFromX = cell.x;
             cell.sweepFromY = cell.y;
             cell.sweepToX = cell.x;
@@ -3751,7 +3755,7 @@
               cell.targetY = actor.input.targetY;
             }
 
-            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0;
+            const instantControl = receivesPlayerInput(actor) && cell.splitBoostAge <= 0 && cell.launchVelocityAge <= 0;
             const dx = cell.targetX - cell.x;
             const dy = cell.targetY - cell.y;
             const n = normalized(dx, dy, 0, 0);
@@ -3762,7 +3766,8 @@
             cell.instantFacing = false;
             const desiredX = n.x * speed * throttle;
             const desiredY = n.y * speed * throttle;
-            const steer = instantControl ? 1 : 1 - Math.exp(-dt * (cell.splitBoostAge > 0 ? 1.35 : 4.7));
+            const steerRate = cell.launchVelocityAge > 0 ? 2.1 : (cell.splitBoostAge > 0 ? 1.35 : 4.7);
+            const steer = instantControl ? 1 : 1 - Math.exp(-dt * steerRate);
 
             cell.vx += (desiredX - cell.vx) * steer;
             cell.vy += (desiredY - cell.vy) * steer;
@@ -3771,7 +3776,10 @@
             const maxBoost = cell.fragmentAge > 0
               ? 1120
               : (hasSplitMomentum ? SPLIT_MAX_BOOST * splitSpeedScale() : 720);
-            capVelocity(cell, speed * 1.35);
+            const maxVelocity = cell.launchVelocityAge > 0
+              ? Math.max(speed * 1.35, SPLIT_MAX_BOOST * splitSpeedScale())
+              : speed * 1.35;
+            capVelocity(cell, maxVelocity);
             capBoost(cell, maxBoost);
             cell.x += (cell.vx + cell.boostX) * dt;
             cell.y += (cell.vy + cell.boostY) * dt;
@@ -3790,6 +3798,7 @@
               cell.birthAge = Math.min(cell.birthDuration, cell.birthAge + dt);
             }
             if (cell.fragmentAge > 0) cell.fragmentAge = Math.max(0, cell.fragmentAge - dt);
+            if (cell.launchVelocityAge > 0) cell.launchVelocityAge = Math.max(0, cell.launchVelocityAge - dt);
             if (cell.splitBoostAge > 0) cell.splitBoostAge = Math.max(0, cell.splitBoostAge - dt);
             if (cell.virusCooldown > 0) cell.virusCooldown = Math.max(0, cell.virusCooldown - dt);
             if (cell.mergeVirusWindow > 0) cell.mergeVirusWindow = Math.max(0, cell.mergeVirusWindow - dt);
@@ -5119,6 +5128,7 @@
           birthY: cell.birthY,
           birthScale: cell.birthScale,
           fragmentAge: cell.fragmentAge,
+          launchVelocityAge: cell.launchVelocityAge,
           splitBoostAge: cell.splitBoostAge,
           splitHoldAge: cell.splitHoldAge,
           pendingBoostX: cell.pendingBoostX,
@@ -5531,6 +5541,7 @@
         cell.birthY = data.birthY == null ? data.y : data.birthY;
         cell.birthScale = data.birthScale == null ? 1 : data.birthScale;
         cell.fragmentAge = data.fragmentAge || 0;
+        cell.launchVelocityAge = data.launchVelocityAge || 0;
         cell.splitBoostAge = data.splitBoostAge || 0;
         cell.splitHoldAge = data.splitHoldAge || 0;
         cell.pendingBoostX = data.pendingBoostX || 0;
