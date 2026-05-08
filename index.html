@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.33</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.34</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1054,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.33";
+      const APP_VERSION = "v2026.05.08.34";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1890,6 +1890,17 @@
         return localHumanActors().filter((actor) => actor.cells.some((cell) => !cell.dead));
       }
 
+      function switchActiveLocalActorIfDead() {
+        const liveActors = liveLocalHumanActors();
+        if (!liveActors.length) return false;
+        const activeActor = actorById(state.input.activeActorId);
+        if (activeActor && activeActor.control === "local" && liveCellCount(activeActor) > 0) return false;
+        const nextActor = liveActors.find((actor) => actor !== activeActor) || liveActors[0];
+        setActiveLocalActor(nextActor);
+        state.net.lastSnapshotSend = -100;
+        return true;
+      }
+
       function localPlayerIsDead() {
         return liveLocalHumanActors().length === 0;
       }
@@ -2360,11 +2371,12 @@
         if (state.spectating) return;
         const localActors = localHumanActors();
         if (!localActors.length) return;
+        switchActiveLocalActorIfDead();
         let actor = state.player && state.player.control === "local" && state.player.isHuman
           ? state.player
           : localActors[0];
-        if (!actor.cells.length) {
-          actor = localActors.find((candidate) => candidate.cells.length > 0) || actor;
+        if (liveCellCount(actor) <= 0) {
+          actor = localActors.find((candidate) => liveCellCount(candidate) > 0) || actor;
           setActiveLocalActor(actor);
         }
         for (const actor of localActors) {
@@ -2623,11 +2635,11 @@
       function virusBurstMasses(total, count) {
         if (count <= 1) return [total];
         const weights = [];
-        const mediumCount = Math.min(3, Math.max(1, count - 2));
+        const mediumCount = Math.min(4, Math.max(2, count - 2));
         for (let i = 0; i < count; i += 1) {
-          if (i === 0) weights.push(rand(2.0, 2.35));
-          else if (i <= mediumCount) weights.push(rand(1.18, 1.48));
-          else weights.push(rand(0.38, 0.62));
+          if (i === 0) weights.push(rand(2.45, 2.9));
+          else if (i <= mediumCount) weights.push(rand(1.42, 1.86));
+          else weights.push(rand(0.48, 0.76));
         }
 
         const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
@@ -3337,9 +3349,18 @@
         cell.boostY *= 0.08;
         cell.virusCooldown = 0.42;
         capBoost(cell, 75);
-        startCellBirth(cell, originX, originY, 0.1, 0.82);
+        startCellBirth(cell, originX, originY, 0.2, 0.35);
 
         const baseAngle = Math.atan2(cell.y - virus.y, cell.x - virus.x);
+        const firstDirX = Math.cos(baseAngle);
+        const firstDirY = Math.sin(baseAngle);
+        cell.faceX = firstDirX;
+        cell.faceY = firstDirY;
+        const firstBurst = rand(260, 380) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.45, 0.9) * splitMomentumScale();
+        cell.pendingBoostX = firstDirX * firstBurst;
+        cell.pendingBoostY = firstDirY * firstBurst;
+        cell.splitHoldAge = SPLIT_HOLD_DURATION * 0.9;
+        cell.splitBoostAge = SPLIT_BOOST_DURATION * 0.65;
         for (let i = 1; i < pieces; i += 1) {
           const spreadIndex = i - 1;
           const angle = baseAngle + (TAU * spreadIndex / Math.max(1, pieces - 1)) + rand(-0.16, 0.16);
@@ -3347,24 +3368,29 @@
           const dirY = Math.sin(angle);
           const childMass = pieceMasses[i];
           const childRadius = radiusFromMass(childMass);
-          const spawnDistance = cell.radius + childRadius * rand(0.92, 1.16) + rand(8, 42);
+          const spawnDistance = Math.min(10, Math.max(3, childRadius * 0.12));
           const child = createCell(
             actor,
             clamp(originX + dirX * spawnDistance, childRadius, WORLD_SIZE - childRadius),
             clamp(originY + dirY * spawnDistance, childRadius, WORLD_SIZE - childRadius),
             childMass
           );
-          child.vx = cell.vx * 0.06;
-          child.vy = cell.vy * 0.06;
-          const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.58, 1.0);
-          const burst = rand(760, 1080) * massDrag;
-          child.boostX = dirX * burst;
-          child.boostY = dirY * burst;
-          capBoost(child, 980);
+          child.vx = cell.vx * 0.04;
+          child.vy = cell.vy * 0.04;
+          child.faceX = dirX;
+          child.faceY = dirY;
+          const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.45, 0.92);
+          const burst = rand(300, 440) * massDrag * splitMomentumScale();
+          child.pendingBoostX = dirX * burst;
+          child.pendingBoostY = dirY * burst;
+          child.splitHoldAge = SPLIT_HOLD_DURATION * 0.9;
+          child.boostX = 0;
+          child.boostY = 0;
+          child.splitBoostAge = SPLIT_BOOST_DURATION * 0.65;
           child.fragmentAge = VIRUS_FRAGMENT_LIFE;
           child.virusCooldown = 0.42;
           setMergeCooldown(child);
-          startCellBirth(child, originX, originY, 0.18, 0.04);
+          startCellBirth(child, originX, originY, 0.2, 0.18);
           actor.cells.push(child);
         }
         return;
@@ -4214,8 +4240,11 @@
             }
             state.waitingForPlay = true;
             if (!state.spectating) setMenuOpen(true);
-          } else if (!state.player || state.player.control !== "local" || state.player.cells.length === 0) {
-            setActiveLocalActor(liveLocalActors[0]);
+          } else {
+            const activeActor = actorById(state.input.activeActorId);
+            if (!state.player || state.player.control !== "local" || liveCellCount(state.player) <= 0 || !activeActor || liveCellCount(activeActor) <= 0) {
+              switchActiveLocalActorIfDead();
+            }
           }
         }
 
