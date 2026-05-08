@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.25</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.26</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.25";
+      const APP_VERSION = "v2026.05.08.26";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -2697,20 +2697,23 @@
         return clamp(burstMass, cell.mass, MAX_MERGE_VIRUS_HIT_MASS);
       }
 
+      function hasHalfVirusOverlap(cell, virus, hitRadius) {
+        const halfVirusArea = Math.PI * virus.radius * virus.radius * 0.5;
+        const centerDistance = Math.sqrt(distSq(cell.x, cell.y, virus.x, virus.y));
+        if (circleOverlapArea(hitRadius, virus.radius, centerDistance) >= halfVirusArea) return true;
+        if (!hasSweepPath(cell)) return false;
+        const sweptDistance = Math.sqrt(sweptPointDistSq(cell, virus.x, virus.y));
+        return circleOverlapArea(hitRadius, virus.radius, sweptDistance) >= halfVirusArea;
+      }
+
       function canConsumeVirus(cell, virus) {
         const hitMass = mergeVirusHitMass(cell);
-        const threshold = consumeThresholdWithMass(cell, virus, hitMass);
-        if (!threshold) return false;
-        const thresholdSq = threshold * threshold;
-        if (distSq(cell.x, cell.y, virus.x, virus.y) <= thresholdSq) return true;
-        return hasSweepPath(cell) && sweptPointDistSq(cell, virus.x, virus.y) <= thresholdSq;
+        if (!consumeThresholdWithMass(cell, virus, hitMass)) return false;
+        return hasHalfVirusOverlap(cell, virus, radiusFromMass(hitMass));
       }
 
       function canBurstVirus(cell, virus) {
-        const threshold = mergeVirusHitRadius(cell) + virus.radius * 0.72;
-        const thresholdSq = threshold * threshold;
-        if (distSq(cell.x, cell.y, virus.x, virus.y) <= thresholdSq) return true;
-        return hasSweepPath(cell) && sweptPointDistSq(cell, virus.x, virus.y) <= thresholdSq;
+        return hasHalfVirusOverlap(cell, virus, mergeVirusHitRadius(cell));
       }
 
       function virusCollisionPriority(cell) {
