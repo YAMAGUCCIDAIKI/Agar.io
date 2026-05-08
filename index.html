@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.37</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.38</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1054,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.37";
+      const APP_VERSION = "v2026.05.08.38";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1388,6 +1388,7 @@
       const renderCellQueryScratch = [];
       const renderEntityQueryScratch = [];
       const renderCellsScratch = [];
+      const renderSizedEntitiesScratch = [];
       const detailCellsScratch = [];
       const foodRenderScratch = [];
       const feedRenderScratch = [];
@@ -6152,6 +6153,22 @@
         return virusGrid.queryRect(bounds.left - 90, bounds.top - 90, bounds.right + 90, bounds.bottom + 90, renderEntityQueryScratch);
       }
 
+      function drawSizedWorldEntities(bounds, renderMode) {
+        renderSizedEntitiesScratch.length = 0;
+        for (const virus of queryRenderableViruses(bounds)) {
+          if (virus.dead || !isVisible(virus, bounds, 90)) continue;
+          renderSizedEntitiesScratch.push({ type: "virus", radius: virus.radius, entity: virus });
+        }
+        for (const cell of renderCellsScratch) {
+          renderSizedEntitiesScratch.push({ type: "cell", radius: cell.radius, entity: cell });
+        }
+        renderSizedEntitiesScratch.sort((a, b) => a.radius - b.radius);
+        for (const item of renderSizedEntitiesScratch) {
+          if (item.type === "virus") drawVirus(item.entity, renderMode);
+          else drawCell(item.entity, renderMode);
+        }
+      }
+
       function draw() {
         ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
         ctx.fillStyle = "#f7f9fc";
@@ -6197,18 +6214,7 @@
         }
         if (feedRenderScratch.length) drawBatchedEntities(feedRenderScratch, appendFeedPath, true);
 
-        for (const virus of queryRenderableViruses(bounds)) {
-          if (isVisible(virus, bounds, 90)) drawVirus(virus, renderMode);
-        }
-
-        if (renderMode > 0) {
-          drawBatchedCells(renderMode);
-        } else {
-          renderCellsScratch.sort((a, b) => a.radius - b.radius);
-          for (const cell of renderCellsScratch) {
-            drawCell(cell, renderMode);
-          }
-        }
+        drawSizedWorldEntities(bounds, renderMode);
         drawCursorLine();
 
         ctx.restore();
