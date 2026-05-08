@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.28</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.29</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.28";
+      const APP_VERSION = "v2026.05.08.29";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -2109,7 +2109,7 @@
       }
 
       function setMenuOpen(open) {
-        if (!open && state.waitingForPlay && localPlayerIsDead()) open = true;
+        if (!open && state.waitingForPlay && localPlayerIsDead() && !state.spectating) open = true;
         state.menuOpen = Boolean(open);
         if (state.menuOpen) {
           state.input.keys.clear();
@@ -2384,6 +2384,7 @@
       function toggleSpectating() {
         if (!localPlayerIsDead()) return;
         setSpectating(!state.spectating);
+        if (state.spectating) setMenuOpen(false);
       }
 
       function playLocalPlayer() {
