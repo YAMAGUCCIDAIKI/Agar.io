@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.26</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.27</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.26";
+      const APP_VERSION = "v2026.05.08.27";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1692,34 +1692,7 @@
         return text.endsWith("-clone-1") ? text.slice(0, -8) : text;
       }
 
-      function restoreRecentFamilyVictims(eater, victim) {
-        const eaterFamily = actorFamilyId(eater.ownerId);
-        const victimFamily = actorFamilyId(victim.ownerId);
-        if (eaterFamily === victimFamily) return;
-
-        let restoredMass = 0;
-        for (const actor of state.actors) {
-          if (actorFamilyId(actor.id) !== eaterFamily) continue;
-          for (const cell of actor.cells) {
-            if (!cell.dead || cell.eatenAt == null || state.now - cell.eatenAt > EATEN_CELL_RESTORE_WINDOW) continue;
-            if (actorFamilyId(cell.eatenByOwnerId) !== victimFamily) continue;
-            cell.dead = false;
-            cell.eatenFrame = -1;
-            cell.eatenAt = -1;
-            cell.eatenByOwnerId = "";
-            cell.eatenByCellId = 0;
-            restoredMass += cell.mass;
-          }
-        }
-
-        if (restoredMass > 0) {
-          victim.mass = Math.max(MIN_CELL_MASS, victim.mass - restoredMass);
-          refreshCell(victim);
-        }
-      }
-
       function markCellConsumed(eater, victim) {
-        restoreRecentFamilyVictims(eater, victim);
         victim.dead = true;
         victim.eatenFrame = state.frameIndex;
         victim.eatenAt = state.now;
