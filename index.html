@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.27</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.28</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1015,7 +1015,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.27";
+      const APP_VERSION = "v2026.05.08.28";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1162,6 +1162,7 @@
         },
         viewScale: DEFAULT_VIEW_SCALE,
         spectating: false,
+        waitingForPlay: true,
         profile: {
           name: "YOU",
           cloneName: "YOU2"
@@ -1830,6 +1831,17 @@
         return localHumanActors().filter((actor) => actor.cells.some((cell) => !cell.dead));
       }
 
+      function localPlayerIsDead() {
+        return liveLocalHumanActors().length === 0;
+      }
+
+      function syncSpectateButton() {
+        const canSpectate = localPlayerIsDead();
+        if (!canSpectate && state.spectating) state.spectating = false;
+        spectateBtn.disabled = !canSpectate;
+        spectateBtn.textContent = state.spectating ? "観戦中" : "観戦";
+      }
+
       function clearActorControlInput(actor, preserveSplits = false) {
         if (!actor || !actor.input) return;
         actor.input.keys.clear();
@@ -2097,6 +2109,7 @@
       }
 
       function setMenuOpen(open) {
+        if (!open && state.waitingForPlay && localPlayerIsDead()) open = true;
         state.menuOpen = Boolean(open);
         if (state.menuOpen) {
           state.input.keys.clear();
@@ -2112,6 +2125,7 @@
           if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
         }
         document.body.classList.toggle("menu-open", state.menuOpen);
+        syncSpectateButton();
         syncKeyBindControls();
       }
 
@@ -2353,8 +2367,8 @@
       }
 
       function setSpectating(enabled) {
-        state.spectating = Boolean(enabled);
-        spectateBtn.textContent = state.spectating ? "復帰" : "観戦";
+        state.spectating = Boolean(enabled) && localPlayerIsDead();
+        syncSpectateButton();
         if (!state.spectating) return;
         state.input.keys.clear();
         state.input.splitQueued = false;
@@ -2368,7 +2382,35 @@
       }
 
       function toggleSpectating() {
+        if (!localPlayerIsDead()) return;
         setSpectating(!state.spectating);
+      }
+
+      function playLocalPlayer() {
+        applyLocalProfile();
+        if (state.net.role === "client") {
+          state.input.respawnQueued = true;
+          state.input.respawnSeq += 1;
+          state.waitingForPlay = false;
+          setSpectating(false);
+          setMenuOpen(false);
+          return;
+        }
+        let actor = primaryLocalActor() || actorById(state.localActorId);
+        if (!actor) {
+          resetFreshWorld(state.localActorId || "player", state.net.role !== "offline");
+          actor = state.player;
+        }
+        if (localPlayerIsDead()) {
+          spawnActor(actor, playerSpawnMass());
+          setActiveLocalActor(actor);
+          state.waitingForPlay = false;
+          state.flashUntil = state.now + 1.0;
+          state.net.lastSnapshotSend = -100;
+          rebuildSpatialHashes();
+        }
+        setSpectating(false);
+        setMenuOpen(false);
       }
 
       function createBotActor() {
@@ -4101,17 +4143,18 @@
         if (localActors.length) {
           const liveLocalActors = localActors.filter((actor) => liveCellCount(actor) > 0);
           if (!liveLocalActors.length) {
-            const main = primaryLocalActor() || localActors[0];
+            const main = primaryLocalActor() || actorById(state.localActorId) || localActors[0];
             const mainFamily = actorFamilyId(main?.id || state.localActorId);
             for (let i = state.actors.length - 1; i >= 0; i -= 1) {
               if (state.actors[i].localClone && actorFamilyId(state.actors[i].id) === mainFamily) state.actors.splice(i, 1);
             }
             if (main) {
               main.localClone = false;
-              spawnActor(main, playerSpawnMass());
               setActiveLocalActor(main);
-              state.flashUntil = state.now + 1.25;
             }
+            state.waitingForPlay = true;
+            setSpectating(false);
+            setMenuOpen(true);
           } else if (!state.player || state.player.control !== "local" || state.player.cells.length === 0) {
             setActiveLocalActor(liveLocalActors[0]);
           }
@@ -4122,8 +4165,7 @@
           if (actor.id === "guest" || actor.id === localCloneId("guest")) continue;
           if (actor.cells.length === 0) {
             if (actor.isHuman) {
-              spawnActor(actor, playerSpawnMass());
-              state.flashUntil = state.now + 1.25;
+              continue;
             } else {
               if (actor.respawnAt <= 0) {
                 actor.respawnAt = state.now + 0.5;
@@ -4591,10 +4633,11 @@
         });
       }
 
-      function resetFreshWorld(localId, onlineMode = false) {
+      function resetFreshWorld(localId, onlineMode = false, spawnLocalPlayer = true) {
         syncProfileFromInputs();
         WORLD_SIZE = state.settings.worldSize;
         setSpectating(false);
+        state.waitingForPlay = !spawnLocalPlayer;
         state.localCloneIndex = 0;
         state.localActorId = localId;
         state.input.activeActorId = localId;
@@ -4616,33 +4659,34 @@
           state.actors.push(host, guest);
           state.player = localId === "guest" ? guest : host;
           if (localId === "host") {
-            spawnActor(host, playerSpawnMass());
-            spawnActor(guest, playerSpawnMass());
+            if (spawnLocalPlayer || localId !== "host") spawnActor(host, playerSpawnMass());
+            if (spawnLocalPlayer || localId !== "guest") spawnActor(guest, playerSpawnMass());
             const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
             while (state.foods.length < initialFood) addFood();
-            const center = actorCenter(host);
+            const center = spawnLocalPlayer ? actorCenter(host) : { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5 };
             seedInitialViruses(center.x, center.y);
           } else if (localId === "guest") {
-            spawnActor(guest, playerSpawnMass());
+            if (spawnLocalPlayer) spawnActor(guest, playerSpawnMass());
           }
         } else {
           const player = createActor("player", localProfileName(), "#2e90fa", true, "local");
           state.player = player;
           state.actors.push(player);
-          spawnActor(player, playerSpawnMass());
+          if (spawnLocalPlayer) spawnActor(player, playerSpawnMass());
           ensureBotPopulation();
           const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
           while (state.foods.length < initialFood) addFood();
-          const center = actorCenter(player);
+          const center = spawnLocalPlayer ? actorCenter(player) : { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5 };
           seedInitialViruses(center.x, center.y);
         }
 
-        const center = actorCenter(state.player);
+        const center = spawnLocalPlayer ? actorCenter(state.player) : { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5, mass: 1 };
         state.camera.x = center.x;
         state.camera.y = center.y;
-        state.camera.zoom = mobileTargetZoom(Math.max(1, center.mass), Math.max(1, state.player.cells.length));
+        state.camera.zoom = mobileTargetZoom(Math.max(1, center.mass), Math.max(1, state.player?.cells.length || 1));
         rebuildSpatialHashes();
         state.flashUntil = state.now + 1.0;
+        syncSpectateButton();
       }
 
       function closeNetwork(keepWorld = true) {
@@ -6342,6 +6386,11 @@
       function respawnLocalPlayer() {
         if (!state.player) return;
         if (!state.settings.nRespawnEnabled) return;
+        if (localPlayerIsDead()) {
+          state.waitingForPlay = true;
+          setMenuOpen(true);
+          return;
+        }
         if (state.net.role === "client") {
           state.input.respawnQueued = true;
           state.input.respawnSeq += 1;
@@ -6415,8 +6464,7 @@
         });
         menuBtn.addEventListener("click", () => setMenuOpen(true));
         playBtn.addEventListener("click", () => {
-          applyLocalProfile();
-          setMenuOpen(false);
+          playLocalPlayer();
         });
         for (const button of menuTabButtons) {
           button.addEventListener("click", () => setMenuPage(button.dataset.menuPage));
@@ -6557,7 +6605,7 @@
         setMenuPage("home");
         setMenuOpen(true);
 
-        resetFreshWorld("player", false);
+        resetFreshWorld("player", false, false);
 
         scheduleNextFrame(0);
       }
