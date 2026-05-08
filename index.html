@@ -720,7 +720,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.16</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.17</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -999,7 +999,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.16";
+      const APP_VERSION = "v2026.05.08.17";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1033,6 +1033,7 @@
       const MASS_DECAY_PER_SECOND = 0.002;
       const MASS_CAP_SETTLE_FRAMES = 10;
       const VIRUS_FEED_LIMIT = 7;
+      const VIRUS_FEED_MASSES = [100, 112, 127, 141, 156, 171, 184];
       const VIRUS_RESPAWN_DELAY = 0.5;
       const BOT_AI_SCAN_RANGE = 1050;
       const VIRUS_CORE_SPLIT_MASS = 700;
@@ -2876,6 +2877,13 @@
         };
       }
 
+      function updateVirusFeedMass(virus) {
+        const feedCount = clamp(Math.round(virus.feedCount || 0), 0, VIRUS_FEED_LIMIT - 1);
+        virus.feedCount = feedCount;
+        virus.mass = VIRUS_FEED_MASSES[feedCount] || VIRUS_MASS;
+        virus.radius = radiusFromMass(virus.mass);
+      }
+
       function spawnVirusSafely(avoidX = null, avoidY = null) {
         const radius = radiusFromMass(VIRUS_MASS);
         const pos = findOpenSpawnPosition(radius, 180, 18, {
@@ -3996,12 +4004,15 @@
               const n = normalized(feed.vx, feed.vy, feed.x - virus.x, feed.y - virus.y);
               if (virus.feedCount >= VIRUS_FEED_LIMIT) {
                 virus.feedCount = 0;
+                updateVirusFeedMass(virus);
                 const spawnX = clamp(virus.x + n.x * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
                 const spawnY = clamp(virus.y + n.y * (virus.radius * 2.1), virus.radius, WORLD_SIZE - virus.radius);
                 const newVirus = createVirus(spawnX, spawnY, false);
                 newVirus.vx = n.x * 540;
                 newVirus.vy = n.y * 540;
                 state.viruses.push(newVirus);
+              } else {
+                updateVirusFeedMass(virus);
               }
             }
             break;
