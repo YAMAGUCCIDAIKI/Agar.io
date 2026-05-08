@@ -1199,6 +1199,7 @@
           splitQueued: false,
           splitCount: 0,
           splitSeq: 0,
+          splitBurstCount: 0,
           ejectQueued: false,
           ejectSeq: 0,
           respawnQueued: false,
@@ -2128,6 +2129,7 @@
           state.input.keys.clear();
           state.input.splitQueued = false;
           state.input.splitCount = 0;
+          state.input.splitBurstCount = 0;
           state.input.ejectQueued = false;
           state.input.botSplitQueued = false;
           state.input.botEjectQueued = false;
@@ -2384,6 +2386,7 @@
         state.input.keys.clear();
         state.input.splitQueued = false;
         state.input.splitCount = 0;
+        state.input.splitBurstCount = 0;
         state.input.ejectQueued = false;
         state.input.respawnQueued = false;
         state.input.botSplitQueued = false;
@@ -4621,6 +4624,7 @@
         state.input.activeActorId = localId;
         state.input.cloneQueued = false;
         state.input.cloneSeq = 0;
+        state.input.splitBurstCount = 0;
         state.input.botSplitQueued = false;
         state.actors.length = 0;
         state.foods.length = 0;
@@ -5199,12 +5203,14 @@
           e: actorAutoEjectHeld(inputActor),
           ejectSeq: state.input.ejectSeq,
           splitSeq: state.input.splitSeq,
+          splitCount: state.input.splitBurstCount || Math.max(1, inputActor.input.splitCount || 1),
           respawnSeq: state.input.respawnSeq,
           cloneSeq: state.input.cloneSeq
         });
         inputActor.input.ejectQueued = false;
         inputActor.input.splitQueued = false;
         inputActor.input.splitCount = 0;
+        state.input.splitBurstCount = 0;
         if (inputActor !== state.player) {
           state.player.input.ejectQueued = false;
           state.player.input.splitQueued = false;
@@ -5320,7 +5326,7 @@
           }
           const splitSeq = Number(message.splitSeq) || 0;
           if (splitSeq > guest.input.lastNetSplitSeq) {
-            const splitCount = Math.min(4, splitSeq - guest.input.lastNetSplitSeq);
+            const splitCount = clamp(Math.round(Number(message.splitCount) || (splitSeq - guest.input.lastNetSplitSeq)), 1, 4);
             activeGuest.input.splitQueued = true;
             activeGuest.input.splitCount += splitCount;
             guest.input.lastNetSplitSeq = splitSeq;
@@ -6425,6 +6431,7 @@
           state.input.keys.clear();
           state.input.splitQueued = false;
           state.input.splitCount = 0;
+          state.input.splitBurstCount = 0;
           state.input.ejectQueued = false;
           state.input.respawnQueued = false;
           state.input.botSplitQueued = false;
@@ -6512,7 +6519,8 @@
           state.input.splitQueued = true;
           state.input.splitCount += splitCount;
         }
-        state.input.splitSeq += splitCount;
+        state.input.splitSeq += 1;
+        state.input.splitBurstCount = splitCount;
       }
 
       function seedInitialViruses(avoidX, avoidY) {
