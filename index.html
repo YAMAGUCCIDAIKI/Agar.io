@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.38</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.39</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1054,7 +1054,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.38";
+      const APP_VERSION = "v2026.05.08.39";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -3101,6 +3101,10 @@
         return Math.max(0.05, state.settings.splitMomentum / 100);
       }
 
+      function launchVelocityDuration() {
+        return clamp(0.16 + splitMomentumScale() * 0.75, 0.28, 1.15);
+      }
+
       function minSplitBoost() {
         return 0;
       }
@@ -3173,7 +3177,7 @@
         const impulse = splitImpulse(child.radius);
         child.vx += dirX * impulse;
         child.vy += dirY * impulse;
-        child.launchVelocityAge = 0.22;
+        child.launchVelocityAge = launchVelocityDuration();
         child.pendingBoostX = 0;
         child.pendingBoostY = 0;
         child.splitHoldAge = 0;
@@ -3364,7 +3368,7 @@
         const firstBurst = rand(260, 380) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.45, 0.9) * splitMomentumScale();
         cell.vx += firstDirX * firstBurst;
         cell.vy += firstDirY * firstBurst;
-        cell.launchVelocityAge = 0.22;
+        cell.launchVelocityAge = launchVelocityDuration();
         cell.pendingBoostX = 0;
         cell.pendingBoostY = 0;
         cell.splitHoldAge = 0;
@@ -3391,7 +3395,7 @@
           const burst = rand(300, 440) * massDrag * splitMomentumScale();
           child.vx += dirX * burst;
           child.vy += dirY * burst;
-          child.launchVelocityAge = 0.24;
+          child.launchVelocityAge = launchVelocityDuration();
           child.pendingBoostX = 0;
           child.pendingBoostY = 0;
           child.splitHoldAge = 0;
@@ -3767,11 +3771,11 @@
             cell.instantFacing = false;
             const desiredX = n.x * speed * throttle;
             const desiredY = n.y * speed * throttle;
-            const inputRate = instantControl ? 18 : (cell.launchVelocityAge > 0 ? 4.2 : (cell.splitBoostAge > 0 ? 2.4 : 8.5));
+            const inputRate = instantControl ? 18 : (cell.launchVelocityAge > 0 ? 2.8 : (cell.splitBoostAge > 0 ? 2.4 : 8.5));
             const inputImpulse = 1 - Math.exp(-dt * inputRate);
             cell.vx += desiredX * inputImpulse;
             cell.vy += desiredY * inputImpulse;
-            const velocityDragRate = cell.launchVelocityAge > 0 ? 1.15 : (cell.splitBoostAge > 0 ? 1.5 : 8.5);
+            const velocityDragRate = cell.launchVelocityAge > 0 ? 0.52 : (cell.splitBoostAge > 0 ? 1.5 : 8.5);
             const velocityDrag = Math.exp(-dt * velocityDragRate);
             cell.vx *= velocityDrag;
             cell.vy *= velocityDrag;
