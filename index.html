@@ -530,6 +530,17 @@
       letter-spacing: 0;
     }
 
+    .settings-category {
+      margin: 8px 0 2px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: rgba(23, 125, 220, 0.08);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
     .max-input {
       width: 100%;
       min-width: 0;
@@ -623,6 +634,7 @@
 
     .menu-screen .online-title,
     .menu-screen .view-row,
+    .menu-screen .settings-category,
     .menu-screen .setting-control,
     .menu-screen .keybind-title,
     .menu-screen .keybind-control {
@@ -720,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.18</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.19</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -799,6 +811,23 @@
           <label class="keybind-control"><span>Bot分裂</span><button type="button" data-keybind="botSplit"></button></label>
           <label class="keybind-control"><span>Bot粒</span><button type="button" data-keybind="botEject"></button></label>
         </div>
+        <div class="settings-category">BOT</div>
+        <label class="setting-control">
+          <span>ボット</span>
+          <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
+          <strong id="botValue">100</strong>
+          <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="ボット上限">
+        </label>
+        <label class="setting-control">
+          <span>行動</span>
+          <select id="botModeSelect" class="mode-select" aria-label="ボット行動">
+            <option value="hunt">小さい相手を狙う</option>
+            <option value="chase">プレイヤーを追う</option>
+            <option value="virus">とげを狙う</option>
+            <option value="cursor">カーソルへ向かう</option>
+          </select>
+        </label>
+        <div class="settings-category">分裂</div>
         <label class="setting-control">
           <span>反動</span>
           <input id="splitRecoilSlider" type="range" min="0" max="40" step="1" value="0" aria-label="分裂反動の大きさ">
@@ -829,26 +858,18 @@
           <strong id="splitInputSpeedValue">4</strong>
           <input id="splitInputSpeedMaxBox" class="max-input" type="number" min="1" max="4" step="1" value="4" aria-label="分裂入力速度上限">
         </label>
-        <label class="setting-control">
-          <span>ボット</span>
-          <input id="botSlider" type="range" min="0" max="200" step="1" value="100" aria-label="ボット数">
-          <strong id="botValue">100</strong>
-          <input id="botMaxBox" class="max-input" type="number" min="1" step="1" value="200" aria-label="ボット上限">
-        </label>
-        <label class="setting-control">
-          <span>行動</span>
-          <select id="botModeSelect" class="mode-select" aria-label="ボット行動">
-            <option value="hunt">小さい相手を狙う</option>
-            <option value="chase">プレイヤーを追う</option>
-            <option value="virus">とげを狙う</option>
-            <option value="cursor">カーソルへ向かう</option>
-          </select>
-        </label>
+        <div class="settings-category">棘・粒</div>
         <label class="setting-control">
           <span>自然とげ</span>
           <input id="virusSlider" type="range" min="0" max="500" step="1" value="36" aria-label="自然発生とげ数">
           <strong id="virusValue">36</strong>
           <input id="virusMaxBox" class="max-input" type="number" min="1" step="1" value="500" aria-label="自然発生とげ上限">
+        </label>
+        <label class="setting-control">
+          <span>棘給餌</span>
+          <input id="virusFeedLimitSlider" type="range" min="1" max="8" step="1" value="1" aria-label="1フレームの棘給餌上限">
+          <strong id="virusFeedLimitValue">1</strong>
+          <input id="virusFeedLimitMaxBox" class="max-input" type="number" min="1" step="1" value="8" aria-label="棘給餌上限の最大値">
         </label>
         <label class="setting-control">
           <span>ペレット</span>
@@ -880,6 +901,7 @@
           <strong id="ejectRateValue">11</strong>
           <input id="ejectRateMaxBox" class="max-input" type="number" min="1" step="1" value="50" aria-label="連射上限">
         </label>
+        <div class="settings-category">ゲーム</div>
         <label class="setting-control">
           <span>ゲーム速度</span>
           <input id="gameSpeedSlider" type="range" min="0.1" max="3" step="0.1" value="1" aria-label="ゲーム速度">
@@ -954,6 +976,9 @@
       const virusSlider = document.getElementById("virusSlider");
       const virusValueEl = document.getElementById("virusValue");
       const virusMaxBox = document.getElementById("virusMaxBox");
+      const virusFeedLimitSlider = document.getElementById("virusFeedLimitSlider");
+      const virusFeedLimitValueEl = document.getElementById("virusFeedLimitValue");
+      const virusFeedLimitMaxBox = document.getElementById("virusFeedLimitMaxBox");
       const foodSlider = document.getElementById("foodSlider");
       const foodValueEl = document.getElementById("foodValue");
       const foodMaxBox = document.getElementById("foodMaxBox");
@@ -999,7 +1024,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.18";
+      const APP_VERSION = "v2026.05.08.19";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1155,6 +1180,7 @@
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
           virusTarget: DEFAULT_VIRUS_TARGET,
+          virusFeedLimitPerFrame: 1,
           foodTarget: DEFAULT_FOOD_TARGET,
           spawnMass: DEFAULT_SPAWN_MASS,
           ejectMass: DEFAULT_EJECT_MASS,
@@ -1175,6 +1201,7 @@
           max: {
             bot: 200,
             virus: 500,
+            virusFeedLimitPerFrame: 8,
             food: 100000,
             spawnMass: 5000,
             ejectMass: 80,
@@ -2214,6 +2241,7 @@
             botTarget: state.settings.botTarget,
             botMode: state.settings.botMode,
             virusTarget: state.settings.virusTarget,
+            virusFeedLimitPerFrame: state.settings.virusFeedLimitPerFrame,
             foodTarget: state.settings.foodTarget,
             spawnMass: state.settings.spawnMass,
             ejectMass: state.settings.ejectMass,
@@ -2261,6 +2289,7 @@
           const max = prefs.max;
           if (Number.isFinite(max.bot)) state.settings.max.bot = Math.max(1, Math.round(max.bot));
           if (Number.isFinite(max.virus)) state.settings.max.virus = Math.max(1, Math.round(max.virus));
+          if (Number.isFinite(max.virusFeedLimitPerFrame)) state.settings.max.virusFeedLimitPerFrame = Math.max(1, Math.round(max.virusFeedLimitPerFrame));
           if (Number.isFinite(max.food)) state.settings.max.food = Math.max(100, Math.round(max.food / 100) * 100);
           if (Number.isFinite(max.spawnMass)) state.settings.max.spawnMass = Math.max(MIN_CELL_MASS, Math.round(max.spawnMass / 10) * 10);
           if (Number.isFinite(max.ejectMass)) state.settings.max.ejectMass = Math.max(5, Math.round(max.ejectMass));
@@ -2281,6 +2310,7 @@
           if (Number.isFinite(saved.botTarget)) state.settings.botTarget = clamp(Math.round(saved.botTarget), 0, state.settings.max.bot);
           if (["hunt", "chase", "virus", "cursor"].includes(saved.botMode)) state.settings.botMode = saved.botMode;
           if (Number.isFinite(saved.virusTarget)) state.settings.virusTarget = clamp(Math.round(saved.virusTarget), 0, state.settings.max.virus);
+          if (Number.isFinite(saved.virusFeedLimitPerFrame)) state.settings.virusFeedLimitPerFrame = clamp(Math.round(saved.virusFeedLimitPerFrame), 1, state.settings.max.virusFeedLimitPerFrame);
           if (Number.isFinite(saved.foodTarget)) state.settings.foodTarget = clamp(Math.round(saved.foodTarget / 100) * 100, 0, state.settings.max.food);
           if (Number.isFinite(saved.spawnMass)) state.settings.spawnMass = clamp(Math.round(saved.spawnMass / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
           if (Number.isFinite(saved.ejectMass)) state.settings.ejectMass = clamp(Math.round(saved.ejectMass), 5, state.settings.max.ejectMass);
@@ -2872,6 +2902,8 @@
           vx: 0,
           vy: 0,
           feedCount: 0,
+          feedFrameCount: 0,
+          lastFeedFrame: -1,
           natural,
           dead: false
         };
@@ -3989,6 +4021,7 @@
 
       function handleFeedVirusCollisions() {
         const nearby = [];
+        const feedLimit = Math.max(1, Math.round(state.settings.virusFeedLimitPerFrame || 1));
         for (const feed of state.feeds) {
           if (feed.dead) continue;
           virusGrid.query(feed.x, feed.y, 90, nearby);
@@ -3996,6 +4029,12 @@
             if (virus.dead) continue;
             const hit = virus.radius + feed.radius * 0.4;
             if (distSq(feed.x, feed.y, virus.x, virus.y) > hit * hit) continue;
+            if (virus.lastFeedFrame !== state.frameIndex) {
+              virus.lastFeedFrame = state.frameIndex;
+              virus.feedFrameCount = 0;
+            }
+            if (virus.feedFrameCount >= feedLimit) continue;
+            virus.feedFrameCount += 1;
 
             feed.dead = true;
             const owner = actorById(feed.ownerId);
@@ -5105,6 +5144,7 @@
             splitMomentum: state.settings.splitMomentum,
             splitInputSpeed: state.settings.splitInputSpeed,
             spawnMass: state.settings.spawnMass,
+            virusFeedLimitPerFrame: state.settings.virusFeedLimitPerFrame,
             gameSpeed: state.settings.gameSpeed,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
@@ -5582,6 +5622,13 @@
             settingsChanged = settingsChanged || nextMax !== state.settings.max.spawnMass || nextValue !== state.settings.spawnMass;
             state.settings.max.spawnMass = nextMax;
             state.settings.spawnMass = nextValue;
+          }
+          if (Number.isFinite(message.settings.virusFeedLimitPerFrame)) {
+            const nextMax = Math.max(state.settings.max.virusFeedLimitPerFrame, message.settings.virusFeedLimitPerFrame);
+            const nextValue = clamp(Math.round(message.settings.virusFeedLimitPerFrame), 1, nextMax);
+            settingsChanged = settingsChanged || nextMax !== state.settings.max.virusFeedLimitPerFrame || nextValue !== state.settings.virusFeedLimitPerFrame;
+            state.settings.max.virusFeedLimitPerFrame = nextMax;
+            state.settings.virusFeedLimitPerFrame = nextValue;
           }
           if (Number.isFinite(message.settings.gameSpeed)) {
             const nextMax = Math.max(state.settings.max.gameSpeed, message.settings.gameSpeed);
@@ -6146,6 +6193,10 @@
         virusSlider.value = String(state.settings.virusTarget);
         virusValueEl.textContent = String(state.settings.virusTarget);
         virusMaxBox.value = String(state.settings.max.virus);
+        virusFeedLimitSlider.max = String(state.settings.max.virusFeedLimitPerFrame);
+        virusFeedLimitSlider.value = String(state.settings.virusFeedLimitPerFrame);
+        virusFeedLimitValueEl.textContent = String(state.settings.virusFeedLimitPerFrame);
+        virusFeedLimitMaxBox.value = String(state.settings.max.virusFeedLimitPerFrame);
         foodSlider.max = String(state.settings.max.food);
         foodSlider.value = String(state.settings.foodTarget);
         foodValueEl.textContent = String(state.settings.foodTarget);
@@ -6253,6 +6304,7 @@
         if (kind === "bot") state.settings.botTarget = clamp(number, 0, state.settings.max.bot);
         if (kind === "botMode") state.settings.botMode = ["hunt", "chase", "virus", "cursor"].includes(value) ? value : "hunt";
         if (kind === "virus") state.settings.virusTarget = clamp(number, 0, state.settings.max.virus);
+        if (kind === "virusFeedLimit") state.settings.virusFeedLimitPerFrame = clamp(number, 1, state.settings.max.virusFeedLimitPerFrame);
         if (kind === "food") state.settings.foodTarget = clamp(Math.round(number / 100) * 100, 0, state.settings.max.food);
         if (kind === "spawnMass") state.settings.spawnMass = clamp(Math.round(number / 10) * 10, MIN_CELL_MASS, state.settings.max.spawnMass);
         if (kind === "ejectMass") state.settings.ejectMass = clamp(number, 5, state.settings.max.ejectMass);
@@ -6288,6 +6340,10 @@
         if (kind === "virus") {
           state.settings.max.virus = Math.max(1, number);
           state.settings.virusTarget = clamp(state.settings.virusTarget, 0, state.settings.max.virus);
+        }
+        if (kind === "virusFeedLimit") {
+          state.settings.max.virusFeedLimitPerFrame = Math.max(1, number);
+          state.settings.virusFeedLimitPerFrame = clamp(state.settings.virusFeedLimitPerFrame, 1, state.settings.max.virusFeedLimitPerFrame);
         }
         if (kind === "food") {
           state.settings.max.food = Math.max(100, Math.round(number / 100) * 100);
@@ -6479,6 +6535,7 @@
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
+        virusFeedLimitSlider.addEventListener("input", () => setWorldSetting("virusFeedLimit", virusFeedLimitSlider.value));
         foodSlider.addEventListener("input", () => setWorldSetting("food", foodSlider.value));
         spawnMassSlider.addEventListener("input", () => setWorldSetting("spawnMass", spawnMassSlider.value));
         ejectMassSlider.addEventListener("input", () => setWorldSetting("ejectMass", ejectMassSlider.value));
@@ -6495,6 +6552,7 @@
         worldSizeSlider.addEventListener("input", () => setWorldSetting("worldSize", worldSizeSlider.value));
         botMaxBox.addEventListener("change", () => setSliderMax("bot", botMaxBox.value));
         virusMaxBox.addEventListener("change", () => setSliderMax("virus", virusMaxBox.value));
+        virusFeedLimitMaxBox.addEventListener("change", () => setSliderMax("virusFeedLimit", virusFeedLimitMaxBox.value));
         foodMaxBox.addEventListener("change", () => setSliderMax("food", foodMaxBox.value));
         spawnMassMaxBox.addEventListener("change", () => setSliderMax("spawnMass", spawnMassMaxBox.value));
         ejectMassMaxBox.addEventListener("change", () => setSliderMax("ejectMass", ejectMassMaxBox.value));
