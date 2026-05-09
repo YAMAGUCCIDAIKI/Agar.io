@@ -6,7 +6,23 @@ const crypto = require("crypto");
 const PORT = Number(process.env.PORT || 8080);
 const ROOT = __dirname;
 const MAX_ROOM_PEERS = 10;
+const WORLD_SIZE = 5000;
+const FOOD_TARGET = 900;
+const VIRUS_TARGET = 40;
+const PLAYER_MASS = 132;
+const FOOD_MASS = 1;
+const VIRUS_MASS = 100;
+const MAX_CELLS = 16;
+const MIN_SPLIT_MASS = 36;
+const EJECT_MASS = 21;
+const CONSUME_RATIO = 1.325;
+const TICK_RATE = 45;
+const SNAPSHOT_RATE = 20;
+const WORLD_RATE = 0.5;
+const TAU = Math.PI * 2;
+
 let nextClientId = 1;
+let nextEntityId = 1;
 const rooms = new Map();
 
 function sendHttp(res, status, body, type = "text/plain; charset=utf-8") {
@@ -71,7 +87,6 @@ server.on("upgrade", (req, socket) => {
     id: nextClientId++,
     socket,
     room: "",
-    role: "",
     actorId: "",
     buffer: Buffer.alloc(0),
     alive: true
@@ -81,7 +96,6 @@ server.on("upgrade", (req, socket) => {
     client.buffer = Buffer.concat([client.buffer, chunk]);
     readFrames(client);
   });
-
   socket.on("close", () => leaveRoom(client));
   socket.on("error", () => leaveRoom(client));
 });
@@ -127,9 +141,133 @@ function readFrames(client) {
       continue;
     }
     if (opcode !== 0x1) continue;
-
     handleMessage(client, payload.toString("utf8"));
   }
+}
+
+function radiusFromMass(mass) {
+  return Math.sqrt(Math.max(1, mass)) * 4;
+}
+
+function rand(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function randomColor(seed = Math.random()) {
+  const colors = ["#2e90fa", "#f04438", "#12b76a", "#f79009", "#7a5af8", "#06aed4", "#e31b54", "#84cc16"];
+  return colors[Math.floor(Math.abs(seed * 9973)) % colors.length];
+}
+
+function createRoom(id) {
+  const room = {
+    id,
+    peers: new Set(),
+    actors: new Map(),
+    foods: [],
+    viruses: [],
+    feeds: [],
+    worldSeq: 0,
+    lastSnapshotAt: 0,
+    lastWorldAt: 0,
+    lastTickAt: Date.now() / 1000
+  };
+  while (room.foods.length < FOOD_TARGET) room.foods.push(createFood());
+  while (room.viruses.length < VIRUS_TARGET) room.viruses.push(createVirus());
+  rooms.set(id, room);
+  return room;
+}
+
+function createFood() {
+  return {
+    id: nextEntityId++,
+    x: rand(20, WORLD_SIZE - 20),
+    y: rand(20, WORLD_SIZE - 20),
+    mass: FOOD_MASS,
+    radius: 8.5,
+    color: randomColor(),
+    dead: false
+  };
+}
+
+function createVirus() {
+  return {
+    id: nextEntityId++,
+    x: rand(120, WORLD_SIZE - 120),
+    y: rand(120, WORLD_SIZE - 120),
+    mass: VIRUS_MASS,
+    radius: radiusFromMass(VIRUS_MASS),
+    color: "#00f018",
+    feedCount: 0,
+    natural: true,
+    dead: false
+  };
+}
+
+function spawnCell(actor, mass = PLAYER_MASS, x = rand(200, WORLD_SIZE - 200), y = rand(200, WORLD_SIZE - 200)) {
+  const radius = radiusFromMass(mass);
+  return {
+    id: nextEntityId++,
+    x: clamp(x, radius, WORLD_SIZE - radius),
+    y: clamp(y, radius, WORLD_SIZE - radius),
+    mass,
+    radius,
+    vx: 0,
+    vy: 0,
+    boostX: 0,
+    boostY: 0,
+    faceX: 1,
+    faceY: 0,
+    cooldown: 0,
+    mergeReadyAt: 0,
+    birthAge: 1,
+    birthDuration: 0,
+    birthX: x,
+    birthY: y,
+    birthScale: 1,
+    fragmentAge: 0,
+    splitBoostAge: 0,
+    splitHoldAge: 0,
+    pendingBoostX: 0,
+    pendingBoostY: 0,
+    virusCooldown: 0,
+    mergeVirusWindow: 0,
+    mergeOverflowMass: 0,
+    mergeBurstPieces: 1,
+    mergeBurstTotal: mass,
+    splitPriority: 0,
+    targetX: x,
+    targetY: y,
+    dead: false,
+    ownerId: actor.id
+  };
+}
+
+function createActor(id, name) {
+  const actor = {
+    id,
+    name: name || id,
+    color: randomColor(id.length),
+    isHuman: true,
+    localClone: false,
+    input: {
+      targetX: WORLD_SIZE * 0.5,
+      targetY: WORLD_SIZE * 0.5,
+      splitSeq: 0,
+      ejectSeq: 0,
+      respawnSeq: 0,
+      lastNetSplitSeq: 0,
+      lastNetEjectSeq: 0,
+      lastNetRespawnSeq: 0,
+      e: false
+    },
+    cells: []
+  };
+  actor.cells.push(spawnCell(actor));
+  return actor;
 }
 
 function handleMessage(client, text) {
@@ -141,62 +279,320 @@ function handleMessage(client, text) {
   }
 
   if (message.t === "relayJoin") {
-    joinRoom(client, String(message.room || "").trim(), String(message.role || ""));
+    joinRoom(client, String(message.room || "").trim());
     return;
   }
 
-  if (!client.room) return;
-  const peers = rooms.get(client.room);
-  if (!peers) return;
-  message.fromActorId = client.actorId || "";
-  for (const peer of peers) {
-    if (peer !== client) sendJson(peer, message);
+  const room = rooms.get(client.room);
+  if (!room) return;
+
+  if (message.t === "input") {
+    const actor = room.actors.get(client.actorId);
+    if (!actor) return;
+    actor.input.targetX = clamp(Number(message.targetX) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
+    actor.input.targetY = clamp(Number(message.targetY) || WORLD_SIZE * 0.5, 0, WORLD_SIZE);
+    actor.input.e = Boolean(message.e);
+    const splitSeq = Number(message.splitSeq) || 0;
+    if (splitSeq > actor.input.lastNetSplitSeq) {
+      const count = clamp(Math.round(Number(message.splitCount) || splitSeq - actor.input.lastNetSplitSeq), 1, 4);
+      for (let i = 0; i < count; i += 1) splitActor(actor);
+      actor.input.lastNetSplitSeq = splitSeq;
+    }
+    const ejectSeq = Number(message.ejectSeq) || 0;
+    if (ejectSeq > actor.input.lastNetEjectSeq) {
+      ejectMass(room, actor);
+      actor.input.lastNetEjectSeq = ejectSeq;
+    }
+    const respawnSeq = Number(message.respawnSeq) || 0;
+    if (respawnSeq > actor.input.lastNetRespawnSeq) {
+      if (!actor.cells.some((cell) => !cell.dead)) actor.cells = [spawnCell(actor)];
+      actor.input.lastNetRespawnSeq = respawnSeq;
+    }
   }
 }
 
-function joinRoom(client, requestedRoom, role) {
+function joinRoom(client, requestedRoom) {
   const roomId = requestedRoom.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
-  let peers = rooms.get(roomId);
-  if (!peers) {
-    peers = new Set();
-    rooms.set(roomId, peers);
-  }
-
-  if (!peers.has(client) && peers.size >= MAX_ROOM_PEERS) {
+  let room = rooms.get(roomId);
+  if (!room) room = createRoom(roomId);
+  if (!room.peers.has(client) && room.peers.size >= MAX_ROOM_PEERS) {
     sendJson(client, { t: "relayError", message: "ROOM_FULL" });
     return;
   }
 
-  const hasHost = Array.from(peers).some((peer) => peer.role === "host");
-  const assignedRole = role === "host" && !hasHost ? "host" :
-    role === "client" ? "client" :
-    hasHost ? "client" : "host";
-
   client.room = roomId;
-  client.role = assignedRole;
-  if (!client.actorId) client.actorId = assignedRole === "host" ? "host" : `guest-${client.id}`;
-  peers.add(client);
-  sendJson(client, { t: "relayReady", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS, actorId: client.actorId, role: assignedRole });
-  for (const peer of peers) {
-    sendJson(peer, { t: "relayPeer", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS });
-  }
+  if (!client.actorId) client.actorId = `player-${client.id}`;
+  room.peers.add(client);
+  if (!room.actors.has(client.actorId)) room.actors.set(client.actorId, createActor(client.actorId, `P${room.peers.size}`));
+  sendJson(client, { t: "relayReady", room: roomId, peers: room.peers.size, maxPeers: MAX_ROOM_PEERS, actorId: client.actorId, role: "client" });
+  broadcast(room, { t: "relayPeer", room: roomId, peers: room.peers.size, maxPeers: MAX_ROOM_PEERS });
+  sendSnapshot(room, true);
 }
 
 function leaveRoom(client) {
   if (!client.alive) return;
   client.alive = false;
-  if (!client.room) return;
-  const peers = rooms.get(client.room);
-  if (!peers) return;
-  peers.delete(client);
-  for (const peer of peers) {
-    sendJson(peer, { t: "relayPeer", room: client.room, peers: peers.size, maxPeers: MAX_ROOM_PEERS });
+  const room = rooms.get(client.room);
+  if (!room) return;
+  room.peers.delete(client);
+  room.actors.delete(client.actorId);
+  broadcast(room, { t: "relayPeer", room: client.room, peers: room.peers.size, maxPeers: MAX_ROOM_PEERS });
+  if (room.peers.size === 0) rooms.delete(client.room);
+}
+
+function splitActor(actor) {
+  if (actor.cells.length >= MAX_CELLS) return;
+  const source = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_SPLIT_MASS * 2).sort((a, b) => b.mass - a.mass)[0];
+  if (!source) return;
+  const dx = actor.input.targetX - source.x;
+  const dy = actor.input.targetY - source.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = dx / len;
+  const ny = dy / len;
+  const childMass = source.mass * 0.5;
+  source.mass = childMass;
+  source.radius = radiusFromMass(source.mass);
+  const child = spawnCell(actor, childMass, source.x + nx * (source.radius + 16), source.y + ny * (source.radius + 16));
+  child.boostX = nx * 520;
+  child.boostY = ny * 520;
+  child.splitBoostAge = 0.7;
+  actor.cells.push(child);
+}
+
+function ejectMass(room, actor) {
+  const cell = actor.cells.filter((item) => !item.dead && item.mass > EJECT_MASS + 20).sort((a, b) => b.mass - a.mass)[0];
+  if (!cell) return;
+  const dx = actor.input.targetX - cell.x;
+  const dy = actor.input.targetY - cell.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = dx / len;
+  const ny = dy / len;
+  cell.mass -= EJECT_MASS;
+  cell.radius = radiusFromMass(cell.mass);
+  room.feeds.push({
+    id: nextEntityId++,
+    x: cell.x + nx * (cell.radius + 12),
+    y: cell.y + ny * (cell.radius + 12),
+    mass: EJECT_MASS,
+    radius: radiusFromMass(EJECT_MASS),
+    color: actor.color,
+    vx: nx * 620,
+    vy: ny * 620,
+    age: 0,
+    ownerId: actor.id,
+    dead: false
+  });
+}
+
+function updateRoom(room, dt, now) {
+  while (room.foods.length < FOOD_TARGET) room.foods.push(createFood());
+  while (room.viruses.length < VIRUS_TARGET) room.viruses.push(createVirus());
+
+  for (const actor of room.actors.values()) {
+    for (const cell of actor.cells) {
+      if (cell.dead) continue;
+      const dx = actor.input.targetX - cell.x;
+      const dy = actor.input.targetY - cell.y;
+      const len = Math.hypot(dx, dy);
+      const speed = clamp(1400 / Math.pow(cell.radius, 0.46), 90, 330);
+      if (len > 1) {
+        cell.faceX = dx / len;
+        cell.faceY = dy / len;
+        const throttle = clamp(len / Math.max(35, cell.radius * 1.8), 0, 1);
+        cell.vx += (cell.faceX * speed * throttle - cell.vx) * Math.min(1, dt * 6);
+        cell.vy += (cell.faceY * speed * throttle - cell.vy) * Math.min(1, dt * 6);
+      }
+      cell.x += (cell.vx + cell.boostX) * dt;
+      cell.y += (cell.vy + cell.boostY) * dt;
+      cell.boostX *= Math.exp(-dt * 4.4);
+      cell.boostY *= Math.exp(-dt * 4.4);
+      cell.splitBoostAge = Math.max(0, cell.splitBoostAge - dt);
+      cell.radius = radiusFromMass(cell.mass);
+      cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius);
+      cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius);
+    }
+    actor.cells = actor.cells.filter((cell) => !cell.dead);
+    if (!actor.cells.length) actor.cells.push(spawnCell(actor));
   }
-  if (peers.size === 0) rooms.delete(client.room);
+
+  for (const feed of room.feeds) {
+    feed.x += feed.vx * dt;
+    feed.y += feed.vy * dt;
+    feed.vx *= Math.exp(-dt * 2.3);
+    feed.vy *= Math.exp(-dt * 2.3);
+    feed.age += dt;
+    if (feed.x < 0 || feed.x > WORLD_SIZE || feed.y < 0 || feed.y > WORLD_SIZE) feed.dead = true;
+  }
+
+  handleFoodEating(room);
+  handleFeedEating(room);
+  handleCellEating(room);
+  room.foods = room.foods.filter((food) => !food.dead);
+  room.feeds = room.feeds.filter((feed) => !feed.dead && feed.age < 18);
+
+  if (now - room.lastSnapshotAt >= 1 / SNAPSHOT_RATE) {
+    sendSnapshot(room, false);
+    room.lastSnapshotAt = now;
+  }
+  if (now - room.lastWorldAt >= 1 / WORLD_RATE) {
+    sendWorld(room);
+    room.lastWorldAt = now;
+  }
+}
+
+function allCells(room) {
+  const cells = [];
+  for (const actor of room.actors.values()) {
+    for (const cell of actor.cells) if (!cell.dead) cells.push({ actor, cell });
+  }
+  return cells;
+}
+
+function canEat(a, b) {
+  if (a.radius < b.radius * Math.sqrt(CONSUME_RATIO)) return false;
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const threshold = a.radius - b.radius * 0.22;
+  return dx * dx + dy * dy <= threshold * threshold;
+}
+
+function handleFoodEating(room) {
+  for (const { cell } of allCells(room)) {
+    for (const food of room.foods) {
+      if (food.dead) continue;
+      const dx = cell.x - food.x;
+      const dy = cell.y - food.y;
+      if (dx * dx + dy * dy <= (cell.radius + 10) * (cell.radius + 10)) {
+        food.dead = true;
+        cell.mass += food.mass;
+      }
+    }
+  }
+}
+
+function handleFeedEating(room) {
+  for (const { cell } of allCells(room)) {
+    for (const feed of room.feeds) {
+      if (feed.dead || (feed.ownerId === cell.ownerId && feed.age < 0.7)) continue;
+      const dx = cell.x - feed.x;
+      const dy = cell.y - feed.y;
+      if (dx * dx + dy * dy <= (cell.radius + feed.radius * 0.5) ** 2) {
+        feed.dead = true;
+        cell.mass += feed.mass;
+      }
+    }
+  }
+}
+
+function handleCellEating(room) {
+  const entries = allCells(room).sort((a, b) => b.cell.radius - a.cell.radius);
+  for (const eater of entries) {
+    if (eater.cell.dead) continue;
+    for (const victim of entries) {
+      if (victim.cell.dead || eater.cell === victim.cell || eater.actor.id === victim.actor.id) continue;
+      if (!canEat(eater.cell, victim.cell)) continue;
+      victim.cell.dead = true;
+      eater.cell.mass += victim.cell.mass;
+      eater.cell.radius = radiusFromMass(eater.cell.mass);
+    }
+  }
+}
+
+function serializeCell(cell) {
+  return {
+    id: cell.id,
+    x: cell.x,
+    y: cell.y,
+    mass: cell.mass,
+    vx: cell.vx,
+    vy: cell.vy,
+    boostX: cell.boostX,
+    boostY: cell.boostY,
+    faceX: cell.faceX,
+    faceY: cell.faceY,
+    mergeReadyAt: 0,
+    birthAge: cell.birthAge,
+    birthDuration: cell.birthDuration,
+    birthX: cell.birthX,
+    birthY: cell.birthY,
+    birthScale: cell.birthScale,
+    fragmentAge: 0,
+    splitBoostAge: cell.splitBoostAge,
+    splitHoldAge: 0,
+    pendingBoostX: 0,
+    pendingBoostY: 0,
+    virusCooldown: 0,
+    mergeVirusWindow: 0,
+    mergeOverflowMass: 0,
+    mergeBurstPieces: 1,
+    mergeBurstTotal: cell.mass,
+    splitPriority: cell.splitPriority,
+    targetX: cell.targetX,
+    targetY: cell.targetY
+  };
+}
+
+function serializeActor(actor) {
+  return {
+    id: actor.id,
+    name: actor.name,
+    color: actor.color,
+    isHuman: true,
+    localClone: false,
+    cells: actor.cells.filter((cell) => !cell.dead).map(serializeCell)
+  };
+}
+
+function serializeCircle(entity) {
+  return {
+    id: entity.id,
+    x: entity.x,
+    y: entity.y,
+    mass: entity.mass,
+    radius: entity.radius,
+    color: entity.color,
+    vx: entity.vx || 0,
+    vy: entity.vy || 0,
+    age: entity.age || 0,
+    feedCount: entity.feedCount || 0,
+    ownerId: entity.ownerId || "",
+    natural: entity.natural !== false
+  };
+}
+
+function sendSnapshot(room, forceWorld) {
+  broadcast(room, {
+    t: "snapshot",
+    now: Date.now() / 1000,
+    worldSize: WORLD_SIZE,
+    settings: {
+      splitSpeed: 110,
+      splitDecayTime: 0.7,
+      splitInputSpeed: 4,
+      spawnMass: PLAYER_MASS,
+      gameSpeed: 1,
+      botEnabled: false,
+      nRespawnEnabled: true
+    },
+    partialActors: true,
+    actors: Array.from(room.actors.values()).map(serializeActor),
+    feeds: room.feeds.slice(0, 220).map(serializeCircle)
+  });
+  if (forceWorld) sendWorld(room);
+}
+
+function sendWorld(room) {
+  room.worldSeq += 1;
+  broadcast(room, { t: "world", kind: "foods", seq: room.worldSeq, index: 0, total: 1, items: room.foods.slice(0, FOOD_TARGET).map(serializeCircle) });
+  broadcast(room, { t: "world", kind: "viruses", seq: room.worldSeq, index: 0, total: 1, items: room.viruses.slice(0, VIRUS_TARGET).map(serializeCircle) });
+}
+
+function broadcast(room, message) {
+  for (const peer of room.peers) sendJson(peer, message);
 }
 
 function sendJson(client, message) {
-  if (client.socket.destroyed) return;
+  if (!client.socket || client.socket.destroyed) return;
   sendFrame(client.socket, Buffer.from(JSON.stringify(message), "utf8"));
 }
 
@@ -220,6 +616,15 @@ function sendFrame(socket, payload, opcode = 0x1) {
   socket.write(Buffer.concat([header, payload]));
 }
 
+setInterval(() => {
+  const now = Date.now() / 1000;
+  for (const room of rooms.values()) {
+    const dt = Math.min(0.05, Math.max(0.001, now - room.lastTickAt));
+    room.lastTickAt = now;
+    updateRoom(room, dt, now);
+  }
+}, 1000 / TICK_RATE);
+
 server.listen(PORT, () => {
-  console.log(`Agar relay ready: http://localhost:${PORT}`);
+  console.log(`Tain.io authoritative server ready: http://localhost:${PORT}`);
 });
