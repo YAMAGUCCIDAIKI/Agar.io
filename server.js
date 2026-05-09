@@ -5,6 +5,8 @@ const crypto = require("crypto");
 
 const PORT = Number(process.env.PORT || 8080);
 const ROOT = __dirname;
+const MAX_ROOM_PEERS = 10;
+let nextClientId = 1;
 const rooms = new Map();
 
 function sendHttp(res, status, body, type = "text/plain; charset=utf-8") {
@@ -65,9 +67,11 @@ server.on("upgrade", (req, socket) => {
   ].join("\r\n"));
 
   const client = {
+    id: nextClientId++,
     socket,
     room: "",
     role: "",
+    actorId: "",
     buffer: Buffer.alloc(0),
     alive: true
   };
@@ -143,6 +147,7 @@ function handleMessage(client, text) {
   if (!client.room) return;
   const peers = rooms.get(client.room);
   if (!peers) return;
+  message.fromActorId = client.actorId || "";
   for (const peer of peers) {
     if (peer !== client) sendJson(peer, message);
   }
@@ -156,17 +161,18 @@ function joinRoom(client, requestedRoom, role) {
     rooms.set(roomId, peers);
   }
 
-  if (!peers.has(client) && peers.size >= 2) {
+  if (!peers.has(client) && peers.size >= MAX_ROOM_PEERS) {
     sendJson(client, { t: "relayError", message: "ROOM_FULL" });
     return;
   }
 
   client.room = roomId;
   client.role = role;
+  if (!client.actorId) client.actorId = role === "host" ? "host" : `guest-${client.id}`;
   peers.add(client);
-  sendJson(client, { t: "relayReady", room: roomId, peers: peers.size });
+  sendJson(client, { t: "relayReady", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS, actorId: client.actorId });
   for (const peer of peers) {
-    sendJson(peer, { t: "relayPeer", room: roomId, peers: peers.size });
+    sendJson(peer, { t: "relayPeer", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS });
   }
 }
 
@@ -178,7 +184,7 @@ function leaveRoom(client) {
   if (!peers) return;
   peers.delete(client);
   for (const peer of peers) {
-    sendJson(peer, { t: "relayPeer", room: client.room, peers: peers.size });
+    sendJson(peer, { t: "relayPeer", room: client.room, peers: peers.size, maxPeers: MAX_ROOM_PEERS });
   }
   if (peers.size === 0) rooms.delete(client.room);
 }

@@ -822,7 +822,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.07</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.08</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1147,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.07";
+      const APP_VERSION = "v2026.05.09.08";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1394,6 +1394,8 @@
           socket: null,
           connected: false,
           status: "OFFLINE",
+          peerCount: 1,
+          maxPeers: 10,
           iceCandidates: 0,
           worldSeq: 0,
           worldBuffer: null,
@@ -2010,6 +2012,26 @@
         return state.actors.find((actor) => actor.id === localCloneId(baseId) && actor.localClone) || null;
       }
 
+      function remoteActorColor(id) {
+        let hash = 0;
+        const text = String(id || "");
+        for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+        return botPalette[hash % botPalette.length] || "#f04438";
+      }
+
+      function ensureRemoteHumanActor(id, fallbackName = "") {
+        const actorId = String(id || "guest");
+        let actor = actorById(actorId);
+        if (!actor) {
+          actor = createActor(actorId, fallbackName || actorId.replace(/-/g, " "), remoteActorColor(actorId), true, "remote");
+          state.actors.push(actor);
+          spawnLocalActorBeside(actor, primaryLocalActor() || actorById("host") || null);
+        }
+        actor.isHuman = true;
+        if (actor.control !== "local") actor.control = "remote";
+        return actor;
+      }
+
       function liveLocalHumanActors() {
         return localHumanActors().filter((actor) => actor.cells.some((cell) => !cell.dead));
       }
@@ -2289,6 +2311,9 @@
       function setStatus(text) {
         state.net.status = text;
         onlineStatusEl.textContent = statusLabel(text);
+        if (state.net.transport === "relay" && state.net.peerCount > 0) {
+          onlineStatusEl.textContent += `・${state.net.peerCount}人`;
+        }
       }
 
       function defaultRelayUrl() {
@@ -4941,17 +4966,21 @@
 
         if (onlineMode) {
           const host = createActor("host", localId === "host" ? localProfileName() : "P1", "#2e90fa", true, localId === "host" ? "local" : "remote");
-          const guest = createActor("guest", localId === "guest" ? localProfileName() : "P2", "#f04438", true, localId === "guest" ? "local" : "remote");
-          state.actors.push(host, guest);
-          state.player = localId === "guest" ? guest : host;
+          state.actors.push(host);
+          let localOnlineActor = host;
+          if (localId !== "host") {
+            localOnlineActor = createActor(localId || "guest", localProfileName(), remoteActorColor(localId || "guest"), true, "local");
+            state.actors.push(localOnlineActor);
+          }
+          state.player = localOnlineActor;
           if (localId === "host") {
             if (spawnLocalPlayer) spawnActor(host, playerSpawnMass());
             const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
             while (state.foods.length < initialFood) addFood();
             const center = spawnLocalPlayer ? actorCenter(host) : { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5 };
             seedInitialViruses(center.x, center.y);
-          } else if (localId === "guest") {
-            if (spawnLocalPlayer) spawnActor(guest, playerSpawnMass());
+          } else {
+            if (spawnLocalPlayer) spawnActor(localOnlineActor, playerSpawnMass());
           }
         } else {
           const player = createActor("player", localProfileName(), "#2e90fa", true, "local");
@@ -5015,6 +5044,8 @@
         state.net.connectTimer = 0;
         state.net.socket = null;
         state.net.connected = false;
+        state.net.peerCount = 1;
+        state.net.maxPeers = 10;
         state.net.iceCandidates = 0;
         state.net.worldBuffer = null;
         state.net.pendingSnapshot = null;
@@ -5256,13 +5287,23 @@
         }
 
         if (message.t === "relayReady") {
-          setStatus(`ROOM ${message.peers}/2`);
+          state.net.peerCount = Math.max(1, Number(message.peers) || 1);
+          state.net.maxPeers = Math.max(state.net.peerCount, Number(message.maxPeers) || 10);
+          if (state.net.role === "client" && message.actorId && message.actorId !== state.localActorId) {
+            resetFreshWorld(String(message.actorId), true, false);
+            state.net.role = "client";
+            state.net.transport = "relay";
+            state.net.connected = true;
+          }
+          setStatus(`ROOM ${state.net.peerCount}/${state.net.maxPeers}`);
           return;
         }
 
         if (message.t === "relayPeer") {
-          setStatus(`PEER ${message.peers}/2`);
-          if (state.net.role === "host" && message.peers >= 2) {
+          state.net.peerCount = Math.max(1, Number(message.peers) || 1);
+          state.net.maxPeers = Math.max(state.net.peerCount, Number(message.maxPeers) || 10);
+          setStatus(`PEER ${state.net.peerCount}/${state.net.maxPeers}`);
+          if (state.net.role === "host" && state.net.peerCount >= 2) {
             sendAuthoritativeSnapshot(state.realNow || performance.now() / 1000, true);
           }
           return;
@@ -5503,6 +5544,7 @@
         if (!urgent && now - state.net.lastInputSend < CLIENT_INPUT_SEND_RATE) return;
         netSend({
           t: "input",
+          actorId: state.localActorId,
           activeActorId,
           targetX,
           targetY,
@@ -5607,20 +5649,20 @@
         }
 
         if (state.net.role === "host" && message.t === "input") {
-          const guest = actorById("guest");
-          if (!guest) return;
+          const senderActorId = String(message.fromActorId || message.actorId || "guest");
+          const guest = ensureRemoteHumanActor(senderActorId);
           let urgentInput = false;
           const cloneSeq = Number(message.cloneSeq) || 0;
-          let guestClone = remoteCloneActor("guest");
+          let guestClone = remoteCloneActor(senderActorId);
           if (cloneSeq > guest.input.lastNetCloneSeq) {
             guestClone = handleRemoteCloneToggle(guest);
             guest.input.lastNetCloneSeq = cloneSeq;
             urgentInput = true;
           }
 
-          const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : "guest";
-          guestClone = remoteCloneActor("guest");
-          let activeGuest = requestedActorId === localCloneId("guest") && guestClone ? guestClone : guest;
+          const requestedActorId = typeof message.activeActorId === "string" ? message.activeActorId : senderActorId;
+          guestClone = remoteCloneActor(senderActorId);
+          let activeGuest = requestedActorId === localCloneId(senderActorId) && guestClone ? guestClone : guest;
           if (liveCellCount(activeGuest) <= 0 && liveCellCount(guest) > 0) activeGuest = guest;
           if (liveCellCount(activeGuest) <= 0 && guestClone && liveCellCount(guestClone) > 0) activeGuest = guestClone;
           for (const actor of [guest, guestClone]) {
