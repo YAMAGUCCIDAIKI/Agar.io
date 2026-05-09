@@ -733,7 +733,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.09.03</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.09.04</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1058,7 +1058,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.03";
+      const APP_VERSION = "v2026.05.09.04";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1209,6 +1209,7 @@
         spectating: false,
         spectatorMode: "leader",
         waitingForPlay: true,
+        clientPlayRequestUntil: 0,
         profile: {
           name: "YOU",
           cloneName: "YOU2"
@@ -2496,12 +2497,27 @@
         state.spectatorMode = state.spectatorMode === "leader" ? "cursor" : "leader";
       }
 
+      function syncClientLifeState() {
+        if (state.net.role !== "client") return;
+        if (!localPlayerIsDead()) {
+          state.waitingForPlay = false;
+          state.clientPlayRequestUntil = 0;
+          if (state.spectating) setSpectating(false);
+          return;
+        }
+        if (state.clientPlayRequestUntil > (state.realNow || state.now || 0)) return;
+        state.waitingForPlay = true;
+        if (!state.spectating) setMenuOpen(true);
+        syncSpectateButton();
+      }
+
       function playLocalPlayer() {
         applyLocalProfile();
         if (state.net.role === "client") {
           state.input.respawnQueued = true;
           state.input.respawnSeq += 1;
           state.waitingForPlay = false;
+          state.clientPlayRequestUntil = (state.realNow || state.now || 0) + 1.5;
           setSpectating(false);
           setMenuOpen(false);
           return;
@@ -4299,8 +4315,7 @@
               if (state.actors[i].id === localCloneId("guest")) state.actors.splice(i, 1);
             }
             guest.localClone = false;
-            spawnActor(guest, playerSpawnMass());
-            state.flashUntil = state.now + 1.25;
+            clearActorControlInput(guest);
           }
         }
 
@@ -4841,8 +4856,7 @@
           state.actors.push(host, guest);
           state.player = localId === "guest" ? guest : host;
           if (localId === "host") {
-            if (spawnLocalPlayer || localId !== "host") spawnActor(host, playerSpawnMass());
-            if (spawnLocalPlayer || localId !== "guest") spawnActor(guest, playerSpawnMass());
+            if (spawnLocalPlayer) spawnActor(host, playerSpawnMass());
             const initialFood = Math.min(state.settings.foodTarget, DEFAULT_FOOD_TARGET);
             while (state.foods.length < initialFood) addFood();
             const center = spawnLocalPlayer ? actorCenter(host) : { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5 };
@@ -5002,7 +5016,7 @@
         }
 
         closeNetwork(true);
-        resetFreshWorld("guest", true);
+        resetFreshWorld("guest", true, false);
         state.net.role = "client";
         state.net.transport = "peerjs";
         const hostPeerId = normalizeRoomId();
@@ -5059,7 +5073,7 @@
         const offer = parseSignal(offerBox.value, "OFFER");
         if (!offer) return;
         closeNetwork(true);
-        resetFreshWorld("guest", true);
+        resetFreshWorld("guest", true, false);
         state.net.role = "client";
         state.net.transport = "webrtc";
         const pc = createPeerConnection();
@@ -5106,7 +5120,7 @@
         roomBox.value = room;
 
         closeNetwork(true);
-        resetFreshWorld(role === "host" ? "host" : "guest", true);
+        resetFreshWorld(role === "host" ? "host" : "guest", true, role === "host");
         state.net.role = role === "host" ? "host" : "client";
         state.net.transport = "relay";
         state.net.connected = false;
@@ -5809,6 +5823,7 @@
         state.player = activeActor && activeActor.control === "local"
           ? activeActor
           : actorById(state.localActorId) || actors[0] || state.player;
+        syncClientLifeState();
 
         if (Array.isArray(message.removedFeedIds)) {
           state.feeds = removeEntityIds(state.feeds, message.removedFeedIds);
