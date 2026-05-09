@@ -41,6 +41,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.on("upgrade", (req, socket) => {
+  socket.setNoDelay(true);
   if (req.url !== "/ws") {
     socket.destroy();
     return;

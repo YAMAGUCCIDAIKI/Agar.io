@@ -822,7 +822,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.11</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.12</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1147,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.11";
+      const APP_VERSION = "v2026.05.09.12";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1185,12 +1185,12 @@
       const VIRUS_CORE_SPLIT_MASS = 700;
       const VIRUS_FRAGMENT_LIFE = 2.8;
       const MAX_CELL_SPREAD = 2400;
-      const WORLD_SYNC_CHUNK = 300;
-      const MAX_SYNC_FOODS = 1800;
-      const MAX_SYNC_FEEDS = 520;
-      const MAX_SYNC_VIRUSES = 600;
-      const MAX_SYNC_BOTS = 120;
-      const NETWORK_RENDER_RANGE = 2600;
+      const WORLD_SYNC_CHUNK = 220;
+      const MAX_SYNC_FOODS = 900;
+      const MAX_SYNC_FEEDS = 220;
+      const MAX_SYNC_VIRUSES = 320;
+      const MAX_SYNC_BOTS = 80;
+      const NETWORK_RENDER_RANGE = 2100;
       const CLIENT_WORLD_CHUNKS_PER_FRAME = 4;
       const CLIENT_WORLD_QUEUE_LIMIT = 40;
       const MAX_FOOD_SPAWNS_PER_FRAME = 80;
@@ -1201,11 +1201,11 @@
       const DEFAULT_VIEW_SCALE = 1;
       const TARGET_FPS = 256;
       const TARGET_FRAME_TIME = 1 / TARGET_FPS;
-      const CLIENT_INPUT_SEND_RATE = 1 / TARGET_FPS;
-      const HOST_SNAPSHOT_RATE = 1 / 60;
-      const HOST_FEED_SNAPSHOT_RATE = 1 / 12;
-      const HOST_BOT_SNAPSHOT_RATE = 1 / 15;
-      const HOST_WORLD_SYNC_RATE = 2.0;
+      const CLIENT_INPUT_SEND_RATE = 1 / 60;
+      const HOST_SNAPSHOT_RATE = 1 / 45;
+      const HOST_FEED_SNAPSHOT_RATE = 1 / 8;
+      const HOST_BOT_SNAPSHOT_RATE = 1 / 10;
+      const HOST_WORLD_SYNC_RATE = 3.0;
       const GAMEPLAY_SPEED_SCALE = 0.6;
       const CELL_MOVE_SPEED_SCALE = 0.52 * GAMEPLAY_SPEED_SCALE;
       const SPLIT_LAUNCH_SPEED_SCALE = GAMEPLAY_SPEED_SCALE;
@@ -5726,6 +5726,9 @@
         }
 
         if (state.net.role === "client" && message.t === "world") {
+          if (state.net.pendingWorldChunks.length && state.net.pendingWorldChunks[0].seq !== message.seq) {
+            state.net.pendingWorldChunks.length = 0;
+          }
           state.net.pendingWorldChunks.push(message);
           if (state.net.pendingWorldChunks.length > CLIENT_WORLD_QUEUE_LIMIT) {
             state.net.pendingWorldChunks.splice(0, state.net.pendingWorldChunks.length - CLIENT_WORLD_QUEUE_LIMIT);
