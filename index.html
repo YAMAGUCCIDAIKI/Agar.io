@@ -43,13 +43,13 @@
     .hud {
       position: fixed;
       inset: auto auto 14px 14px;
-      min-width: 156px;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--panel);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      backdrop-filter: none;
+      box-shadow: none;
       pointer-events: none;
     }
 
@@ -64,41 +64,97 @@
       color: var(--muted);
     }
 
+    .hud-row.hidden-stat {
+      display: none;
+    }
+
+    .hud-row.version-row {
+      min-height: 0;
+      color: rgba(88, 94, 105, 0.64);
+      font-size: 11px;
+      font-weight: 800;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78);
+    }
+
     .hud-row strong {
       color: var(--ink);
       font-size: 15px;
       font-variant-numeric: tabular-nums;
     }
 
-    .board {
+    .hud-row.version-row strong {
+      color: rgba(88, 94, 105, 0.68);
+      font-size: 11px;
+    }
+
+    .score-panel {
       position: fixed;
-      inset: 14px 14px auto auto;
-      width: min(260px, calc(100vw - 190px));
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--panel);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      inset: 16px auto auto 104px;
+      z-index: 5;
+      color: rgba(88, 91, 100, 0.78);
+      font: 900 34px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-shadow: 0 2px 0 rgba(255, 255, 255, 0.8);
       pointer-events: none;
     }
 
+    .board {
+      position: fixed;
+      inset: 16px 18px auto auto;
+      width: min(318px, calc(100vw - 170px));
+      padding: 0 0 14px;
+      border: 4px solid rgba(125, 128, 132, 0.28);
+      border-radius: 13px;
+      background: rgba(116, 116, 116, 0.34);
+      backdrop-filter: blur(1px);
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18), 0 2px 6px rgba(80, 88, 96, 0.18);
+      pointer-events: none;
+      overflow: hidden;
+    }
+
     .board-title {
-      margin-bottom: 7px;
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 70px;
+      margin: 0 0 12px;
+      padding: 11px 16px;
+      background: rgba(245, 248, 251, 0.38);
+      color: rgba(80, 82, 90, 0.72);
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-shadow: 0 2px 0 rgba(255, 255, 255, 0.78);
+    }
+
+    .board-title::before {
+      content: "1\\A 2 3";
+      white-space: pre;
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      border: 4px solid rgba(135, 138, 142, 0.36);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.42);
+      color: rgba(113, 116, 123, 0.62);
+      font-size: 19px;
+      line-height: 0.9;
+      font-weight: 900;
     }
 
     .rank {
       display: grid;
-      grid-template-columns: 22px 1fr auto;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
       align-items: center;
-      gap: 8px;
-      min-height: 22px;
-      font-size: 12px;
+      gap: 6px;
+      min-height: 44px;
+      padding: 0 18px;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 30px;
+      font-weight: 900;
       line-height: 1.2;
+      text-shadow: 0 2px 2px rgba(55, 60, 66, 0.54);
     }
 
     .rank span {
@@ -108,12 +164,12 @@
     }
 
     .rank b {
-      color: var(--accent);
+      color: rgba(255, 255, 255, 0.92);
       font-variant-numeric: tabular-nums;
     }
 
     .rank.you {
-      color: #0b5cab;
+      color: #ffe87a;
       font-weight: 700;
     }
 
@@ -141,20 +197,42 @@
     .menu-button {
       position: fixed;
       inset: 14px auto auto 14px;
-      min-width: 72px;
-      min-height: 34px;
-      border: 1px solid rgba(23, 125, 220, 0.32);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.9);
-      color: #0b5cab;
-      font: 700 12px/1 Inter, ui-sans-serif, system-ui, sans-serif;
-      box-shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
+      width: 88px;
+      min-width: 88px;
+      height: 88px;
+      min-height: 88px;
+      border: 5px solid rgba(120, 124, 128, 0.28);
+      border-radius: 14px;
+      background: rgba(238, 242, 245, 0.44);
+      color: transparent;
+      font: 0/0 Inter, ui-sans-serif, system-ui, sans-serif;
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2), 0 2px 6px rgba(80, 88, 96, 0.18);
       cursor: pointer;
       z-index: 6;
     }
 
+    .menu-button::before,
+    .menu-button::after {
+      content: "";
+      position: absolute;
+      top: 25px;
+      width: 14px;
+      height: 40px;
+      border: 4px solid rgba(135, 138, 142, 0.34);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+
+    .menu-button::before {
+      left: 24px;
+    }
+
+    .menu-button::after {
+      right: 24px;
+    }
+
     .menu-button:hover {
-      background: rgba(23, 125, 220, 0.08);
+      background: rgba(238, 242, 245, 0.58);
     }
 
     .menu-screen {
@@ -672,12 +750,57 @@
     @media (max-width: 640px) {
       .hud {
         inset: auto auto 10px 10px;
-        min-width: 134px;
+      }
+
+      .score-panel {
+        inset: 18px auto auto 96px;
+        font-size: 28px;
       }
 
       .board {
         inset: 10px 10px auto auto;
-        width: min(230px, calc(100vw - 156px));
+        width: min(260px, calc(100vw - 132px));
+      }
+
+      .board-title {
+        min-height: 52px;
+        font-size: 24px;
+        padding: 8px 12px;
+      }
+
+      .board-title::before {
+        width: 40px;
+        height: 40px;
+        font-size: 14px;
+      }
+
+      .rank {
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        min-height: 34px;
+        padding: 0 12px;
+        font-size: 22px;
+      }
+
+      .menu-button {
+        width: 74px;
+        min-width: 74px;
+        height: 74px;
+        min-height: 74px;
+      }
+
+      .menu-button::before,
+      .menu-button::after {
+        top: 20px;
+        width: 11px;
+        height: 34px;
+      }
+
+      .menu-button::before {
+        left: 20px;
+      }
+
+      .menu-button::after {
+        right: 20px;
       }
 
       .rank:nth-of-type(n + 7) {
@@ -729,15 +852,16 @@
 <body>
   <canvas id="game"></canvas>
 
+  <div class="score-panel">Score: <strong id="mass">0</strong></div>
+
   <section class="hud" aria-label="状態">
-    <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
-    <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
-    <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.09.04</strong></div>
+    <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
+    <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.04</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
-    <div class="board-title">ランキング</div>
+    <div class="board-title">Leaderboard</div>
     <div id="scoreboard"></div>
   </aside>
 
