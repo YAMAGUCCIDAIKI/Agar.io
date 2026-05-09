@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: tain-io
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start

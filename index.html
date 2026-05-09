@@ -822,7 +822,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.08</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.09</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1147,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.08";
+      const APP_VERSION = "v2026.05.09.09";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -2320,7 +2320,8 @@
         if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
           return `ws://${location.host}/ws`;
         }
-        return "ws://localhost:8080/ws";
+        if (location.protocol === "https:") return `wss://${location.host}/ws`;
+        return `ws://${location.host}/ws`;
       }
 
       function ensureRelayDefaults() {
