@@ -270,6 +270,7 @@ function createActor(id, name) {
     color: randomColor(id.length),
     isHuman: true,
     localClone: false,
+    nextSplitPriority: 1,
     input: {
       targetX: WORLD_SIZE * 0.5,
       targetY: WORLD_SIZE * 0.5,
@@ -397,10 +398,9 @@ function leaveRoom(client) {
   if (room.peers.size === 0) rooms.delete(client.room);
 }
 
-function splitActor(actor) {
-  if (actor.cells.length >= MAX_CELLS) return;
-  const source = actor.cells.filter((cell) => !cell.dead && cell.mass >= MIN_SPLIT_MASS * 2).sort((a, b) => b.mass - a.mass)[0];
-  if (!source) return;
+function splitCell(actor, source) {
+  if (actor.cells.length >= MAX_CELLS) return false;
+  if (source.dead || source.mass < MIN_SPLIT_MASS * 2) return false;
   const dx = actor.input.targetX - source.x;
   const dy = actor.input.targetY - source.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -417,12 +417,30 @@ function splitActor(actor) {
   child.vx = source.vx + nx * impulse;
   child.vy = source.vy + ny * impulse;
   child.splitBoostAge = 0.08;
+  child.splitPriority = actor.nextSplitPriority || 1;
+  actor.nextSplitPriority = (actor.nextSplitPriority || 1) + 1;
   child.separationGraceUntil = Date.now() / 1000 + 0.14;
   source.separationGraceUntil = Date.now() / 1000 + 0.14;
   setMergeCooldown(child);
   source.vx *= 0.24;
   source.vy *= 0.24;
   actor.cells.push(child);
+  return true;
+}
+
+function splitActor(actor) {
+  if (actor.cells.length >= MAX_CELLS) return;
+  const candidates = actor.cells
+    .filter((cell) => !cell.dead && cell.mass >= MIN_SPLIT_MASS * 2)
+    .sort((a, b) => {
+      const priorityDiff = (a.splitPriority || 0) - (b.splitPriority || 0);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.id - b.id;
+    });
+  for (const cell of candidates) {
+    if (actor.cells.length >= MAX_CELLS) break;
+    splitCell(actor, cell);
+  }
 }
 
 function ejectMass(room, actor) {
