@@ -15,6 +15,8 @@ const VIRUS_MASS = 100;
 const MAX_CELLS = 16;
 const MIN_SPLIT_MASS = 36;
 const EJECT_MASS = 21;
+const EJECT_RATE = 11;
+const EJECT_SPEED = 710;
 const CONSUME_RATIO = 1.325;
 const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_RATIO);
 const MAX_CELL_MASS = 22500;
@@ -271,6 +273,8 @@ function createActor(id, name) {
     isHuman: true,
     localClone: false,
     nextSplitPriority: 1,
+    lastEject: -100,
+    nextEjectIndex: 0,
     input: {
       targetX: WORLD_SIZE * 0.5,
       targetY: WORLD_SIZE * 0.5,
@@ -337,7 +341,7 @@ function handleMessage(client, text) {
     }
     const ejectSeq = Number(message.ejectSeq) || 0;
     if (ejectSeq > actor.input.lastNetEjectSeq) {
-      ejectMass(room, activeActor);
+      activeActor.input.ejectQueued = true;
       actor.input.lastNetEjectSeq = ejectSeq;
     }
     const respawnSeq = Number(message.respawnSeq) || 0;
@@ -468,6 +472,13 @@ function splitActor(actor, dirX, dirY, targetX = null, targetY = null) {
 
 function processActorInputs(room, now) {
   for (const actor of room.actors.values()) {
+    if (actor.input.ejectQueued) {
+      if (ejectMass(room, actor, now, false) || now - actor.lastEject >= ejectInterval()) {
+        actor.input.ejectQueued = false;
+      }
+    } else if (actor.input.e) {
+      ejectMass(room, actor, now, true);
+    }
     if (!actor.input.splitQueued) continue;
     if (!actor.input.splitLockActive) {
       const aim = actorAimDirection(actor);
@@ -496,29 +507,63 @@ function processActorInputs(room, now) {
   }
 }
 
-function ejectMass(room, actor) {
-  const cell = actor.cells.filter((item) => !item.dead && item.mass > EJECT_MASS + 20).sort((a, b) => b.mass - a.mass)[0];
-  if (!cell) return;
+function ejectInterval() {
+  return 1 / Math.max(1, EJECT_RATE);
+}
+
+function emitFeedFromCell(room, actor, cell) {
   const dx = actor.input.targetX - cell.x;
   const dy = actor.input.targetY - cell.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = dx / len;
-  const ny = dy / len;
-  cell.mass -= EJECT_MASS;
-  cell.radius = radiusFromMass(cell.mass);
+  const n = normalized(dx, dy, actor.input.lastAimX || 1, actor.input.lastAimY || 0);
+  actor.input.lastAimX = n.x;
+  actor.input.lastAimY = n.y;
+  cell.mass = Math.max(12, cell.mass - (EJECT_MASS + 1));
+  refreshCell(cell);
   room.feeds.push({
     id: nextEntityId++,
-    x: cell.x + nx * (cell.radius + 12),
-    y: cell.y + ny * (cell.radius + 12),
+    x: cell.x + n.x * (cell.radius + 18),
+    y: cell.y + n.y * (cell.radius + 18),
     mass: EJECT_MASS,
     radius: radiusFromMass(EJECT_MASS),
     color: actor.color,
-    vx: nx * 710,
-    vy: ny * 710,
+    vx: n.x * EJECT_SPEED + cell.vx * 0.25 + cell.boostX * 0.08,
+    vy: n.y * EJECT_SPEED + cell.vy * 0.25 + cell.boostY * 0.08,
     age: 0,
     ownerId: actor.id,
     dead: false
   });
+  return true;
+}
+
+function ejectMass(room, actor, now, allCells = false) {
+  if (now - actor.lastEject < ejectInterval()) return false;
+  const eligible = actor.cells.filter((item) => !item.dead && item.mass >= 32);
+  if (!eligible.length) return false;
+
+  if (allCells) {
+    let emitted = false;
+    for (const cell of eligible) {
+      if (emitFeedFromCell(room, actor, cell)) emitted = true;
+    }
+    if (emitted) actor.lastEject = now;
+    return emitted;
+  }
+
+  actor.nextEjectIndex %= Math.max(1, actor.cells.length);
+  let cell = null;
+  for (let offset = 0; offset < actor.cells.length; offset += 1) {
+    const candidate = actor.cells[(actor.nextEjectIndex + offset) % actor.cells.length];
+    if (!candidate.dead && candidate.mass >= 32) {
+      cell = candidate;
+      actor.nextEjectIndex = (actor.cells.indexOf(candidate) + 1) % actor.cells.length;
+      break;
+    }
+  }
+  if (!cell) cell = eligible[0];
+  if (!cell) return false;
+  const emitted = emitFeedFromCell(room, actor, cell);
+  if (emitted) actor.lastEject = now;
+  return emitted;
 }
 
 function updateRoom(room, dt, now) {
