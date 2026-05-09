@@ -118,6 +118,7 @@
     }
 
     .flash {
+      display: none;
       position: fixed;
       left: 50%;
       bottom: 28px;
@@ -732,7 +733,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.09.02</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.09.03</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -803,6 +804,11 @@
           <input id="otherMassToggle" class="toggle-input" type="checkbox" aria-label="自分以外のマス表示">
           <strong id="otherMassValue" class="toggle-value">非表示</strong>
         </label>
+        <label class="setting-control">
+          <span>自分マス</span>
+          <input id="ownMassToggle" class="toggle-input" type="checkbox" checked aria-label="自分のマス表示">
+          <strong id="ownMassValue" class="toggle-value">表示</strong>
+        </label>
         <div class="keybind-title">キー</div>
         <div class="keybind-grid">
           <label class="keybind-control"><span>分裂</span><button type="button" data-keybind="split1"></button></label>
@@ -817,6 +823,11 @@
           <label class="keybind-control"><span>Bot粒</span><button type="button" data-keybind="botEject"></button></label>
         </div>
         <div class="settings-category">BOT</div>
+        <label class="setting-control">
+          <span>Bot有効</span>
+          <input id="botEnabledToggle" class="toggle-input" type="checkbox" checked aria-label="Bot有効">
+          <strong id="botEnabledValue" class="toggle-value">ON</strong>
+        </label>
         <label class="setting-control">
           <span>ボット</span>
           <input id="botMinBox" class="max-input" type="number" min="0" step="1" value="0" aria-label="ボット下限">
@@ -979,6 +990,10 @@
       const activeColorValueEl = document.getElementById("activeColorValue");
       const otherMassToggle = document.getElementById("otherMassToggle");
       const otherMassValueEl = document.getElementById("otherMassValue");
+      const ownMassToggle = document.getElementById("ownMassToggle");
+      const ownMassValueEl = document.getElementById("ownMassValue");
+      const botEnabledToggle = document.getElementById("botEnabledToggle");
+      const botEnabledValueEl = document.getElementById("botEnabledValue");
       const botSlider = document.getElementById("botSlider");
       const botValueEl = document.getElementById("botValue");
       const botMinBox = document.getElementById("botMinBox");
@@ -1043,7 +1058,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.02";
+      const APP_VERSION = "v2026.05.09.03";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1102,7 +1117,10 @@
       const HOST_FEED_SNAPSHOT_RATE = 1 / 12;
       const HOST_BOT_SNAPSHOT_RATE = 1 / 15;
       const HOST_WORLD_SYNC_RATE = 2.0;
-      const CELL_MOVE_SPEED_SCALE = 0.52;
+      const GAMEPLAY_SPEED_SCALE = 0.6;
+      const CELL_MOVE_SPEED_SCALE = 0.52 * GAMEPLAY_SPEED_SCALE;
+      const SPLIT_LAUNCH_SPEED_SCALE = GAMEPLAY_SPEED_SCALE;
+      const VIRUS_BURST_SPEED_SCALE = GAMEPLAY_SPEED_SCALE;
       const MERGE_SWAP_RESET_TIME = 0.22;
       const MERGE_CAP_OVERSIZE_RATIO = 1.04;
       const EATEN_CELL_RESTORE_WINDOW = 0.55;
@@ -1196,6 +1214,7 @@
           cloneName: "YOU2"
         },
         settings: {
+          botEnabled: true,
           botTarget: DEFAULT_BOT_COUNT,
           botMode: "hunt",
           virusTarget: DEFAULT_VIRUS_TARGET,
@@ -1216,6 +1235,7 @@
           nRespawnEnabled: true,
           activeColorHighlight: true,
           showOtherMass: false,
+          showOwnMass: true,
           min: {
             bot: 0,
             virus: 0,
@@ -2005,7 +2025,8 @@
             if (!anchorCell || cell.radius > anchorCell.radius) anchorCell = cell;
           }
           if (anchorCell) {
-            const angle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
+            const aim = actorAimDirection(anchorActor);
+            const angle = Math.atan2(aim.y, aim.x);
             const targetDistance = anchorCell.radius + radiusFromMass(2000);
             const minDistance = Math.max(anchorCell.radius + radius + 2, targetDistance);
             const overlapsAnyCell = (x, y) => {
@@ -2056,7 +2077,8 @@
           for (const cell of anchorActor.cells) {
             if (!cell.dead) anchorRadius = Math.max(anchorRadius, cell.radius);
           }
-          const baseAngle = actor && actor.localClone ? 2.399963229728653 : 2.399963229728653 + Math.PI;
+          const aim = actorAimDirection(anchorActor);
+          const baseAngle = Math.atan2(aim.y, aim.x);
           const massRange = clamp(anchorRadius * 0.75 + radius * 0.45, 24, anchorRadius * 2);
           const baseDistance = Math.min(anchorRadius * 3, radius + anchorRadius + options.cellPadding + massRange);
           for (let ring = 0; ring < 2; ring += 1) {
@@ -2077,7 +2099,6 @@
         const mass = playerSpawnMass();
         const pos = findLocalActorSpawnPosition(actor, anchorActor, mass);
         spawnActor(actor, mass, pos.x, pos.y);
-        state.flashUntil = state.now + 1.0;
         state.net.lastSnapshotSend = -100;
         rebuildSpatialHashes();
       }
@@ -2281,6 +2302,7 @@
           keyBindings: { ...state.keyBindings },
           viewScale: state.viewScale,
           settings: {
+            botEnabled: state.settings.botEnabled,
             botTarget: state.settings.botTarget,
             botMode: state.settings.botMode,
             virusTarget: state.settings.virusTarget,
@@ -2300,7 +2322,8 @@
             cursorLine: state.settings.cursorLine,
             nRespawnEnabled: state.settings.nRespawnEnabled,
             activeColorHighlight: state.settings.activeColorHighlight,
-            showOtherMass: state.settings.showOtherMass
+            showOtherMass: state.settings.showOtherMass,
+            showOwnMass: state.settings.showOwnMass
           },
           min: { ...state.settings.min },
           max: { ...state.settings.max }
@@ -2340,6 +2363,7 @@
         }
         if (prefs.settings && typeof prefs.settings === "object") {
           const saved = prefs.settings;
+          if (saved.botEnabled != null) state.settings.botEnabled = Boolean(saved.botEnabled);
           if (Number.isFinite(saved.botTarget)) state.settings.botTarget = clamp(roundSliderValue("bot", saved.botTarget), state.settings.min.bot, state.settings.max.bot);
           if (["hunt", "chase", "virus", "cursor"].includes(saved.botMode)) state.settings.botMode = saved.botMode;
           if (Number.isFinite(saved.virusTarget)) state.settings.virusTarget = clamp(roundSliderValue("virus", saved.virusTarget), state.settings.min.virus, state.settings.max.virus);
@@ -2361,6 +2385,7 @@
           if (saved.nRespawnEnabled != null) state.settings.nRespawnEnabled = Boolean(saved.nRespawnEnabled);
           if (saved.activeColorHighlight != null) state.settings.activeColorHighlight = Boolean(saved.activeColorHighlight);
           if (saved.showOtherMass != null) state.settings.showOtherMass = Boolean(saved.showOtherMass);
+          if (saved.showOwnMass != null) state.settings.showOwnMass = Boolean(saved.showOwnMass);
         }
         if (Number.isFinite(prefs.viewScale)) state.viewScale = clamp(prefs.viewScale, 0.55, 2.2);
       }
@@ -2509,7 +2534,7 @@
       }
 
       function ensureBotPopulation() {
-        const target = state.settings.botTarget;
+        const target = state.settings.botEnabled ? state.settings.botTarget : 0;
         let botCount = 0;
         for (const actor of state.actors) {
           if (!actor.isHuman) botCount += 1;
@@ -2656,12 +2681,18 @@
       function virusBurstMasses(total, count) {
         if (count <= 1) return [total];
         const weights = [];
-        const mediumCount = Math.min(2, Math.max(1, count - 2));
-        for (let i = 0; i < count; i += 1) {
-          if (i === 0) weights.push(rand(9.2, 10.8));
-          else if (i === 1) weights.push(rand(4.2, 5.4));
-          else if (i <= mediumCount) weights.push(rand(1.0, 1.45));
-          else weights.push(rand(0.2, 0.38));
+        const chainBurst = count > 5;
+        if (chainBurst) {
+          weights.push(rand(7.8, 9.4), rand(2.1, 3.0));
+          for (let i = 2; i < count; i += 1) weights.push(rand(0.18, 0.32));
+        } else {
+          const mediumCount = Math.min(2, Math.max(1, count - 2));
+          for (let i = 0; i < count; i += 1) {
+            if (i === 0) weights.push(rand(9.2, 10.8));
+            else if (i === 1) weights.push(rand(4.2, 5.4));
+            else if (i <= mediumCount) weights.push(rand(1.0, 1.45));
+            else weights.push(rand(0.2, 0.38));
+          }
         }
 
         const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
@@ -2693,9 +2724,6 @@
       function totalServerNutrients() {
         let total = 0;
         for (const actor of state.actors) total += totalMass(actor);
-        for (const food of state.foods) if (!food.dead) total += food.mass;
-        for (const feed of state.feeds) if (!feed.dead) total += feed.mass;
-        for (const virus of state.viruses) if (!virus.dead) total += virus.mass;
         return total;
       }
 
@@ -3104,7 +3132,7 @@
       }
 
       function splitImpulse(radius) {
-        return clamp(285 + radius * 0.28, 300, 500) * splitSpeedScale();
+        return clamp(285 + radius * 0.28, 300, 500) * splitSpeedScale() * SPLIT_LAUNCH_SPEED_SCALE;
       }
 
       function splitSpeedScale() {
@@ -3351,6 +3379,7 @@
         const originX = cell.x;
         const originY = cell.y;
         const originalRadius = radiusFromMass(originalMass);
+        const chainBurst = cell.fragmentAge > 0 || actor.cells.some((candidate) => candidate !== cell && !candidate.dead && candidate.fragmentAge > 0);
 
         const desiredPieces = clamp(Math.floor(total / MIN_SPLIT_SOURCE_MASS), 4, 16);
         const pieces = Math.min(slots, desiredPieces);
@@ -3376,7 +3405,7 @@
         const firstDirY = Math.sin(baseAngle);
         cell.faceX = firstDirX;
         cell.faceY = firstDirY;
-        const firstBurst = rand(120, 180) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.35, 0.65);
+        const firstBurst = rand(120, 180) * clamp(Math.sqrt(72 / Math.max(20, cell.mass)), 0.35, 0.65) * VIRUS_BURST_SPEED_SCALE;
         cell.vx += firstDirX * firstBurst;
         cell.vy += firstDirY * firstBurst;
         cell.launchVelocityAge = launchVelocityDuration();
@@ -3386,12 +3415,15 @@
         cell.splitBoostAge = 0;
         for (let i = 1; i < pieces; i += 1) {
           const spreadIndex = i - 1;
-          const angle = baseAngle + (TAU * spreadIndex / Math.max(1, pieces - 1)) + rand(-0.16, 0.16);
+          const chainOffset = (i - 1) * 0.18 + rand(-0.08, 0.08);
+          const angle = chainBurst
+            ? baseAngle + Math.PI * 0.92 + chainOffset
+            : baseAngle + (TAU * spreadIndex / Math.max(1, pieces - 1)) + rand(-0.16, 0.16);
           const dirX = Math.cos(angle);
           const dirY = Math.sin(angle);
           const childMass = pieceMasses[i];
           const childRadius = radiusFromMass(childMass);
-          const ringFactor = i === 1 ? 0.42 : rand(0.58, 0.82);
+          const ringFactor = chainBurst ? 0.58 + i * 0.13 : (i === 1 ? 0.42 : rand(0.58, 0.82));
           const spawnDistance = Math.min(
             originalRadius + childRadius * 0.45,
             Math.max(childRadius + 3, originalRadius * ringFactor + childRadius * 0.18)
@@ -3407,7 +3439,7 @@
           child.faceX = dirX;
           child.faceY = dirY;
           const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.45, 0.92);
-          const burst = (i === 1 ? rand(230, 330) : rand(260, 390)) * massDrag;
+          const burst = (chainBurst ? rand(210, 320) : (i === 1 ? rand(230, 330) : rand(260, 390))) * massDrag * VIRUS_BURST_SPEED_SCALE;
           child.vx += dirX * burst;
           child.vy += dirY * burst;
           child.launchVelocityAge = launchVelocityDuration();
@@ -3786,16 +3818,23 @@
             cell.instantFacing = false;
             const desiredX = n.x * speed * throttle;
             const desiredY = n.y * speed * throttle;
-            const inputRate = instantControl ? 18 : (cell.launchVelocityAge > 0 ? 2.8 : (cell.splitBoostAge > 0 ? 2.4 : 8.5));
-            const inputImpulse = 1 - Math.exp(-dt * inputRate);
-            cell.vx += desiredX * inputImpulse;
-            cell.vy += desiredY * inputImpulse;
-            const velocityDragRate = cell.launchVelocityAge > 0
-              ? Math.max(0.12, Math.log(Math.max(1.05, Math.hypot(cell.vx, cell.vy)) / Math.max(1, speed)) / Math.max(0.1, cell.launchVelocityAge))
-              : (cell.splitBoostAge > 0 ? 1.5 : 8.5);
-            const velocityDrag = Math.exp(-dt * velocityDragRate);
-            cell.vx *= velocityDrag;
-            cell.vy *= velocityDrag;
+            if (cell.launchVelocityAge > 0 || cell.splitBoostAge > 0) {
+              const steerRate = cell.launchVelocityAge > 0 ? 2.2 : 2.6;
+              const steer = 1 - Math.exp(-dt * steerRate);
+              cell.vx += (desiredX - cell.vx) * steer * 0.18;
+              cell.vy += (desiredY - cell.vy) * steer * 0.18;
+              const velocityDragRate = cell.launchVelocityAge > 0
+                ? Math.max(0.12, Math.log(Math.max(1.05, Math.hypot(cell.vx, cell.vy)) / Math.max(1, speed)) / Math.max(0.1, cell.launchVelocityAge))
+                : 1.5;
+              const velocityDrag = Math.exp(-dt * velocityDragRate);
+              cell.vx *= velocityDrag;
+              cell.vy *= velocityDrag;
+            } else {
+              const responseRate = instantControl ? 15 : 10;
+              const response = 1 - Math.exp(-dt * responseRate);
+              cell.vx += (desiredX - cell.vx) * response;
+              cell.vy += (desiredY - cell.vy) * response;
+            }
             const boostSpeed = Math.hypot(cell.boostX, cell.boostY);
             const hasSplitMomentum = cell.splitBoostAge > 0 || boostSpeed > 30;
             const maxBoost = cell.fragmentAge > 0
@@ -4433,7 +4472,7 @@
           })
           .join("");
 
-        flashEl.classList.toggle("show", state.now < state.flashUntil);
+        flashEl.classList.remove("show");
       }
 
       function processPlayerControls(now) {
@@ -5244,7 +5283,7 @@
         if (state.net.role !== "host" || !state.net.connected) return;
         const sendFast = forceWorld || now - state.net.lastSnapshotSend >= HOST_SNAPSHOT_RATE;
         const sendFeeds = forceWorld || now - state.net.lastFeedSnapshotSend >= HOST_FEED_SNAPSHOT_RATE;
-        const sendBots = forceWorld || now - state.net.lastBotSnapshotSend >= HOST_BOT_SNAPSHOT_RATE;
+        const sendBots = state.settings.botEnabled && (forceWorld || now - state.net.lastBotSnapshotSend >= HOST_BOT_SNAPSHOT_RATE);
         const sendWorld = forceWorld || now - state.net.lastWorldSend >= HOST_WORLD_SYNC_RATE;
         if (!sendFast && !sendWorld) return;
 
@@ -5258,6 +5297,7 @@
             splitInputSpeed: state.settings.splitInputSpeed,
             spawnMass: state.settings.spawnMass,
             gameSpeed: state.settings.gameSpeed,
+            botEnabled: state.settings.botEnabled,
             nRespawnEnabled: state.settings.nRespawnEnabled
           },
           partialActors: true,
@@ -5752,9 +5792,15 @@
             settingsChanged = settingsChanged || nextValue !== state.settings.nRespawnEnabled;
             state.settings.nRespawnEnabled = nextValue;
           }
+          if (message.settings.botEnabled != null) {
+            const nextValue = Boolean(message.settings.botEnabled);
+            settingsChanged = settingsChanged || nextValue !== state.settings.botEnabled;
+            state.settings.botEnabled = nextValue;
+          }
           if (settingsChanged) syncSettingsControls();
         }
         state.actors = mergeActorListSnapshot(message.actors || [], state.actors);
+        if (!state.settings.botEnabled) state.actors = state.actors.filter((actor) => actor.isHuman);
         if (Array.isArray(message.removedCells)) {
           state.actors = removeCellsFromActors(state.actors, message.removedCells);
         }
@@ -6060,7 +6106,8 @@
           ctx.strokeText(label, drawX, drawY - nameSize * 0.12);
           ctx.fillText(label, drawX, drawY - nameSize * 0.12);
 
-          if (r * state.camera.zoom > 32 && (isLocalActor(actor) || state.settings.showOtherMass)) {
+          const showMass = isLocalViewActor(actor) ? state.settings.showOwnMass : state.settings.showOtherMass;
+          if (r * state.camera.zoom > 32 && showMass) {
             const massSize = clamp(r * 0.2, 10, 25);
             ctx.font = `700 ${massSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
             ctx.lineWidth = Math.max(2, massSize * 0.14);
@@ -6354,6 +6401,12 @@
         activeColorValueEl.textContent = state.settings.activeColorHighlight ? "表示" : "通常";
         otherMassToggle.checked = state.settings.showOtherMass;
         otherMassValueEl.textContent = state.settings.showOtherMass ? "表示" : "非表示";
+        ownMassToggle.checked = state.settings.showOwnMass;
+        ownMassValueEl.textContent = state.settings.showOwnMass ? "表示" : "非表示";
+        botEnabledToggle.checked = state.settings.botEnabled;
+        botEnabledValueEl.textContent = state.settings.botEnabled ? "ON" : "OFF";
+        botSlider.disabled = !state.settings.botEnabled;
+        botModeSelect.disabled = !state.settings.botEnabled;
         for (const [kind, config] of Object.entries(sliderControls)) {
           const value = state.settings[config.setting];
           config.slider.min = String(state.settings.min[kind]);
@@ -6417,6 +6470,8 @@
         if (kind === "nRespawn") state.settings.nRespawnEnabled = Boolean(value);
         if (kind === "activeColor") state.settings.activeColorHighlight = Boolean(value);
         if (kind === "showOtherMass") state.settings.showOtherMass = Boolean(value);
+        if (kind === "showOwnMass") state.settings.showOwnMass = Boolean(value);
+        if (kind === "botEnabled") state.settings.botEnabled = Boolean(value);
         if (sliderControls[kind]) {
           const config = sliderControls[kind];
           state.settings[config.setting] = clamp(roundSliderValue(kind, value), state.settings.min[kind], state.settings.max[kind]);
@@ -6572,6 +6627,8 @@
         nRespawnToggle.addEventListener("change", () => setWorldSetting("nRespawn", nRespawnToggle.checked));
         activeColorToggle.addEventListener("change", () => setWorldSetting("activeColor", activeColorToggle.checked));
         otherMassToggle.addEventListener("change", () => setWorldSetting("showOtherMass", otherMassToggle.checked));
+        ownMassToggle.addEventListener("change", () => setWorldSetting("showOwnMass", ownMassToggle.checked));
+        botEnabledToggle.addEventListener("change", () => setWorldSetting("botEnabled", botEnabledToggle.checked));
         botSlider.addEventListener("input", () => setWorldSetting("bot", botSlider.value));
         botModeSelect.addEventListener("change", () => setWorldSetting("botMode", botModeSelect.value));
         virusSlider.addEventListener("input", () => setWorldSetting("virus", virusSlider.value));
