@@ -195,25 +195,18 @@
       overflow: hidden;
     }
 
-    .menu-button::before,
-    .menu-button::after {
+    .menu-button::before {
       content: "";
       position: absolute;
       top: 50%;
-      width: 11px;
-      height: 34px;
+      left: 50%;
+      width: 36px;
+      height: 40px;
       border: 3px solid rgba(135, 138, 142, 0.34);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.58);
-      transform: translateY(-50%);
-    }
-
-    .menu-button::before {
-      left: 22px;
-    }
-
-    .menu-button::after {
-      right: 22px;
+      border-radius: 10px;
+      background:
+        linear-gradient(90deg, transparent 0 7px, rgba(255, 255, 255, 0.72) 7px 15px, transparent 15px 21px, rgba(255, 255, 255, 0.72) 21px 29px, transparent 29px 100%);
+      transform: translate(-50%, -50%);
     }
 
     .menu-button:hover {
@@ -767,18 +760,12 @@
         min-height: 62px;
       }
 
-      .menu-button::before,
-      .menu-button::after {
-        width: 9px;
-        height: 28px;
-      }
-
       .menu-button::before {
-        left: 17px;
-      }
-
-      .menu-button::after {
-        right: 17px;
+        width: 30px;
+        height: 32px;
+        border-width: 3px;
+        background:
+          linear-gradient(90deg, transparent 0 6px, rgba(255, 255, 255, 0.72) 6px 13px, transparent 13px 17px, rgba(255, 255, 255, 0.72) 17px 24px, transparent 24px 100%);
       }
 
       .rank:nth-of-type(n + 7) {
@@ -835,7 +822,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.06</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.07</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1160,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.06";
+      const APP_VERSION = "v2026.05.09.07";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
