@@ -1147,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.13";
+      const APP_VERSION = "v2026.05.09.14";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1409,6 +1409,7 @@
           removedFeedIds: new Set(),
           removedVirusIds: new Set(),
           removedCellKeys: new Set(),
+          clientRemovedFoodIds: new Set(),
           clientRemovedFeedIds: new Set(),
           clientRemovedVirusIds: new Set()
         },
@@ -5059,6 +5060,7 @@
         state.net.removedFeedIds.clear();
         state.net.removedVirusIds.clear();
         state.net.removedCellKeys.clear();
+        state.net.clientRemovedFoodIds.clear();
         state.net.clientRemovedFeedIds.clear();
         state.net.clientRemovedVirusIds.clear();
         setStatus("OFFLINE");
@@ -5976,6 +5978,12 @@
           state.feeds = removeEntityIds(state.feeds, message.removedFeedIds);
           rememberRemovedIds(state.net.clientRemovedFeedIds, message.removedFeedIds);
         }
+        if (Array.isArray(message.removedFoodIds)) {
+          state.foods = removeEntityIds(state.foods, message.removedFoodIds);
+          rememberRemovedIds(state.net.clientRemovedFoodIds, message.removedFoodIds);
+          state.foodGridDirty = true;
+          rebuildFoodGridOnly();
+        }
         if (Array.isArray(message.removedVirusIds)) {
           state.viruses = removeEntityIds(state.viruses, message.removedVirusIds);
           for (const id of message.removedVirusIds) state.net.clientRemovedVirusIds.add(id);
@@ -6012,7 +6020,11 @@
         }
 
         if (message.kind === "foods") {
-          state.foods = applyEntityListSnapshot(merged, "food", state.foods);
+          state.foods = applyEntityListSnapshot(
+            merged.filter((food) => !state.net.clientRemovedFoodIds.has(food.id)),
+            "food",
+            state.foods
+          );
           state.foodGridDirty = true;
           rebuildFoodGridOnly();
         } else {
