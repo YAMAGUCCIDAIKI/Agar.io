@@ -732,7 +732,7 @@
     <div class="hud-row"><span>質量</span><strong id="mass">0</strong></div>
     <div class="hud-row"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.08.41</strong></div>
+    <div class="hud-row"><span>Ver</span><strong id="version">v2026.05.09.01</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1043,7 +1043,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.08.41";
+      const APP_VERSION = "v2026.05.09.01";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -1481,7 +1481,35 @@
 
       function refreshCell(cell) {
         if (cell.mass < MIN_CELL_MASS) cell.mass = MIN_CELL_MASS;
-        cell.radius = radiusFromMass(cell.mass);
+        const nextRadius = radiusFromMass(cell.mass);
+        if (!Number.isFinite(cell.renderRadius)) {
+          cell.renderRadius = nextRadius;
+          cell.radiusAnimFrom = nextRadius;
+          cell.radiusAnimTo = nextRadius;
+          cell.radiusAnimAge = 0;
+        } else if (Math.abs((cell.radiusAnimTo || cell.radius || nextRadius) - nextRadius) > 0.01) {
+          cell.radiusAnimFrom = cell.renderRadius;
+          cell.radiusAnimTo = nextRadius;
+          cell.radiusAnimAge = 0;
+        }
+        cell.radius = nextRadius;
+      }
+
+      function updateRenderRadius(cell, dt) {
+        if (!Number.isFinite(cell.renderRadius)) cell.renderRadius = cell.radius;
+        const target = cell.radiusAnimTo || cell.radius;
+        if (Math.abs(cell.renderRadius - target) <= 0.05) {
+          cell.renderRadius = target;
+          cell.radiusAnimFrom = target;
+          cell.radiusAnimTo = target;
+          cell.radiusAnimAge = 0;
+          return;
+        }
+        const duration = 0.2;
+        cell.radiusAnimAge = Math.min(duration, (cell.radiusAnimAge || 0) + dt);
+        const t = clamp(cell.radiusAnimAge / duration, 0, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        cell.renderRadius = (cell.radiusAnimFrom || cell.renderRadius) + (target - (cell.radiusAnimFrom || cell.renderRadius)) * eased;
       }
 
       function mergeCooldown(mass) {
@@ -2506,6 +2534,10 @@
           y: clamp(y, 0, WORLD_SIZE),
           mass: Math.max(MIN_CELL_MASS, mass),
           radius: 1,
+          renderRadius: 1,
+          radiusAnimFrom: 1,
+          radiusAnimTo: 1,
+          radiusAnimAge: 0,
           vx: 0,
           vy: 0,
           boostX: 0,
@@ -2548,6 +2580,9 @@
           dead: false
         };
         refreshCell(cell);
+        cell.renderRadius = cell.radius;
+        cell.radiusAnimFrom = cell.radius;
+        cell.radiusAnimTo = cell.radius;
         return cell;
       }
 
@@ -4510,6 +4545,7 @@
         handleVirusCellCollisions();
         handleCellEating();
         cleanupAndRespawn();
+        updateCellRenderRadii(dt);
         updateCamera(dt);
         updateHud(dt);
         sendAuthoritativeSnapshot(state.realNow);
@@ -5373,11 +5409,18 @@
         entity.renderY += (targetY - entity.renderY) * follow;
       }
 
+      function updateCellRenderRadii(dt) {
+        for (const actor of state.actors) {
+          for (const cell of actor.cells) updateRenderRadius(cell, dt);
+        }
+      }
+
       function updateClientRenderState(dt) {
         predictClientCellMotion(dt);
         for (const actor of state.actors) {
           for (const cell of actor.cells) updateRenderPosition(cell, dt, 20);
         }
+        updateCellRenderRadii(dt);
         for (const feed of state.feeds) updateRenderPosition(feed, dt, 14);
         for (const virus of state.viruses) updateRenderPosition(virus, dt, 10);
       }
@@ -5521,6 +5564,10 @@
         cell.sweepToY = cell.y;
         cell.renderX = Number.isFinite(existing?.renderX) ? existing.renderX : cell.x;
         cell.renderY = Number.isFinite(existing?.renderY) ? existing.renderY : cell.y;
+        cell.renderRadius = Number.isFinite(existing?.renderRadius) ? existing.renderRadius : radiusFromMass(cell.mass);
+        cell.radiusAnimFrom = Number.isFinite(existing?.radiusAnimFrom) ? existing.radiusAnimFrom : cell.renderRadius;
+        cell.radiusAnimTo = Number.isFinite(existing?.radiusAnimTo) ? existing.radiusAnimTo : cell.renderRadius;
+        cell.radiusAnimAge = Number.isFinite(existing?.radiusAnimAge) ? existing.radiusAnimAge : 0;
         cell.cooldown = 0;
         cell.mergeReadyAt = data.mergeReadyAt || 0;
         cell.capFramesLeft = data.capFramesLeft || 0;
@@ -5988,7 +6035,8 @@
         const cellY = entityRenderY(cell);
         const drawX = cell.birthX + (cellX - cell.birthX) * progress;
         const drawY = cell.birthY + (cellY - cell.birthY) * progress;
-        const r = Math.max(1, cell.radius * scale);
+        const visualRadius = Number.isFinite(cell.renderRadius) ? cell.renderRadius : cell.radius;
+        const r = Math.max(1, visualRadius * scale);
         const color = actorRenderColor(actor);
         ctx.beginPath();
         ctx.arc(drawX, drawY, r, 0, TAU);
@@ -6033,7 +6081,8 @@
         const cellY = entityRenderY(cell);
         const drawX = cell.birthX + (cellX - cell.birthX) * progress;
         const drawY = cell.birthY + (cellY - cell.birthY) * progress;
-        const r = Math.max(1, cell.radius * scale);
+        const visualRadius = Number.isFinite(cell.renderRadius) ? cell.renderRadius : cell.radius;
+        const r = Math.max(1, visualRadius * scale);
         ctx.moveTo(drawX + r, drawY);
         ctx.arc(drawX, drawY, r, 0, TAU);
       }
