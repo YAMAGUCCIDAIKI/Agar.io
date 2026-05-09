@@ -16,6 +16,16 @@ const MAX_CELLS = 16;
 const MIN_SPLIT_MASS = 36;
 const EJECT_MASS = 21;
 const CONSUME_RATIO = 1.325;
+const CONSUME_RADIUS_RATIO = Math.sqrt(CONSUME_RATIO);
+const MAX_CELL_MASS = 22500;
+const MAX_MERGE_VIRUS_HIT_MASS = MAX_CELL_MASS * 2;
+const UNCONSUMABLE_CELL_MASS = 16900;
+const MERGE_COOLDOWN = 30;
+const MASS_CAP_SETTLE_FRAMES = 10;
+const MERGE_CAP_OVERSIZE_RATIO = 1.04;
+const MERGE_SWAP_RESET_TIME = 0.22;
+const VIRUS_EXPLODE_MASS = 133;
+const VIRUS_FRAGMENT_LIFE = 2.8;
 const TICK_RATE = 60;
 const SNAPSHOT_RATE = 45;
 const WORLD_RATE = 0.5;
@@ -226,6 +236,7 @@ function spawnCell(actor, mass = PLAYER_MASS, x = rand(200, WORLD_SIZE - 200), y
     faceY: 0,
     cooldown: 0,
     mergeReadyAt: 0,
+    capFramesLeft: mass > MAX_CELL_MASS ? MASS_CAP_SETTLE_FRAMES : 0,
     birthAge: 1,
     birthDuration: 0,
     birthX: x,
@@ -238,10 +249,13 @@ function spawnCell(actor, mass = PLAYER_MASS, x = rand(200, WORLD_SIZE - 200), y
     pendingBoostY: 0,
     virusCooldown: 0,
     mergeVirusWindow: 0,
-    mergeOverflowMass: 0,
+    mergeOverflowMass: Math.max(0, mass - MAX_CELL_MASS),
     mergeBurstPieces: 1,
     mergeBurstTotal: mass,
     splitPriority: 0,
+    mergePartnerId: null,
+    mergeDominantId: null,
+    separationGraceUntil: 0,
     targetX: x,
     targetY: y,
     dead: false,
@@ -395,6 +409,7 @@ function splitActor(actor) {
   const childMass = source.mass * 0.5;
   source.mass = childMass;
   source.radius = radiusFromMass(source.mass);
+  setMergeCooldown(source);
   const childRadius = radiusFromMass(childMass);
   const spawnOffset = (source.radius + childRadius) * 0.42;
   const child = spawnCell(actor, childMass, source.x + nx * spawnOffset, source.y + ny * spawnOffset);
@@ -402,6 +417,9 @@ function splitActor(actor) {
   child.vx = source.vx + nx * impulse;
   child.vy = source.vy + ny * impulse;
   child.splitBoostAge = 0.08;
+  child.separationGraceUntil = Date.now() / 1000 + 0.14;
+  source.separationGraceUntil = Date.now() / 1000 + 0.14;
+  setMergeCooldown(child);
   source.vx *= 0.24;
   source.vy *= 0.24;
   actor.cells.push(child);
@@ -456,7 +474,9 @@ function updateRoom(room, dt, now) {
       cell.boostX *= Math.exp(-dt * 4.4);
       cell.boostY *= Math.exp(-dt * 4.4);
       cell.splitBoostAge = Math.max(0, cell.splitBoostAge - dt);
-      cell.radius = radiusFromMass(cell.mass);
+      cell.fragmentAge = Math.max(0, (cell.fragmentAge || 0) - dt);
+      cell.mergeVirusWindow = Math.max(0, (cell.mergeVirusWindow || 0) - dt);
+      settleMassCap(cell);
       cell.x = clamp(cell.x, cell.radius, WORLD_SIZE - cell.radius);
       cell.y = clamp(cell.y, cell.radius, WORLD_SIZE - cell.radius);
     }
@@ -464,7 +484,7 @@ function updateRoom(room, dt, now) {
     if (!actor.cells.length) actor.cells.push(spawnCell(actor));
   }
 
-  resolveOwnCellOverlap(room);
+  resolveOwnCells(room, now);
   for (const feed of room.feeds) {
     feed.x += feed.vx * dt;
     feed.y += feed.vy * dt;
@@ -505,11 +525,25 @@ function allCells(room) {
 }
 
 function canEat(a, b) {
-  if (a.radius < b.radius * Math.sqrt(CONSUME_RATIO)) return false;
+  if (b.ownerId && b.mass >= UNCONSUMABLE_CELL_MASS) return false;
+  if (a.mass + 0.001 < b.mass * CONSUME_RATIO) return false;
+  if (a.radius + 0.001 < b.radius * CONSUME_RADIUS_RATIO) return false;
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   const threshold = a.radius - b.radius * 0.22;
-  return dx * dx + dy * dy <= threshold * threshold;
+  if (threshold > 0 && dx * dx + dy * dy <= threshold * threshold) return true;
+  return circleOverlapArea(a.radius, b.radius, Math.hypot(dx, dy)) >= Math.PI * b.radius * b.radius * 0.5;
+}
+
+function circleOverlapArea(r1, r2, d) {
+  if (d >= r1 + r2) return 0;
+  if (d <= Math.abs(r1 - r2)) {
+    const r = Math.min(r1, r2);
+    return Math.PI * r * r;
+  }
+  const a1 = Math.acos(clamp((d * d + r1 * r1 - r2 * r2) / (2 * d * r1), -1, 1));
+  const a2 = Math.acos(clamp((d * d + r2 * r2 - r1 * r1) / (2 * d * r2), -1, 1));
+  return r1 * r1 * a1 + r2 * r2 * a2 - 0.5 * Math.sqrt(Math.max(0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)));
 }
 
 function handleFoodEating(room) {
@@ -521,10 +555,50 @@ function handleFoodEating(room) {
       if (dx * dx + dy * dy <= (cell.radius + 10) * (cell.radius + 10)) {
         food.dead = true;
         room.removedFoodIds.add(food.id);
-        cell.mass += food.mass;
+        addConsumedMass(cell, food.mass);
       }
     }
   }
+}
+
+function setMergeCooldown(cell, now = Date.now() / 1000) {
+  cell.mergeReadyAt = now + MERGE_COOLDOWN;
+  cell.cooldown = MERGE_COOLDOWN;
+  cell.mergePartnerId = null;
+  cell.mergeDominantId = null;
+}
+
+function refreshCell(cell) {
+  cell.mass = Math.max(12, cell.mass);
+  cell.radius = radiusFromMass(cell.mass);
+}
+
+function addMass(cell, amount) {
+  cell.mass += amount;
+  if (cell.mass > MAX_CELL_MASS) cell.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
+  refreshCell(cell);
+}
+
+function addConsumedMass(cell, amount) {
+  const previousMass = cell.mass;
+  addMass(cell, amount);
+  const massDamping = Math.sqrt(Math.max(12, previousMass) / Math.max(previousMass, cell.mass));
+  const damping = clamp(massDamping * 0.88, 0.42, 0.96);
+  cell.vx *= damping;
+  cell.vy *= damping;
+  cell.boostX *= damping;
+  cell.boostY *= damping;
+}
+
+function settleMassCap(cell) {
+  if (cell.mass <= MAX_CELL_MASS) return;
+  if (cell.capFramesLeft > 0) {
+    cell.mass -= (cell.mass - MAX_CELL_MASS) / cell.capFramesLeft;
+    cell.capFramesLeft -= 1;
+  } else {
+    cell.mass = MAX_CELL_MASS;
+  }
+  refreshCell(cell);
 }
 
 function handleFeedVirusCollisions(room) {
@@ -575,8 +649,7 @@ function handleVirusCellCollisions(room) {
       if (entry.actor.cells.filter((item) => !item.dead).length >= MAX_CELLS) {
         virus.dead = true;
         room.removedVirusIds.add(virus.id);
-        cell.mass += virus.mass;
-        cell.radius = radiusFromMass(cell.mass);
+        addConsumedMass(cell, virus.mass);
         cell.virusCooldown = 0.35;
         break;
       }
@@ -590,25 +663,39 @@ function handleVirusCellCollisions(room) {
 
 function virusBurstMasses(totalMass, pieces) {
   if (pieces <= 1) return [totalMass];
-  const mainMass = Math.max(36, totalMass * 0.42);
-  const remaining = Math.max(0, totalMass - mainMass);
-  const result = [mainMass];
-  for (let i = 1; i < pieces; i += 1) result.push(remaining / (pieces - 1));
-  return result;
+  const weights = [];
+  const chainBurst = pieces > 5;
+  if (chainBurst) {
+    weights.push(rand(7.8, 9.4), rand(2.1, 3.0));
+    for (let i = 2; i < pieces; i += 1) weights.push(rand(0.18, 0.32));
+  } else {
+    const mediumCount = Math.min(2, Math.max(1, pieces - 2));
+    for (let i = 0; i < pieces; i += 1) {
+      if (i === 0) weights.push(rand(9.2, 10.8));
+      else if (i === 1) weights.push(rand(4.2, 5.4));
+      else if (i <= mediumCount) weights.push(rand(1.0, 1.45));
+      else weights.push(rand(0.2, 0.38));
+    }
+  }
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  const masses = weights.map((weight) => Math.max(12, totalMass * weight / weightTotal));
+  const massTotal = masses.reduce((sum, mass) => sum + mass, 0);
+  masses[0] += totalMass - massTotal;
+  return masses.sort((a, b) => b - a);
 }
 
 function explodeCellOnVirus(actor, cell, virus) {
   const liveCells = actor.cells.filter((item) => !item.dead).length;
   const slots = MAX_CELLS - liveCells + 1;
-  const total = cell.mass + virus.mass;
-  const pieces = Math.min(slots, clamp(Math.floor(total / MIN_SPLIT_MASS), 4, 16));
+  const total = mergeVirusHitMass(cell) + virus.mass;
+  const pieces = Math.floor(Math.min(slots, clamp(Math.floor(total / MIN_SPLIT_MASS), 4, 16)));
   if (pieces <= 1) return;
   const masses = virusBurstMasses(total, pieces);
   const originX = cell.x;
   const originY = cell.y;
   const baseAngle = Math.atan2(cell.y - virus.y, cell.x - virus.x);
   cell.mass = masses[0];
-  cell.radius = radiusFromMass(cell.mass);
+  refreshCell(cell);
   cell.vx *= 0.16;
   cell.vy *= 0.16;
   cell.virusCooldown = 0.42;
@@ -623,27 +710,81 @@ function explodeCellOnVirus(actor, cell, virus) {
     const radius = radiusFromMass(mass);
     const distance = Math.max(radius + 3, cell.radius * 0.58 + radius * 0.18);
     const child = spawnCell(actor, mass, originX + dirX * distance, originY + dirY * distance);
-    child.vx = dirX * rand(155, 235);
-    child.vy = dirY * rand(155, 235);
+    const massDrag = clamp(Math.sqrt(72 / Math.max(20, child.mass)), 0.45, 0.92);
+    const burst = rand(210, 390) * massDrag * 0.6;
+    child.vx = dirX * burst;
+    child.vy = dirY * burst;
     child.faceX = dirX;
     child.faceY = dirY;
     child.fragmentAge = 2.8;
     child.virusCooldown = 0.42;
+    setMergeCooldown(child);
     actor.cells.push(child);
   }
 }
 
-function resolveOwnCellOverlap(room) {
+function mergeVirusHitMass(cell) {
+  const burstMass = cell.mergeVirusWindow > 0 ? Math.max(cell.mergeBurstTotal || 0, cell.mass) : cell.mass;
+  return clamp(burstMass, cell.mass, MAX_MERGE_VIRUS_HIT_MASS);
+}
+
+function tryMerge(actor, a, b, now) {
+  if ((a.mergeReadyAt || 0) > now || (b.mergeReadyAt || 0) > now) return false;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance >= a.radius + b.radius) return false;
+  const smallRadius = Math.min(a.radius, b.radius);
+  if (circleOverlapArea(a.radius, b.radius, distance) < Math.PI * smallRadius * smallRadius * 0.5) return false;
+
+  const aMass = a.mass;
+  const bMass = b.mass;
+  const big = aMass >= bMass ? a : b;
+  const small = big === a ? b : a;
+  const total = aMass + bMass;
+  const inv = 1 / total;
+  big.x = (a.x * aMass + b.x * bMass) * inv;
+  big.y = (a.y * aMass + b.y * bMass) * inv;
+  big.vx = (a.vx * aMass + b.vx * bMass) * inv;
+  big.vy = (a.vy * aMass + b.vy * bMass) * inv;
+  big.boostX = (a.boostX * aMass + b.boostX * bMass) * inv;
+  big.boostY = (a.boostY * aMass + b.boostY * bMass) * inv;
+  big.mass = total > MAX_CELL_MASS ? Math.min(total, MAX_CELL_MASS * MERGE_CAP_OVERSIZE_RATIO) : total;
+  big.mergeOverflowMass = Math.max(0, total - MAX_CELL_MASS);
+  big.mergeBurstPieces = 1;
+  big.mergeBurstTotal = total;
+  big.mergeVirusWindow = total > MAX_CELL_MASS ? 4.0 : 0.28;
+  big.virusCooldown = 0;
+  if (big.mass > MAX_CELL_MASS) big.capFramesLeft = MASS_CAP_SETTLE_FRAMES;
+  refreshCell(big);
+  small.dead = true;
+  actor.lastMergeAt = now;
+  return true;
+}
+
+function resolveOwnCells(room, now) {
   for (const actor of room.actors.values()) {
     const cells = actor.cells.filter((cell) => !cell.dead);
+    let merged = false;
+    for (let i = 0; i < cells.length && !merged; i += 1) {
+      for (let j = i + 1; j < cells.length; j += 1) {
+        if (tryMerge(actor, cells[i], cells[j], now)) {
+          merged = true;
+          break;
+        }
+      }
+    }
+    if (merged) continue;
     for (let i = 0; i < cells.length; i += 1) {
       for (let j = i + 1; j < cells.length; j += 1) {
         const a = cells[i];
         const b = cells[j];
+        if ((a.mergeReadyAt || 0) <= now && (b.mergeReadyAt || 0) <= now) continue;
+        if (a.separationGraceUntil > now || b.separationGraceUntil > now) continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const distance = Math.hypot(dx, dy) || 0.001;
-        const minDistance = (a.radius + b.radius) * 0.58;
+        const minDistance = a.radius + b.radius;
         if (distance >= minDistance) continue;
         const push = (minDistance - distance) * 0.5;
         const nx = dx / distance;
@@ -666,7 +807,7 @@ function handleFeedEating(room) {
       if (dx * dx + dy * dy <= (cell.radius + feed.radius * 0.5) ** 2) {
         feed.dead = true;
         room.removedFeedIds.add(feed.id);
-        cell.mass += feed.mass;
+        addConsumedMass(cell, feed.mass);
       }
     }
   }
@@ -680,8 +821,7 @@ function handleCellEating(room) {
       if (victim.cell.dead || eater.cell === victim.cell || eater.actor.id === victim.actor.id) continue;
       if (!canEat(eater.cell, victim.cell)) continue;
       victim.cell.dead = true;
-      eater.cell.mass += victim.cell.mass;
-      eater.cell.radius = radiusFromMass(eater.cell.mass);
+      addConsumedMass(eater.cell, victim.cell.mass);
     }
   }
 }
@@ -698,22 +838,23 @@ function serializeCell(cell) {
     boostY: cell.boostY,
     faceX: cell.faceX,
     faceY: cell.faceY,
-    mergeReadyAt: 0,
+    mergeReadyAt: cell.mergeReadyAt || 0,
+    capFramesLeft: cell.capFramesLeft || 0,
     birthAge: cell.birthAge,
     birthDuration: cell.birthDuration,
     birthX: cell.birthX,
     birthY: cell.birthY,
     birthScale: cell.birthScale,
-    fragmentAge: 0,
+    fragmentAge: cell.fragmentAge || 0,
     splitBoostAge: cell.splitBoostAge,
     splitHoldAge: 0,
     pendingBoostX: 0,
     pendingBoostY: 0,
-    virusCooldown: 0,
-    mergeVirusWindow: 0,
-    mergeOverflowMass: 0,
+    virusCooldown: cell.virusCooldown || 0,
+    mergeVirusWindow: cell.mergeVirusWindow || 0,
+    mergeOverflowMass: cell.mergeOverflowMass || 0,
     mergeBurstPieces: 1,
-    mergeBurstTotal: cell.mass,
+    mergeBurstTotal: cell.mergeBurstTotal || cell.mass,
     splitPriority: cell.splitPriority,
     targetX: cell.targetX,
     targetY: cell.targetY
