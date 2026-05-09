@@ -101,10 +101,10 @@
     .board {
       position: fixed;
       inset: 16px 18px auto auto;
-      width: min(318px, calc(100vw - 170px));
-      padding: 0 0 14px;
-      border: 4px solid rgba(125, 128, 132, 0.28);
-      border-radius: 13px;
+      width: min(270px, calc(100vw - 150px));
+      padding: 0 0 10px;
+      border: 3px solid rgba(125, 128, 132, 0.28);
+      border-radius: 11px;
       background: rgba(116, 116, 116, 0.34);
       backdrop-filter: blur(1px);
       box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18), 0 2px 6px rgba(80, 88, 96, 0.18);
@@ -115,43 +115,26 @@
     .board-title {
       display: flex;
       align-items: center;
-      gap: 12px;
-      min-height: 70px;
-      margin: 0 0 12px;
-      padding: 11px 16px;
+      min-height: 48px;
+      margin: 0 0 8px;
+      padding: 8px 13px;
       background: rgba(245, 248, 251, 0.38);
       color: rgba(80, 82, 90, 0.72);
-      font-size: 32px;
+      font-size: 25px;
       font-weight: 900;
       letter-spacing: 0;
       text-shadow: 0 2px 0 rgba(255, 255, 255, 0.78);
     }
 
-    .board-title::before {
-      content: "1\\A 2 3";
-      white-space: pre;
-      display: grid;
-      place-items: center;
-      width: 52px;
-      height: 52px;
-      border: 4px solid rgba(135, 138, 142, 0.36);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.42);
-      color: rgba(113, 116, 123, 0.62);
-      font-size: 19px;
-      line-height: 0.9;
-      font-weight: 900;
-    }
-
     .rank {
       display: grid;
-      grid-template-columns: 42px minmax(0, 1fr) auto;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
       align-items: center;
       gap: 6px;
-      min-height: 44px;
-      padding: 0 18px;
+      min-height: 34px;
+      padding: 0 13px;
       color: rgba(255, 255, 255, 0.92);
-      font-size: 30px;
+      font-size: 22px;
       font-weight: 900;
       line-height: 1.2;
       text-shadow: 0 2px 2px rgba(55, 60, 66, 0.54);
@@ -759,26 +742,20 @@
 
       .board {
         inset: 10px 10px auto auto;
-        width: min(260px, calc(100vw - 132px));
+        width: min(218px, calc(100vw - 120px));
       }
 
       .board-title {
-        min-height: 52px;
-        font-size: 24px;
-        padding: 8px 12px;
-      }
-
-      .board-title::before {
-        width: 40px;
-        height: 40px;
-        font-size: 14px;
+        min-height: 40px;
+        font-size: 20px;
+        padding: 7px 10px;
       }
 
       .rank {
-        grid-template-columns: 34px minmax(0, 1fr) auto;
-        min-height: 34px;
-        padding: 0 12px;
-        font-size: 22px;
+        grid-template-columns: 26px minmax(0, 1fr) auto;
+        min-height: 28px;
+        padding: 0 10px;
+        font-size: 17px;
       }
 
       .menu-button {
@@ -857,7 +834,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.04</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.05</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1182,7 +1159,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.04";
+      const APP_VERSION = "v2026.05.09.05";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
