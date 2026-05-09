@@ -166,11 +166,16 @@ function joinRoom(client, requestedRoom, role) {
     return;
   }
 
+  const hasHost = Array.from(peers).some((peer) => peer.role === "host");
+  const assignedRole = role === "host" && !hasHost ? "host" :
+    role === "client" ? "client" :
+    hasHost ? "client" : "host";
+
   client.room = roomId;
-  client.role = role;
-  if (!client.actorId) client.actorId = role === "host" ? "host" : `guest-${client.id}`;
+  client.role = assignedRole;
+  if (!client.actorId) client.actorId = assignedRole === "host" ? "host" : `guest-${client.id}`;
   peers.add(client);
-  sendJson(client, { t: "relayReady", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS, actorId: client.actorId });
+  sendJson(client, { t: "relayReady", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS, actorId: client.actorId, role: assignedRole });
   for (const peer of peers) {
     sendJson(peer, { t: "relayPeer", room: roomId, peers: peers.size, maxPeers: MAX_ROOM_PEERS });
   }

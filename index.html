@@ -822,7 +822,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.09</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.10</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1147,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.09";
+      const APP_VERSION = "v2026.05.09.10";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5127,7 +5127,7 @@
       }
 
       function joinOrHostRoom() {
-        joinRoom(true);
+        startRelayOnline("auto");
       }
 
       function joinRoom(autoHostOnMiss = false) {
@@ -5241,8 +5241,9 @@
         roomBox.value = room;
 
         closeNetwork(true);
-        resetFreshWorld(role === "host" ? "host" : "guest", true, role === "host");
-        state.net.role = role === "host" ? "host" : "client";
+        const requestedRole = role === "host" || role === "client" ? role : "auto";
+        resetFreshWorld(requestedRole === "host" ? "host" : "guest", true, requestedRole === "host");
+        state.net.role = requestedRole === "host" ? "host" : "client";
         state.net.transport = "relay";
         state.net.connected = false;
         setStatus("RELAY CONNECT");
@@ -5256,7 +5257,7 @@
           socket.send(JSON.stringify({
             t: "relayJoin",
             room,
-            role: state.net.role
+            role: requestedRole
           }));
           if (state.net.role === "host") {
             state.net.lastSnapshotSend = -100;
@@ -5290,11 +5291,20 @@
         if (message.t === "relayReady") {
           state.net.peerCount = Math.max(1, Number(message.peers) || 1);
           state.net.maxPeers = Math.max(state.net.peerCount, Number(message.maxPeers) || 10);
-          if (state.net.role === "client" && message.actorId && message.actorId !== state.localActorId) {
-            resetFreshWorld(String(message.actorId), true, false);
-            state.net.role = "client";
+          const assignedRole = message.role === "host" ? "host" : "client";
+          const assignedActorId = assignedRole === "host" ? "host" : String(message.actorId || "guest");
+          if (assignedRole !== state.net.role || assignedActorId !== state.localActorId) {
+            resetFreshWorld(assignedActorId, true, assignedRole === "host");
+            state.net.role = assignedRole;
             state.net.transport = "relay";
             state.net.connected = true;
+            state.net.socket = state.net.socket || null;
+            if (assignedRole === "host") {
+              state.net.lastSnapshotSend = -100;
+              state.net.lastFeedSnapshotSend = -100;
+              state.net.lastBotSnapshotSend = -100;
+              state.net.lastWorldSend = -100;
+            }
           }
           setStatus(`ROOM ${state.net.peerCount}/${state.net.maxPeers}`);
           return;
