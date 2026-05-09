@@ -274,6 +274,13 @@ function createActor(id, name) {
     input: {
       targetX: WORLD_SIZE * 0.5,
       targetY: WORLD_SIZE * 0.5,
+      lastAimX: 1,
+      lastAimY: 0,
+      splitQueued: false,
+      splitCount: 0,
+      splitLockX: 1,
+      splitLockY: 0,
+      splitLockActive: false,
       splitSeq: 0,
       ejectSeq: 0,
       respawnSeq: 0,
@@ -323,7 +330,9 @@ function handleMessage(client, text) {
     const splitSeq = Number(message.splitSeq) || 0;
     if (splitSeq > actor.input.lastNetSplitSeq) {
       const count = clamp(Math.round(Number(message.splitCount) || splitSeq - actor.input.lastNetSplitSeq), 1, 4);
-      for (let i = 0; i < count; i += 1) splitActor(activeActor);
+      activeActor.input.splitQueued = true;
+      activeActor.input.splitCount += count;
+      activeActor.input.splitLockActive = false;
       actor.input.lastNetSplitSeq = splitSeq;
     }
     const ejectSeq = Number(message.ejectSeq) || 0;
@@ -398,24 +407,37 @@ function leaveRoom(client) {
   if (room.peers.size === 0) rooms.delete(client.room);
 }
 
-function splitCell(actor, source) {
+function actorAimDirection(actor) {
+  const live = actor.cells.filter((cell) => !cell.dead);
+  const base = live[0] || { x: WORLD_SIZE * 0.5, y: WORLD_SIZE * 0.5 };
+  const n = normalized(actor.input.targetX - base.x, actor.input.targetY - base.y, actor.input.lastAimX || 1, actor.input.lastAimY || 0);
+  actor.input.lastAimX = n.x;
+  actor.input.lastAimY = n.y;
+  return n;
+}
+
+function splitCell(actor, source, dirX, dirY, targetX = null, targetY = null) {
   if (actor.cells.length >= MAX_CELLS) return false;
   if (source.dead || source.mass < MIN_SPLIT_MASS * 2) return false;
-  const dx = actor.input.targetX - source.x;
-  const dy = actor.input.targetY - source.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = dx / len;
-  const ny = dy / len;
+  if (targetX != null && targetY != null) {
+    const aim = normalized(targetX - source.x, targetY - source.y, dirX, dirY);
+    dirX = aim.x;
+    dirY = aim.y;
+  }
   const childMass = source.mass * 0.5;
   source.mass = childMass;
   source.radius = radiusFromMass(source.mass);
   setMergeCooldown(source);
   const childRadius = radiusFromMass(childMass);
   const spawnOffset = (source.radius + childRadius) * 0.42;
-  const child = spawnCell(actor, childMass, source.x + nx * spawnOffset, source.y + ny * spawnOffset);
+  const child = spawnCell(actor, childMass, source.x + dirX * spawnOffset, source.y + dirY * spawnOffset);
   const impulse = clamp(110 * Math.sqrt(child.radius) * 0.6, 180, 560);
-  child.vx = source.vx + nx * impulse;
-  child.vy = source.vy + ny * impulse;
+  child.vx = source.vx + dirX * impulse;
+  child.vy = source.vy + dirY * impulse;
+  source.faceX = dirX;
+  source.faceY = dirY;
+  child.faceX = dirX;
+  child.faceY = dirY;
   child.splitBoostAge = 0.08;
   child.splitPriority = actor.nextSplitPriority || 1;
   actor.nextSplitPriority = (actor.nextSplitPriority || 1) + 1;
@@ -428,7 +450,7 @@ function splitCell(actor, source) {
   return true;
 }
 
-function splitActor(actor) {
+function splitActor(actor, dirX, dirY, targetX = null, targetY = null) {
   if (actor.cells.length >= MAX_CELLS) return;
   const candidates = actor.cells
     .filter((cell) => !cell.dead && cell.mass >= MIN_SPLIT_MASS * 2)
@@ -439,7 +461,38 @@ function splitActor(actor) {
     });
   for (const cell of candidates) {
     if (actor.cells.length >= MAX_CELLS) break;
-    splitCell(actor, cell);
+    splitCell(actor, cell, dirX, dirY, targetX, targetY);
+  }
+  return candidates.length > 0;
+}
+
+function processActorInputs(room, now) {
+  for (const actor of room.actors.values()) {
+    if (!actor.input.splitQueued) continue;
+    if (!actor.input.splitLockActive) {
+      const aim = actorAimDirection(actor);
+      actor.input.splitLockX = aim.x;
+      actor.input.splitLockY = aim.y;
+      actor.input.splitLockActive = true;
+    }
+    let remaining = Math.max(1, actor.input.splitCount || 1);
+    let budget = 4;
+    let didAnySplit = false;
+    while (remaining > 0 && budget > 0 && actor.cells.filter((cell) => !cell.dead).length < MAX_CELLS) {
+      if (!splitActor(actor, actor.input.splitLockX, actor.input.splitLockY, actor.input.targetX, actor.input.targetY)) {
+        remaining = 0;
+      } else {
+        didAnySplit = true;
+        remaining -= 1;
+        budget -= 1;
+      }
+    }
+    actor.input.splitCount = Math.max(0, remaining);
+    if (actor.input.splitCount <= 0 || (!didAnySplit && actor.cells.filter((cell) => !cell.dead).length >= MAX_CELLS)) {
+      actor.input.splitQueued = false;
+      actor.input.splitCount = 0;
+      actor.input.splitLockActive = false;
+    }
   }
 }
 
@@ -471,6 +524,8 @@ function ejectMass(room, actor) {
 function updateRoom(room, dt, now) {
   while (room.foods.length < FOOD_TARGET) room.foods.push(createFood());
   while (room.viruses.length < VIRUS_TARGET) room.viruses.push(createVirus());
+
+  processActorInputs(room, now);
 
   for (const actor of room.actors.values()) {
     for (const cell of actor.cells) {
