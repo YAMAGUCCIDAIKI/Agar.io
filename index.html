@@ -822,7 +822,7 @@
   <section class="hud" aria-label="状態">
     <div class="hud-row hidden-stat"><span>細胞</span><strong id="cells">1/16</strong></div>
     <div class="hud-row hidden-stat"><span>FPS</span><strong id="fps">60</strong></div>
-    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.10</strong></div>
+    <div class="hud-row version-row"><span>Ver</span><strong id="version">v2026.05.09.11</strong></div>
   </section>
 
   <aside class="board" aria-label="ランキング">
@@ -1147,7 +1147,7 @@
       const keyBindButtons = Array.from(document.querySelectorAll("[data-keybind]"));
 
       const TAU = Math.PI * 2;
-      const APP_VERSION = "v2026.05.09.10";
+      const APP_VERSION = "v2026.05.09.11";
       let WORLD_SIZE = 5000;
       const GRID_SMALL = 50;
       const GRID_LARGE = 250;
@@ -5231,14 +5231,16 @@
         }
 
         ensureRelayDefaults();
-        const url = serverUrlBox.value.trim();
+        const url = serverUrlBox && serverUrlBox.value.trim()
+          ? serverUrlBox.value.trim()
+          : defaultRelayUrl();
         if (!/^wss?:\/\//i.test(url)) {
           setStatus("SET RELAY URL");
-          serverUrlBox.focus();
+          if (serverUrlBox) serverUrlBox.focus();
           return;
         }
-        const room = roomBox.value.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
-        roomBox.value = room;
+        const room = (roomBox ? roomBox.value : "").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "agar";
+        if (roomBox) roomBox.value = room;
 
         closeNetwork(true);
         const requestedRole = role === "host" || role === "client" ? role : "auto";
